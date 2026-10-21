@@ -7,6 +7,8 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 **Core value:** A QA run with recording enabled always leaves a playable video file at a predictable path that the tool result reports, without touching the stealth path or breaking Bladebro's five-tool contract.
 **Current focus:** Phase 5 - Encoder Process Manager
 
+> **ON HOLD (user request, 2026-10-21):** Phases 1-4 and 4.1 are done and verified (macOS only, 515 tests, nothing pushed). Resume with `/gsd:execute-roadmap` (it reads EXECUTION_LOG.md, offers "resume", and starts at Phase 5). Before resuming: re-read the Phase 4.1 open items in `phases/04.1-headless-headed-launch-switch/04.1-VERIFICATION.md` and note that Phase 4.1 edited ~15 pre-existing upstream files (see HOOKS.md), a larger SYNC-01 merge surface than planned.
+
 ## Current Position
 
 Phase: 4.1 (INSERTED) complete, after Phase 4; next is Phase 5 (Encoder Process Manager)
