@@ -6,18 +6,19 @@
 //! - `config`: record.json loading, RecordOverrides/RecordConfig, precedence
 //!   resolution per-call > env > config file > default.
 //! - `names`: caller name sanitization, UTC stamp, short id, file names.
-//!
-//! Later steps of Phase 3 add `dir`.
+//! - `dir`: private canonical recordings dir, create_new file creation; never rotated.
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
 
 pub mod config;
+pub mod dir;
 pub mod names;
 pub mod values;
 
 pub use config::{
     load_file_config, resolve, resolve_from_env, FileConfig, RecordConfig, RecordOverrides,
 };
+pub use dir::{create_recording_file, prepare_dir};
 pub use names::{file_name, sanitize_stem};
 pub use values::{Format, FrameSize};
