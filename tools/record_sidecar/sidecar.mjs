@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 // Standalone CDP screencast -> ffmpeg recorder. Probe for the Phase 2 gate only: NOT shipped
-// in the bladebro binary and not used by src/. Attaches a NEW flattened session to an existing
-// page on a bladebro Chrome (WS transport), so it can run next to the daemon's own connection.
+// in the bladebro binary and not used by src/. Attaches a NEW flattened session to a page on a
+// bladebro Chrome (WS transport), so it can run next to the daemon's own connection.
+//
+// Harness-only features (--follow, --script, --attach-wait) exist to measure tab switching,
+// viewport changes and minimize; they are not product recorder behavior.
 import { writeFileSync, mkdirSync, rmSync, statSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { getJson, connect, percentile } from './lib/cdp.mjs';
 import { buildFfmpegArgs, buildConcatList, FrameQueue, startEncoder, jpegSize } from './lib/encoder.mjs';
+import { pickActiveFromList, shouldSwitchOnCreated, parseScript } from './lib/follow.mjs';
+import { runScriptAction } from './lib/actions.mjs';
+import { waitForBrowserPort, waitForPage } from './lib/attach.mjs';
 
-const USAGE = 'usage: sidecar.mjs --port N --out FILE [--duration S] [--codec vp9|vp8|x264] [--ts wallclock|concat|cfr] [--fps N] [--quality N] [--max-width N] [--max-height N] [--every-nth N] [--queue N] [--slow-writer-ms N] [--size-mode fixed|even] [--target ID] [--no-page-enable] [--no-tail] [--stats FILE] [--finalize-timeout MS] [--keep-frames] [--ffmpeg PATH]';
+const USAGE = 'usage: sidecar.mjs (--port N | --attach-wait S --blade-home DIR) --out FILE [--duration S] [--codec vp9|vp8|x264] [--ts wallclock|concat|cfr] [--fps N] [--quality N] [--max-width N] [--max-height N] [--every-nth N] [--queue N] [--slow-writer-ms N] [--size-mode fixed|even] [--target ID] [--follow off|newest|poll] [--poll-ms N] [--script SPEC] [--no-page-enable] [--no-tail] [--stats FILE] [--finalize-timeout MS] [--keep-frames] [--ffmpeg PATH]';
 
 function usage(msg) {
   process.stderr.write(`sidecar: ${msg}\n${USAGE}\n`);
@@ -18,7 +24,8 @@ const BOOL_FLAGS = new Set(['--no-page-enable', '--no-tail', '--keep-frames']);
 const VALUE_FLAGS = new Set([
   '--port', '--target', '--out', '--duration', '--codec', '--ts', '--fps', '--quality',
   '--max-width', '--max-height', '--every-nth', '--queue', '--slow-writer-ms', '--size-mode',
-  '--stats', '--finalize-timeout', '--ffmpeg',
+  '--stats', '--finalize-timeout', '--ffmpeg', '--follow', '--poll-ms', '--script',
+  '--attach-wait', '--blade-home',
 ]);
 
 function parseArgs(argv) {
@@ -39,10 +46,13 @@ function parseArgs(argv) {
     if (!Number.isInteger(n) || n < min) usage(`${flag} must be an integer >= ${min}`);
     return n;
   };
-  if (raw['--port'] === undefined) usage('--port is required');
   if (raw['--out'] === undefined) usage('--out is required');
+  if (raw['--port'] === undefined && raw['--attach-wait'] === undefined) usage('--port or --attach-wait is required');
+  if (raw['--attach-wait'] !== undefined && raw['--blade-home'] === undefined) usage('--attach-wait needs --blade-home DIR');
   const a = {
-    port: int('--port', 0, 1),
+    port: raw['--port'] === undefined ? null : int('--port', 0, 1),
+    attachWaitS: raw['--attach-wait'] === undefined ? null : Number(raw['--attach-wait']),
+    bladeHome: raw['--blade-home'] ? resolve(raw['--blade-home']) : null,
     target: raw['--target'] ?? null,
     out: resolve(raw['--out']),
     duration: raw['--duration'] === undefined ? null : Number(raw['--duration']),
@@ -56,6 +66,9 @@ function parseArgs(argv) {
     queue: int('--queue', 16, 1),
     slowWriterMs: int('--slow-writer-ms', 0, 0),
     sizeMode: raw['--size-mode'] ?? 'fixed',
+    follow: raw['--follow'] ?? 'off',
+    pollMs: int('--poll-ms', 250, 10),
+    script: raw['--script'] ?? null,
     pageEnable: !raw['--no-page-enable'],
     tail: !raw['--no-tail'],
     statsPath: raw['--stats'] ? resolve(raw['--stats']) : `${resolve(raw['--out'])}.stats.json`,
@@ -64,9 +77,12 @@ function parseArgs(argv) {
     ffmpeg: raw['--ffmpeg'] ?? process.env.BLADE_FFMPEG ?? 'ffmpeg',
   };
   if (a.duration !== null && (!Number.isFinite(a.duration) || a.duration <= 0)) usage('--duration must be > 0');
+  if (a.attachWaitS !== null && (!Number.isFinite(a.attachWaitS) || a.attachWaitS <= 0)) usage('--attach-wait must be > 0 seconds');
   if (!['vp9', 'vp8', 'x264'].includes(a.codec)) usage(`--codec must be vp9|vp8|x264, got ${a.codec}`);
   if (!['wallclock', 'concat', 'cfr'].includes(a.ts)) usage(`--ts must be wallclock|concat|cfr, got ${a.ts}`);
   if (!['fixed', 'even'].includes(a.sizeMode)) usage(`--size-mode must be fixed|even, got ${a.sizeMode}`);
+  if (!['off', 'newest', 'poll'].includes(a.follow)) usage(`--follow must be off|newest|poll, got ${a.follow}`);
+  try { a.steps = parseScript(a.script); } catch (e) { usage(e.message); }
   return a;
 }
 
@@ -85,13 +101,16 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const startedMs = Date.now();
   const stats = {
-    version: 1,
+    version: 2,
     args,
     chrome: null,
     ffmpeg_path: args.ffmpeg,
     started_at: new Date(startedMs).toISOString(),
     wall_ms: null,
+    follow: args.follow,
+    stop_reason: null,
     frames_received: 0,
+    stale_frames: 0,
     acks_sent: 0,
     acks_ok: 0,
     acks_err: 0,
@@ -117,27 +136,58 @@ async function main() {
 
   mkdirSync(dirname(args.out), { recursive: true });
 
-  const ver = await getJson(args.port, '/json/version');
+  // --- endpoint and page discovery -------------------------------------------------------
+  let port = args.port;
+  if (args.attachWaitS !== null) {
+    try {
+      port = await waitForBrowserPort({ dir: args.bladeHome, timeoutS: args.attachWaitS, sinceMs: startedMs });
+    } catch (e) {
+      process.stderr.write(`sidecar: ${e.message}\n`);
+      process.exit(3);
+    }
+  }
+  const ver = await getJson(port, '/json/version');
   stats.chrome = ver.Browser;
   const browser = await connect(ver.webSocketDebuggerUrl);
 
-  const list = await getJson(args.port, '/json/list');
-  const page = args.target
-    ? list.find((t) => t.id === args.target)
-    : list.find((t) => t.type === 'page');
-  if (!page) throw new Error(args.target ? `no target ${args.target} in /json/list` : 'no page target in /json/list');
+  let page;
+  if (args.target) {
+    const list = await getJson(port, '/json/list');
+    page = list.find((t) => t.id === args.target);
+    if (!page) throw new Error(`no target ${args.target} in /json/list`);
+  } else if (args.attachWaitS !== null) {
+    page = await waitForPage(port, pickActiveFromList);
+  } else {
+    const list = await getJson(port, '/json/list');
+    const id = pickActiveFromList(list);
+    if (!id) throw new Error('no page target in /json/list');
+    page = list.find((t) => t.id === id);
+  }
 
-  const { sessionId: S } = await browser.send('Target.attachToTarget', { targetId: page.id, flatten: true });
-  stats.segments.push({ t_ms: 0, targetId: page.id, url: page.url, frames: 0 });
+  // Target.setDiscoverTargets is sent for every mode (not only follow): targetDestroyed on the
+  // current page is how a follow-off run learns the page was closed, and newest/poll need it.
+  await browser.send('Target.setDiscoverTargets', { discover: true });
 
-  if (args.pageEnable) await browser.send('Page.enable', {}, S);
-  await browser.send('Page.startScreencast', {
+  // --- capture state ---------------------------------------------------------------------
+  let S = null;                 // current screencast sessionId; frames from any other session are stale
+  let curTarget = page.id;
+  const failedTargets = new Set();
+  const screencastParams = () => ({
     format: 'jpeg',
     quality: args.quality,
     maxWidth: args.maxWidth,
     maxHeight: args.maxHeight,
     everyNthFrame: args.everyNth,
-  }, S);
+  });
+
+  const attachTo = async (id) => {
+    const { sessionId } = await browser.send('Target.attachToTarget', { targetId: id, flatten: true });
+    return sessionId;
+  };
+  S = await attachTo(page.id);
+  stats.segments.push({ t_ms: 0, targetId: page.id, url: page.url, frames: 0, switch_ms: null });
+  if (args.pageEnable) await browser.send('Page.enable', {}, S);
+  await browser.send('Page.startScreencast', screencastParams(), S);
   const tStartCapture = performance.now();
 
   const framesDir = `${args.out}.frames`;
@@ -162,6 +212,7 @@ async function main() {
   let ivl = null;
   let stopping = false;
   let stopPromise = null;
+  let pendingSwitchT0 = null;   // decision time of a switch whose first frame has not arrived yet
 
   if (args.ts !== 'concat') {
     const argv = buildFfmpegArgs({
@@ -181,17 +232,18 @@ async function main() {
   }
 
   browser.on('Page.screencastFrame', (params, sid) => {
-    if (sid !== S) return;
-    // Ack FIRST and synchronously: Chrome stops sending frames until it is acked, so nothing
-    // (queue, disk, ffmpeg) may sit between the event and this send.
+    // Ack FIRST and synchronously, on the session the frame came from: Chrome stops sending
+    // frames until it is acked, so nothing may sit between the event and this send. Stale
+    // frames (an old session after a switch) must be acked too, or Chrome stalls that session.
     const t0 = performance.now();
-    const ack = browser.sendNoWait('Page.screencastFrameAck', { sessionId: params.sessionId }, S);
+    const ack = browser.sendNoWait('Page.screencastFrameAck', { sessionId: params.sessionId }, sid);
     ackSendUs.push((performance.now() - t0) * 1000);
     stats.acks_sent++;
     ack.done.then(
       () => { stats.acks_ok++; ackRttMs.push(performance.now() - ack.sentAt); },
       () => { stats.acks_err++; },
     );
+    if (sid !== S) { stats.stale_frames++; return; }
 
     const now = performance.now();
     stats.frames_received++;
@@ -216,6 +268,10 @@ async function main() {
       captureToRecvMs.push(Date.now() - meta.timestamp * 1000);
     }
     const seg = stats.segments[stats.segments.length - 1];
+    if (seg.frames === 0 && pendingSwitchT0 !== null) {
+      seg.switch_ms = Math.round(now - pendingSwitchT0);
+      pendingSwitchT0 = null;
+    }
     seg.frames++;
 
     if (args.ts === 'wallclock') {
@@ -235,6 +291,80 @@ async function main() {
     stats.queue_max = Math.max(stats.queue_max, queue.maxSeen);
   });
 
+
+  // --- tab following ---------------------------------------------------------------------
+  // Switches are serialized: at most one stopScreencast/attach/startScreencast sequence runs
+  // at a time, and the one encoder keeps running across every switch.
+  let switchChain = Promise.resolve();
+  const doSwitch = async (id, url) => {
+    if (stopping || id === curTarget) return;
+    const decided = performance.now();
+    const old = S;
+    await withTimeout(browser.send('Page.stopScreencast', {}, old), 2000).catch(() => {});
+    await withTimeout(browser.send('Target.detachFromTarget', { sessionId: old }), 2000).catch(() => {});
+    const newS = await attachTo(id);
+    // The segment is pushed and S is switched BEFORE startScreencast: frames can only start
+    // after it, and the handler must see the new segment and the new session at that point.
+    pendingSwitchT0 = decided;
+    stats.segments.push({ t_ms: Date.now() - startedMs, targetId: id, url, frames: 0, switch_ms: null });
+    S = newS;
+    curTarget = id;
+    if (args.pageEnable) await browser.send('Page.enable', {}, S);
+    await browser.send('Page.startScreencast', screencastParams(), S);
+  };
+  const switchTo = (id, url) => {
+    if (failedTargets.has(id)) return switchChain;
+    switchChain = switchChain.then(() => doSwitch(id, url)).catch((e) => {
+      failedTargets.add(id);
+      stats.events.push({ t_ms: Date.now() - startedMs, type: 'switch_error', target: id, message: String(e?.message ?? e) });
+    });
+    return switchChain;
+  };
+
+  let pollTimer = null;
+  let pollBusy = false;
+  const pollOnce = async () => {
+    if (pollBusy || stopping) return;
+    pollBusy = true;
+    try {
+      const list = await getJson(port, '/json/list');
+      const id = pickActiveFromList(list);
+      if (id && id !== curTarget) await switchTo(id, list.find((t) => t.id === id)?.url ?? null);
+    } catch {
+      // A transient /json/list failure is retried on the next tick; recording is unaffected.
+    } finally {
+      pollBusy = false;
+    }
+  };
+  if (args.follow === 'newest') {
+    browser.on('Target.targetCreated', (p) => {
+      const info = p.targetInfo ?? {};
+      if (shouldSwitchOnCreated(info, args.follow)) switchTo(info.targetId, info.url ?? null);
+    });
+  }
+  if (args.follow === 'poll') {
+    pollTimer = setInterval(pollOnce, args.pollMs);
+  }
+  browser.on('Target.targetDestroyed', (p) => {
+    if (p.targetId !== curTarget || stopping) return;
+    if (args.follow === 'poll') pollOnce();
+    else if (args.follow === 'off') stop('browser-gone').then((c) => process.exit(c));
+  });
+
+  // --- harness script (viewport / window), harness-only, see lib/actions.mjs ---------------
+  const scriptTimers = [];
+  const scriptCtx = { browser, session: () => S, target: () => curTarget };
+  for (const step of args.steps) {
+    const label = step.arg ? `${step.action}=${step.arg.w}x${step.arg.h}` : step.action;
+    scriptTimers.push(setTimeout(() => {
+      const t_ms = Math.round(performance.now() - tStartCapture);
+      runScriptAction(scriptCtx, step).then(
+        () => stats.events.push({ t_ms, action: label, ok: true, error: null }),
+        (e) => stats.events.push({ t_ms, action: label, ok: false, error: String(e?.message ?? e) }),
+      );
+    }, step.atS * 1000));
+  }
+
   if (args.ts === 'cfr') {
     ivl = setInterval(() => {
       if (!latest) return; // no tick before the first frame
@@ -248,6 +378,10 @@ async function main() {
     if (stopPromise) return stopPromise;
     stopPromise = (async () => {
       stopping = true;
+      stats.stop_reason = reason;
+      if (pollTimer) clearInterval(pollTimer);
+      for (const t of scriptTimers) clearTimeout(t);
+      await withTimeout(switchChain, 5000).catch(() => {});
       await withTimeout(browser.send('Page.stopScreencast', {}, S), 2000).catch(() => {});
       await withTimeout(browser.send('Target.detachFromTarget', { sessionId: S }), 2000).catch(() => {});
       if (ivl) clearInterval(ivl);
@@ -306,19 +440,19 @@ async function main() {
       await browser.close().catch(() => {});
       const ok = !!(stats.encoder && stats.encoder.finalized) && stats.frames_received > 0;
       const code = stats.frames_received === 0 ? 3 : ok ? 0 : 1;
-      process.stderr.write(`sidecar: stopped (${reason}) frames=${stats.frames_received} written=${stats.frames_written} dropped=${stats.frames_dropped} encoder_finalized=${stats.encoder?.finalized ?? null} exit=${code}\n`);
+      process.stderr.write(`sidecar: stopped (${reason}) frames=${stats.frames_received} stale=${stats.stale_frames} written=${stats.frames_written} dropped=${stats.frames_dropped} segments=${stats.segments.length} encoder_finalized=${stats.encoder?.finalized ?? null} exit=${code}\n`);
       return code;
     })();
     return stopPromise;
   };
 
-  browser.closed.then(() => { if (!stopping) stop('ws-closed').then((c) => process.exit(c)); });
-  process.on('SIGINT', () => stop('SIGINT').then((c) => process.exit(c)));
-  process.on('SIGTERM', () => stop('SIGTERM').then((c) => process.exit(c)));
+  browser.closed.then(() => { if (!stopping) stop('browser-gone').then((c) => process.exit(c)); });
+  process.on('SIGINT', () => stop('signal').then((c) => process.exit(c)));
+  process.on('SIGTERM', () => stop('signal').then((c) => process.exit(c)));
   if (args.duration !== null) {
     setTimeout(() => stop('duration').then((c) => process.exit(c)), args.duration * 1000);
   }
-  process.stderr.write(`sidecar: attached to ${page.url} (${page.id}); recording to ${args.out}\n`);
+  process.stderr.write(`sidecar: attached to ${page.url} (${page.id}); follow=${args.follow}; recording to ${args.out}\n`);
 }
 
 main().catch((e) => {
