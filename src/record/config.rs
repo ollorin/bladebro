@@ -1,6 +1,7 @@
 //! Recording configuration: `record.json` loading and the precedence resolver.
 //!
-//! Precedence, highest first: per-call > env > `record.json` > default.
+//! Precedence, highest first: per-call > env > project file > `record.json` >
+//! default (implemented in `layered.rs`; `resolve` here is the no-project delegate).
 //! `enabled` and `dir` have no per-call layer (D3-3): the caller is an LLM,
 //! and the output directory is an operator decision.
 //!
@@ -11,10 +12,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::values::{
-    check_fps, parse_fps, parse_quality, parse_record_env, Format, FrameSize, RecordEnv, Toggle,
-    CONFIG_FILE, DEFAULT_FPS, DEFAULT_QUALITY, QUEUE_LEN, RECORDINGS_SUBDIR,
-};
+#[cfg(test)]
+use super::values::check_fps;
+use super::values::{Format, FrameSize, CONFIG_FILE};
 
 /// A six-field file; anything bigger is a mistake, not a config.
 const MAX_CONFIG_BYTES: u64 = 64 * 1024;
@@ -109,123 +109,40 @@ pub fn load_file_config(path: &Path) -> Result<Option<FileConfig>, String> {
         })
 }
 
-/// Resolve the final settings. Every present layer is parsed before any
-/// precedence is applied, so a broken lower layer is an error even when a
-/// higher layer overrides it. Errors name their source.
+/// Resolve with no project layer: kept for existing callers and tests; the
+/// logic lives in `layered::resolve_layered`.
 pub fn resolve(
     over: &RecordOverrides,
     env: &dyn Fn(&str) -> Option<String>,
     file: Option<&FileConfig>,
     blade_dir: &Path,
 ) -> Result<RecordConfig, String> {
-    // Blank env values mean unset, matching platform.rs.
-    let nonblank = |k: &str| env(k).filter(|v| !v.trim().is_empty());
-
-    // --- env layer (parse all of it first) ---
-    let rec_env = parse_record_env(nonblank("BLADE_RECORD").as_deref())
-        .map_err(|e| format!("BLADE_RECORD: {e}"))?;
-    let env_format = nonblank("BLADE_RECORD_FORMAT")
-        .map(|v| Format::parse(&v).map_err(|e| format!("BLADE_RECORD_FORMAT: {e}")))
-        .transpose()?;
-    let env_fps = nonblank("BLADE_RECORD_FPS")
-        .map(|v| parse_fps(&v).map_err(|e| format!("BLADE_RECORD_FPS: {e}")))
-        .transpose()?;
-    let env_size = nonblank("BLADE_RECORD_SIZE")
-        .map(|v| FrameSize::parse(&v).map_err(|e| format!("BLADE_RECORD_SIZE: {e}")))
-        .transpose()?;
-
-    // --- record.json layer ---
-    let file_dir = match file.and_then(|f| f.dir.clone()) {
-        Some(d) if !d.is_absolute() => {
-            return Err(format!(
-                "record.json dir {} must be an absolute path",
-                d.display()
-            ))
-        }
-        other => other,
-    };
-    let file_format = file
-        .and_then(|f| f.format.as_deref())
-        .map(|v| Format::parse(v).map_err(|e| format!("record.json format: {e}")))
-        .transpose()?;
-    let file_fps = file
-        .and_then(|f| f.fps)
-        .map(|n| check_fps(n).map_err(|e| format!("record.json fps: {e}")))
-        .transpose()?;
-    let file_size = file
-        .and_then(|f| f.size.as_deref())
-        .map(|v| FrameSize::parse(v).map_err(|e| format!("record.json size: {e}")))
-        .transpose()?;
-    let file_quality = file
-        .and_then(|f| f.quality)
-        .map(|q| parse_quality(q).map_err(|e| format!("record.json quality: {e}")))
-        .transpose()?;
-
-    // --- per-call layer ---
-    let call_format = over
-        .format
-        .as_deref()
-        .map(|v| Format::parse(v).map_err(|e| format!("per-call format: {e}")))
-        .transpose()?;
-    let call_fps = over
-        .fps
-        .as_deref()
-        .map(|v| parse_fps(v).map_err(|e| format!("per-call fps: {e}")))
-        .transpose()?;
-    let call_size = over
-        .size
-        .as_deref()
-        .map(|v| FrameSize::parse(v).map_err(|e| format!("per-call size: {e}")))
-        .transpose()?;
-
-    // --- precedence ---
-    // env `off` says nothing about the dir, so the file dir still applies.
-    let enabled = match &rec_env {
-        RecordEnv::Set(Toggle::Off) => false,
-        RecordEnv::Set(Toggle::On(_)) => true,
-        RecordEnv::Unset => file.and_then(|f| f.enabled).unwrap_or(false),
-    };
-    let dir = match &rec_env {
-        RecordEnv::Set(Toggle::On(Some(d))) => d.clone(),
-        _ => file_dir.unwrap_or_else(|| blade_dir.join(RECORDINGS_SUBDIR)),
-    };
-
-    // Artifacts rotate at 300 files (src/artifacts.rs); a recording inside
-    // that folder would be deleted by a later rotation. Path::starts_with is
-    // component-wise, so `artifacts2` is not caught.
-    let artifacts = blade_dir.join("artifacts");
-    if dir.starts_with(&artifacts) {
-        return Err(format!(
-            "recordings dir {} is inside {}, which rotates at 300 files; choose another dir",
-            dir.display(),
-            artifacts.display()
-        ));
-    }
-
-    Ok(RecordConfig {
-        enabled,
-        dir,
-        format: call_format
-            .or(env_format)
-            .or(file_format)
-            .unwrap_or_default(),
-        fps: call_fps.or(env_fps).or(file_fps).unwrap_or(DEFAULT_FPS),
-        size: call_size.or(env_size).or(file_size).unwrap_or_default(),
-        quality: file_quality.unwrap_or(DEFAULT_QUALITY),
-        queue_len: QUEUE_LEN,
-        name: over.name.clone(),
-        artifacts_dir: artifacts,
-    })
+    super::layered::resolve_layered(over, env, None, file, blade_dir)
 }
 
-/// Impure wrapper: reads the real env and `<blade_dir>/record.json`, then
-/// calls `resolve`. It only wires already-tested pieces, so it has no unit
-/// test of its own. Mirrors `platform::blade_dir`.
+/// Impure wrapper: reads the real env, `<blade_dir>/record.json` and the
+/// project file (`.bladebro.json` found from the cwd), then calls
+/// `resolve_layered`. The project `record.dir` was already vetted by
+/// `launch_mode::vet_project_dir` (inside the project or `<data root>/recordings`).
+/// It only wires already-tested pieces, so it has no unit test of its own.
 pub fn resolve_from_env(over: &RecordOverrides) -> Result<RecordConfig, String> {
     let bd = crate::platform::blade_dir();
     let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
     let file = load_file_config(&bd.join(CONFIG_FILE))?;
-    resolve(over, &env, file.as_ref(), &bd)
+    // No cwd (deleted directory): no project layer.
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let home = crate::platform::home_dir();
+    let (project, warnings) = crate::launch_mode::project_in(&cwd, Some(&home), &bd)?;
+    for w in warnings {
+        eprintln!("[bladebro] warning: {w}");
+    }
+    let rec = project.as_ref().and_then(|l| {
+        l.record.as_ref().map(|cfg| super::layered::ProjectRecord {
+            cfg,
+            label: l.path.display().to_string(),
+        })
+    });
+    super::layered::resolve_layered(over, &env, rec.as_ref(), file.as_ref(), &bd)
 }
 
 #[cfg(test)]

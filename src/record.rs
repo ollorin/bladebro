@@ -3,8 +3,10 @@
 //! Module map:
 //! - `values`: defaults/limits consts, Format, FrameSize, value parsers,
 //!   BLADE_RECORD on/off/dir parsing.
-//! - `config`: record.json loading, RecordOverrides/RecordConfig, precedence
-//!   resolution per-call > env > config file > default.
+//! - `config`: record.json loading, RecordOverrides/RecordConfig, the `resolve`
+//!   delegate and the impure `resolve_from_env` (reads the project file).
+//! - `layered`: resolve_layered, precedence per-call > env > project file >
+//!   record.json > default.
 //! - `names`: caller name sanitization, UTC stamp, short id, file names.
 //! - `dir`: private canonical recordings dir, create_new file creation; never rotated.
 //! - `ffmpeg`: ffmpeg lookup (BLADE_FFMPEG > PATH > known dirs), bounded
@@ -17,6 +19,7 @@
 pub mod config;
 pub mod dir;
 pub mod ffmpeg;
+pub mod layered;
 pub mod names;
 pub mod values;
 
@@ -29,5 +32,6 @@ pub use ffmpeg::{
     parse_encoders, parse_version, probe, Discovery, DoctorLine, EncoderSet, FfmpegVersion, Found,
     Level, Lookup, ProbeInfo, Source, TargetOs, PROBE_TIMEOUT,
 };
+pub use layered::{resolve_layered, ProjectRecord};
 pub use names::{file_name, sanitize_stem};
 pub use values::{Format, FrameSize};
