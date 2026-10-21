@@ -6,3 +6,4 @@ reviewed quickly and conflicts localized. New files (e.g. `src/record/**`, `tool
 | Phase | File | Lines / symbol | Reason | Added by commit |
 |-------|------|----------------|--------|-----------------|
 | 3 | src/lib.rs | `pub mod record;` (between realbrowser and reddit) | expose the fork-only recording module | 5782a59 |
+| 3 | README.md | new "## Recording (in development)" block before the Maintenance heading (additions only) | document recording config and the sensitive-content warning (SAFE-03) | 1f9e11d |
