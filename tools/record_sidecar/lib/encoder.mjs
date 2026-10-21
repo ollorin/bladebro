@@ -27,7 +27,10 @@ export function buildFfmpegArgs({ codec, ts, out, width, height, sizeMode, fps, 
   const args = ['-hide_banner', '-nostats', '-loglevel', 'info', '-benchmark', '-y'];
 
   if (ts === 'wallclock') {
-    args.push('-f', 'image2pipe', '-c:v', 'mjpeg', '-use_wallclock_as_timestamps', '1', '-i', 'pipe:0');
+    // -framerate 1000 sets the input timebase to 1 ms. The image2pipe default is 25 tbn, which
+    // quantizes wall-clock stamps to 40 ms and produces non-monotonic dts when frames arrive
+    // faster (measured: 232 warnings per 800 frames without it, 3 with it; all frames kept).
+    args.push('-f', 'image2pipe', '-c:v', 'mjpeg', '-use_wallclock_as_timestamps', '1', '-framerate', '1000', '-i', 'pipe:0');
   } else if (ts === 'cfr') {
     args.push('-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', 'pipe:0');
   } else {
@@ -48,8 +51,12 @@ export function buildFfmpegArgs({ codec, ts, out, width, height, sizeMode, fps, 
   }
   args.push('-vf', vf);
 
+  // wallclock/concat must keep EVERY frame at its own timestamp. `-fps_mode vfr` drops
+  // frames that land within one assumed 25 fps tick: measured 234/800 frames kept at ~98 fps
+  // input (ffmpeg n9.0.2, synthetic MJPEG; the live recorder showed drop=592 of 794). passthrough
+  // keeps all 800. Explicit -video_track_timescale did not help.
   if (ts === 'cfr') args.push('-r', String(fps));
-  else args.push('-fps_mode', 'vfr');
+  else args.push('-fps_mode', 'passthrough');
 
   if (codec === 'vp9') {
     args.push('-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-crf', '40', '-b:v', '0');

@@ -248,7 +248,6 @@ async function main() {
     if (stopPromise) return stopPromise;
     stopPromise = (async () => {
       stopping = true;
-      stats.events.push({ t_ms: Date.now() - startedMs, type: 'stop', reason });
       await withTimeout(browser.send('Page.stopScreencast', {}, S), 2000).catch(() => {});
       await withTimeout(browser.send('Target.detachFromTarget', { sessionId: S }), 2000).catch(() => {});
       if (ivl) clearInterval(ivl);
