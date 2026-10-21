@@ -13,3 +13,9 @@ reviewed quickly and conflicts localized. New files (e.g. `src/record/**`, `tool
 | 4.1 | src/browser/launch.rs | `launch_inner_stage`: display block uses `launch_mode::{effective, plan_display, note_launch}`; non-Linux `mode_str` | BLADE_HEADLESS + honest launched-headless flag (HEAD-01/03/04) | dcc534e |
 | 4.1 | src/browser/pipe.rs | `launch_pipe_inner_stage`: same hook | same, MCP pipe transport | dcc534e |
 | 4.1 | src/browser/alerts.rs | HEADLESS_NOTE condition `&& !launch_mode::headless_by_request()` | no false "Xvfb missing" advisory when headless was requested | dcc534e |
+| 4.1 | src/main.rs | `"headless"` in the `is_cli_cmd` list and the CLI arm pattern | route `bladebro headless` to the CLI | 6f33da0 |
+| 4.1 | src/cli.rs | `"headless" => launch_mode::run_cli(...)` arm in run_cli_inner | headless toggle dispatch | 6f33da0 |
+| 4.1 | src/cli.rs | `launch` field via `launch_mode::request_tag()` in send_to_daemon | tag daemon requests with the resolved mode (HEAD-03) | 06fa377 |
+| 4.1 | src/cli/help.rs | COMMANDS + ENVIRONMENT lines, suggest list, help_json commands list, help_json `env` entry, two arms (json + text) | document headless and BLADE_HEADLESS | 6f33da0 |
+| 4.1 | src/updater/doctor.rs | `checks.push(check_launch_mode());` + `fn check_launch_mode` | doctor shows launch mode and source (HEAD-04) | 6f33da0 |
+| 4.1 | src/cli/daemon.rs | mismatch guard after refresh_lane/drifted, before need_launch | refuse a mode mismatch with a `bladebro stop` instruction (HEAD-03) | 06fa377 |
