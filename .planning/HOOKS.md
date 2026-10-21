@@ -20,3 +20,5 @@ reviewed quickly and conflicts localized. New files (e.g. `src/record/**`, `tool
 | 4.1 | src/updater/doctor.rs | `checks.push(check_launch_mode());` + `fn check_launch_mode` | doctor shows launch mode and source (HEAD-04) | 6f33da0 |
 | 4.1 | src/cli/daemon.rs | mismatch guard after refresh_lane/drifted, before need_launch | refuse a mode mismatch with a `bladebro stop` instruction (HEAD-03) | 06fa377 |
 | 4.1 | README.md | "## Recording (in development)" body reduced to a pointer to docs/recording-and-launch-config.md (fork-owned block; table and paragraphs moved to the page) | DOC-02 | 27f6e3f |
+| 4.1 | src/browser/flags.rs | `launch_args`: `pin_headless_window` block pushes `--window-size` + `--screen-info` (non-Linux headless); window-size unit test assertion | headless screen was Chrome's 800x600 default (audit parity, 04.1-04) | 50a97c6 |
+| 4.1 | src/page/attach.rs | UA override block: Runtime.evaluate probe + `userAgentMetadata` via `launch_mode::uad::build`; comment | headless override without metadata left navigator.userAgentData empty (04.1-04) | 50a97c6 |
