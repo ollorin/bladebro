@@ -70,6 +70,7 @@ A QA run with recording enabled always leaves a playable video file at a predict
 - **Verification**: `cargo clippy --release -- -D warnings`, `cargo test --release`, scratch `BLADE_HOME`, regression tests, live readback
 - **Release machinery**: no version bumps, tags, CHANGELOG curation or publishing
 - **Maintainability**: additive diff and conventional commits so upstream merges stay clean
+- **Task sizing**: phases split into small tasks that each fit ~100k tokens of context, so Haiku can execute them cheaply (model policy: Opus for roadmap/planning/final phase verification, Sonnet as coordinator and first reviewer, Haiku for the rest — see `.planning/config.json`)
 
 ## Key Decisions
 

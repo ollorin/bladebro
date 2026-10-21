@@ -1,0 +1,20 @@
+{
+  "mode": "yolo",
+  "granularity": "fine",
+  "parallelization": false,
+  "commit_docs": true,
+  "model_profile": "balanced",
+  "model_policy": {
+    "note": "Desired per-agent mix. NOT enforced by the installed GSD (only quality|balanced|budget exist); applied manually where agents are spawned. 'balanced' is just the nearest built-in profile.",
+    "opus": ["gsd-roadmapper", "gsd-planner", "final phase verifier"],
+    "sonnet": ["phase coordinator", "first reviewer (gsd-plan-checker, first-pass gsd-verifier)"],
+    "haiku": ["everything else (executor, researchers, synthesizer, mapper, nyquist, integration checks)"],
+    "context_budget": "Split phases into small tasks so each plan/task fits ~100k tokens of context, so Haiku can execute them cheaply."
+  },
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": true
+  }
+}
