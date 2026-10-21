@@ -124,10 +124,21 @@ impl Browser {
         let user_data_dir = profile.dir().to_path_buf();
         font_audit();
 
+        // Fork hook (.planning/HOOKS.md): BLADE_HEADLESS / launch-mode layers (HEAD-01).
+        let mode = crate::launch_mode::effective().map_err(BladeError::Other)?;
+        let plan = crate::launch_mode::plan_display(
+            mode.headless,
+            cfg!(any(target_os = "linux", target_os = "android")),
+        );
+
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        let xvfb = VirtualDisplay::start().ok();
+        let xvfb = if plan.try_xvfb {
+            VirtualDisplay::start().ok()
+        } else {
+            None
+        };
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        if xvfb.is_none() {
+        if plan.try_xvfb && xvfb.is_none() {
             eprintln!(
                 "[bladebro] WARNING: Xvfb unavailable — falling back to headless mode (reduced stealth). Install xvfb for headful-on-virtual-display."
             );
@@ -136,10 +147,11 @@ impl Browser {
         let headful = xvfb.is_some();
 
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
-        let headful = true; // macOS/Windows have native window servers
+        let headful = plan.native_headful;
 
         // After both bindings: the recording must compile on every target.
         set_launched_headless(!headful);
+        crate::launch_mode::note_launch(&mode, headful);
         set_launched_no_sandbox(no_sandbox);
 
         // M18: Proxy support via BLADE_PROXY env var. Validated + redacted
@@ -197,7 +209,7 @@ impl Browser {
             "headless"
         };
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
-        let mode_str = "headful";
+        let mode_str = if headful { "headful" } else { "headless" };
         eprintln!("[bladebro] launching Chrome from {chrome_path} on CDP pipe ({mode_str})");
 
         let mut cmd = Command::new(&chrome_path);

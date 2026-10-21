@@ -61,7 +61,10 @@ pub fn pending_notes() -> Vec<String> {
                 });
             }
         }
-        if crate::browser::launched_headless() && claim(&HEADLESS_NOTE) {
+        if crate::browser::launched_headless()
+            && !crate::launch_mode::headless_by_request()
+            && claim(&HEADLESS_NOTE)
+        {
             notes.push(
                 "note: no Xvfb display was available — this browser fell back to --headless=new \
                  (reduced stealth). Install xvfb for headful-on-virtual-display."
