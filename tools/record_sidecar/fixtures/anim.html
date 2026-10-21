@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>anim</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#111}canvas{display:block;width:100vw;height:100vh}</style>
+</head><body><canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+let x = 0, dir = 1, frames = 0;
+function resize() { c.width = innerWidth; c.height = innerHeight; }
+addEventListener('resize', resize); resize();
+function tick() {
+  frames++;
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, c.width, c.height);
+  x += 6 * dir; if (x > c.width - 120 || x < 0) dir = -dir;
+  ctx.fillStyle = '#e33'; ctx.fillRect(x, c.height / 2 - 60, 120, 120);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 72px monospace';
+  ctx.fillText(Math.round(performance.now()) + ' ms', 40, 120);
+  ctx.fillText('frame ' + frames, 40, 220);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script></body></html>
