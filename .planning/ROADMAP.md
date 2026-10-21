@@ -101,12 +101,13 @@ Plans:
   3. In headless mode the stealth layer's launched-headless flag is true and `bladebro audit` passes in both modes (100/100 on this macOS build); changing the mode while a daemon runs either restarts the browser or prints a message telling the user to run `bladebro stop`
   4. `bladebro doctor` and a one-line launch note show the mode and its source
   5. `docs/recording-and-launch-config.md` exists and documents every option and config added so far (BLADE_RECORD*, BLADE_FFMPEG, BLADE_HEADLESS, config files and precedence, headless-for-tests vs headed-for-everything-else examples); a drift test fails if a variable or key in the code is missing from the page or documented but absent from the code; the README holds only a pointer; all edits to existing upstream files are listed in `.planning/HOOKS.md`
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
-- [ ] 04.1-01: `BLADE_HEADLESS` resolver + minimal launch hook in `src/browser/launch.rs` + launched-headless flag + tests
-- [ ] 04.1-02: Layered config (project file, user config, `bladebro headless` toggle), mode in doctor and launch note, daemon-restart handling
-- [ ] 04.1-03: `docs/recording-and-launch-config.md`, drift test, README pointer, live check in both modes
+- [x] 04.1-01: `BLADE_HEADLESS` resolver + minimal launch hook in `src/browser/launch.rs` + launched-headless flag + tests
+- [x] 04.1-02: Layered config (project file, user config, `bladebro headless` toggle), mode in doctor and launch note, daemon-restart handling
+- [x] 04.1-03: `docs/recording-and-launch-config.md`, drift test, README pointer, live check in both modes
+- [x] 04.1-04 (gap closure): headless audit parity (screen pin + UA client-hints metadata), found by the 04.1-03 live audit (97/100 before, 100/100 after)
 
 ### Phase 5: Encoder Process Manager
 **Goal**: Given a stream of JPEG frames, Bladebro produces a finalized video file and reports success only when that is proven, on Linux, macOS and Windows
@@ -245,7 +246,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 2. Sidecar Prototype Gate | 3/3 | Complete (PASS-WITH-CAVEATS) | 2026-10-21 |
 | 3. Recording Config and Safe Output Paths | 3/3 (+03-04 gap closure) | Complete (macOS only; CI not run) | 2026-10-21 |
 | 4. ffmpeg Discovery and Doctor | 2/2 | Complete (macOS only; CI not run; 442 tests) | 2026-10-21 |
-| 4.1 Launch Mode and Layered Config (INSERTED) | 0/3 | Not started | - |
+| 4.1 Launch Mode and Layered Config (INSERTED) | 4/4 | Complete (macOS only; CI not run) | - |
 | 5. Encoder Process Manager | 0/3 | Not started | - |
 | 6. Frame Source | 0/3 | Not started | - |
 | 7. RecordHub and state Ops | 0/3 | Not started | - |
