@@ -51,3 +51,41 @@ fn real_lane_is_untouched() {
 fn alerts_skip_false_xvfb_advisory_when_headless_requested() {
     assert!(ALERTS.contains("!crate::launch_mode::headless_by_request()"));
 }
+
+const MAIN: &str = include_str!("../main.rs");
+const CLI: &str = include_str!("../cli.rs");
+const HELP: &str = include_str!("../cli/help.rs");
+const DOCTOR: &str = include_str!("../updater/doctor.rs");
+
+#[test]
+fn main_routes_headless_to_the_cli() {
+    assert!(MAIN.matches("\"headless\"").count() >= 2);
+}
+
+#[test]
+fn cli_dispatches_headless() {
+    assert!(CLI.contains("\"headless\" => crate::launch_mode::run_cli(rest, json_mode)"));
+}
+
+#[test]
+fn help_surfaces_headless() {
+    for n in [
+        "crate::launch_mode::HELP_TEXT",
+        "crate::launch_mode::help_json()",
+        "headless on|off|status",
+    ] {
+        assert!(HELP.contains(n), "{n}");
+    }
+    let v: serde_json::Value = serde_json::from_str(&crate::cli::help_json(None).unwrap()).unwrap();
+    assert!(v["env"]["BLADE_HEADLESS"].is_string());
+    let t = crate::cli::command_help_text("headless").expect("help text");
+    assert!(t.contains("USAGE"));
+}
+
+#[test]
+fn doctor_runs_the_launch_mode_check_after_ffmpeg() {
+    let push = "checks.push(check_launch_mode());";
+    assert_eq!(DOCTOR.matches(push).count(), 1);
+    assert!(DOCTOR.find("checks.push(check_ffmpeg());").unwrap() < DOCTOR.find(push).unwrap());
+    assert!(DOCTOR.contains("fn check_launch_mode() -> Check"));
+}

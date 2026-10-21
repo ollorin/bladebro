@@ -469,6 +469,8 @@ async fn run_cli_inner(
     match cmd {
         "rb" | "realbrowser" => run_rb(rest, json_mode).await,
         "hermes" => hermes::run(rest, json_mode).await,
+        // Fork hook (.planning/HOOKS.md): headless on|off|status.
+        "headless" => crate::launch_mode::run_cli(rest, json_mode),
         "daemon" => run_daemon().await,
         "stop" => {
             let text = stop_daemon().await?;

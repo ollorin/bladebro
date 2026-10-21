@@ -55,6 +55,7 @@ COMMANDS
   mcp                             MCP server on stdio — add to your agent's client config
   rb on|off [sub]                 real-browser lane: drive YOUR browser (see 'help rb')
   hermes on|off|status             switch Hermes' browser to Bladebro; reversible MCP setup
+  headless on|off|status          hide/show the managed browser for a suite (see 'help headless')
   audit                           stealth audit — 61-check suite + boot self-check + drift stamp
   update | -u [--check] [--force]  self-update; --rollback restores the previous binary
   doctor | -doc                   system diagnostics (13 checks)
@@ -92,6 +93,7 @@ ENVIRONMENT
   BLADE_NO_COMPRESS=1  disable response compression
   BLADE_LANE           real|agent — force the real-browser lane for this process
   BLADE_RB_DEBUG=1     real lane: surface the browser's own stderr on launch failures
+  BLADE_HEADLESS       1|0: force the managed browser hidden/visible (beats project/user config)
   BLADE_PLAIN          plain output — no ANSI even on a terminal
                        (NO_COLOR also disables; CLICOLOR_FORCE=1 forces color off-TTY)
   CHROME_PATH          override the Chrome/Chromium binary
@@ -130,6 +132,7 @@ pub fn suggest_command(cmd: &str) -> Option<&'static str> {
         "rb",
         "realbrowser",
         "hermes",
+        "headless",
         "mcp",
         "audit",
         "probe",
@@ -356,6 +359,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
             "examples": ["bladebro hermes on", "bladebro hermes off", "bladebro hermes status --json", "bladebro hermes on --profile work"],
             "notes": ["Uses Hermes' public configuration CLI and the ordinary Bladebro MCP server; no plugin or schema copies. Preserves other disabled toolsets and web search/extraction. off restores the prior MCP entry and browser policy, retaining unrelated settings. Start a new chat and restart gateways/desktop clients after switching. HERMES_HOME or --profile selects the Hermes profile. Chrome/Chromium is required; doctor checks prerequisites."]
         }),
+        "headless" => crate::launch_mode::help_json(),
         "mcp" => json!({
             "usage": "bladebro mcp",
             "tool": null,
@@ -450,7 +454,7 @@ pub fn help_json(cmd: Option<&str>) -> Result<String> {
     let mut commands = serde_json::Map::new();
     for c in [
         "nav", "see", "act", "state", "run", "vision", "daemon", "stop", "help", "rb", "mcp",
-        "audit", "update", "doctor", "rollback", "version", "hermes",
+        "audit", "update", "doctor", "rollback", "version", "hermes", "headless",
     ] {
         if let Some(d) = command_help_json(c) {
             commands.insert(c.to_string(), d);
@@ -491,6 +495,7 @@ pub fn help_json(cmd: Option<&str>) -> Result<String> {
             "BLADE_NO_COMPRESS": "set 1 to disable response compression",
             "BLADE_LANE": "real|agent — force the real-browser lane for this process",
             "BLADE_RB_DEBUG": "real lane: set 1 to surface the browser's own stderr on launch failures",
+            "BLADE_HEADLESS": "1|0 (on/off/true/false/yes/no): force the managed browser hidden/visible; beats .bladebro.json and launch.json",
             "BLADE_PLAIN": "plain CLI output — no ANSI even on a TTY (NO_COLOR also honored; CLICOLOR_FORCE=1 forces color off-TTY)",
             "BLADE_TRANSPORT": "mcp transport: WebSocket by default (native webdriver=false); set 'pipe' for the zero-port transport (its automation flag is masked)",
             "CHROME_PATH": "override the Chrome/Chromium binary",
@@ -784,6 +789,7 @@ USAGE
   bladebro help <cmd> --json per-command machine help
 "#
         }
+        "headless" => crate::launch_mode::HELP_TEXT,
         "hermes" => {
             r#"bladebro hermes — reversible Hermes browser setup
 

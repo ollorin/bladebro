@@ -2,6 +2,7 @@
 //!
 //! Module map:
 //! - `mode`: env parsing + the layered resolver (env > project > user > default), `resolve_in`.
+//! - `cli`: `bladebro headless on|off|status`, help text, doctor line.
 //! - `find`: pure walk-up discovery of `.bladebro.json`.
 //! - `project`: project file loading, trust rules, `record.dir` vetting.
 //! - `user`: `<data root>/launch.json` load/write.
@@ -12,6 +13,7 @@
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
 
+pub mod cli;
 pub mod display;
 pub mod find;
 pub mod mode;
@@ -21,6 +23,10 @@ pub mod user;
 #[cfg(test)]
 mod wiring;
 
+pub use cli::{
+    doctor_check, doctor_line, help_json, run_cli, status_text, toggle_in, ModeCheck, CHECK_NAME,
+    HELP_TEXT,
+};
 pub use display::{describe, launch_note, plan_display, DisplayPlan};
 pub use find::{find_project_file, PROJECT_FILE};
 pub use mode::{

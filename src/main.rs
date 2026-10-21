@@ -196,6 +196,8 @@ fn run() -> Result<()> {
             | "rb"
             | "realbrowser"
             | "hermes"
+            // Fork hook (.planning/HOOKS.md): `headless on|off|status`.
+            | "headless"
     );
 
     // Legacy debug commands that need a launched browser. They share the
@@ -268,7 +270,7 @@ fn run() -> Result<()> {
         }
         // CLI commands go through the new CLI module.
         "nav" | "see" | "act" | "state" | "run" | "vision" | "daemon" | "stop" | "help" | "rb"
-        | "realbrowser" | "hermes" => {
+        | "realbrowser" | "hermes" | "headless" => {
             let mut cli_args: Vec<String> = std::iter::once(cmd.clone())
                 .chain(positional.iter().cloned())
                 .collect();

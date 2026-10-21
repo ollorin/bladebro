@@ -81,6 +81,8 @@ pub async fn run() -> Result<()> {
     checks.push(check_disk_space());
     // Fork hook (.planning/HOOKS.md): ffmpeg for opt-in recording; never Fail.
     checks.push(check_ffmpeg());
+    // Fork hook (.planning/HOOKS.md): browser launch mode and its source (HEAD-04).
+    checks.push(check_launch_mode());
 
     // 12. Version vs latest
     checks.push(check_version().await);
@@ -708,6 +710,17 @@ fn check_ffmpeg() -> Check {
         },
         detail: line.detail,
         fix: line.fix,
+    }
+}
+
+/// Fork hook: wording/decision live in launch_mode::cli (unit-tested there).
+fn check_launch_mode() -> Check {
+    let c = crate::launch_mode::doctor_check();
+    Check {
+        name: crate::launch_mode::CHECK_NAME,
+        status: if c.ok { Status::Pass } else { Status::Fail },
+        detail: c.detail,
+        fix: c.fix,
     }
 }
 
