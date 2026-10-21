@@ -1,0 +1,234 @@
+# Roadmap: Bladebro Session Recording
+
+## Overview
+
+Opt-in session video recording for Bladebro, built so a QA agent's run leaves a playable video at a predictable path reported in the tool result. The journey starts with no-code decisions and an upstream schema issue, then a throwaway sidecar prototype that must pass before any in-tree work. In-tree work then goes from pure, browser-independent pieces (config, safe paths, ffmpeg discovery, encoder process) through the frame source, the `state` op surface, tab following and finalization on every exit path. Evidence extras, integration docs and a full instrument gate (stealth, cross-platform, regression) close the milestone. Every in-tree phase carries its own tests; the final gate re-verifies everything together with recording on.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Decisions and Upstream Issue** - Record design decisions and open the ask-first upstream issue for the `state` op schema and recordings directory (no code)
+- [ ] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
+- [ ] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
+- [ ] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
+- [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
+- [ ] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
+- [ ] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
+- [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
+- [ ] **Phase 9: Finalization on Every Exit Path** - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
+- [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
+- [ ] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
+- [ ] **Phase 12: Full Instrument Gate** - Test-suite completeness plus the full stealth, cross-platform and regression gate with recording on
+
+## Phase Details
+
+### Phase 1: Decisions and Upstream Issue
+**Goal**: The open design questions have recorded answers, and the upstream maintainers have been asked about the `state` op schema and recordings directory before any schema code is written
+**Depends on**: Nothing (first phase)
+**Requirements**: VER-02
+**Success Criteria** (what must be TRUE):
+  1. An upstream issue on dondai44423/bladebro exists that proposes Option A (`state` ops `record-start` / `record-stop` reusing `name`), the dedicated `~/.blade/recordings/` directory and `BLADE_RECORD`, with the token cost of the schema addition stated
+  2. A decision record in `.planning/` captures the multi-tab policy (one file following the active tab, segment boundaries), the recordings directory choice, and marks codec, fps cap and timestamp strategy as provisional pending Phase 2 measurements
+  3. The issue's answer (or the fallback decision if none arrives) is recorded before Phase 7 starts; Phase 7 is blocked until then
+**Plans**: 1 plan
+
+Plans:
+- [ ] 01-01: Write decision record and draft/open the upstream schema + recordings-dir issue
+
+### Phase 2: Sidecar Prototype Gate
+**Goal**: A standalone sidecar proves that CDP screencast plus ffmpeg produces a correct, playable recording across a tab switch, and its measurements decide the in-tree architecture and defaults
+**Depends on**: Phase 1
+**Requirements**: VER-01
+**Success Criteria** (what must be TRUE):
+  1. Running the sidecar in `tools/record_sidecar/` against a bladebro-driven Chrome (WebSocket transport, scratch `BLADE_HOME`) produces a playable 30 s WebM that spans a tab switch
+  2. A results file in `tools/record_sidecar/` records effective fps, ack latency, drops under a slow consumer, frames vs acks over 60 s, duration drift vs wall clock, headed vs headless/Xvfb frame behavior, and mid-recording viewport change behavior on Chrome 151
+  3. The results state whether bladebro's own CDP events kept flowing during capture and whether `Page.enable`/screencast changed `bladebro audit` (111/111) or `diff_oracle` (divergent 0)
+  4. A written verdict picks the in-tree approach (existing `Page` session vs second client), timestamp strategy, codec default and fps/size defaults; if the gate fails, the roadmap is revised before Phase 3
+  5. The sidecar has a README and runs as a supported probe (not shipped in the binary)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01: Sidecar CDP client: attach to a page target, `Page.startScreencast`, ack-on-receipt, pipe JPEG to ffmpeg, stdin-EOF finalize
+- [ ] 02-02: Tab-following and measurement harness (fps, ack latency, drops, drift, headed/headless, viewport change)
+- [ ] 02-03: Stealth check (audit, diff_oracle with screencast active), results file and architecture verdict
+
+### Phase 3: Recording Config and Safe Output Paths
+**Goal**: Users can turn recording on and tune it through env, config or per-call values with a predictable precedence, and every recording file lands safely in a private, never-rotated directory
+**Depends on**: Phase 2
+**Requirements**: CTRL-02, CTRL-03, CTRL-06, CTRL-07, OUT-04, SAFE-02, SAFE-03
+**Success Criteria** (what must be TRUE):
+  1. With `BLADE_RECORD` unset and no config, the resolved config is "off"; with `BLADE_RECORD=<dir>` it is on with that directory; a config file under `BLADE_HOME` applies, and precedence per-call > env > config > defaults is proven by unit tests
+  2. Format (WebM default, MP4 optional), max frame size and fps resolve through the same precedence, with defaults taken from the Phase 2 verdict
+  3. Caller names with traversal, leading `-` or `.`, drive letters, UNC prefixes or odd characters resolve to a safe, unique basename under the canonical recordings directory, created with `create_new`; tests pass on ubuntu, macos and windows CI
+  4. On Unix the recordings directory is 0700 and files are 0600; the Windows ACL decision is written down; the README states that recordings can contain sensitive content
+  5. Recordings never go to `~/.blade/artifacts/` and nothing rotates the recordings directory; clippy `-D warnings` and `cargo test --release` are green
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03-01: `src/record.rs` header + `src/record/config.rs`: settings, precedence, format/size/fps resolution, unit tests
+- [ ] 03-02: Name sanitization and recordings-dir creation (canonical dir, `create_new`, 0600/0700, platform helpers in `src/platform.rs`), cross-OS tests
+- [ ] 03-03: Windows ACL decision note and README sensitive-content warning
+
+### Phase 4: ffmpeg Discovery and Doctor
+**Goal**: Bladebro reliably finds a usable ffmpeg, knows which encoders it has, and tells the user in `doctor`
+**Depends on**: Phase 3
+**Requirements**: OUT-01, OUT-02
+**Success Criteria** (what must be TRUE):
+  1. ffmpeg is resolved from `BLADE_FFMPEG`, then PATH, then known install locations on each OS, and the version/encoder probe runs once per process (cached)
+  2. `bladebro doctor` prints the ffmpeg path, version and available WebM/MP4 encoders, and says clearly when ffmpeg is missing or lacks an encoder for the configured format
+  3. Unit tests cover the lookup order and parsing of `-version` / `-encoders` output; clippy and tests green on all three OSes
+**Plans**: 2 plans
+
+Plans:
+- [ ] 04-01: `platform::find_ffmpeg()` lookup order + probe/parse + cache, unit tests
+- [ ] 04-02: `doctor` reporting for ffmpeg and encoders
+
+### Phase 5: Encoder Process Manager
+**Goal**: Given a stream of JPEG frames, Bladebro produces a finalized video file and reports success only when that is proven, on Linux, macOS and Windows
+**Depends on**: Phase 4
+**Requirements**: SAFE-04, LIFE-05
+**Success Criteria** (what must be TRUE):
+  1. ffmpeg is spawned with an argv array (no shell), fed on stdin, stdout discarded, stderr kept as a bounded tail; the argument builder produces even-dimension scaling and the Phase 2 timestamp strategy, covered by argument tests
+  2. Stop closes stdin and waits with a bounded timeout; a kill happens only as last resort and the result is then "unfinalized"; success is reported only on ffmpeg exit 0 with a non-empty file
+  3. A missing ffmpeg, missing encoder or non-zero exit produces an honest, actionable error string, and browsing commands keep working
+  4. On Windows the stdin-EOF finalize path works with no console window, verified by a fake-encoder lifecycle test running in the `windows-latest` CI job
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01: `src/record/encoder.rs` argument builder (WebM VP9/VP8, MP4 libx264, even-dim scale, timestamps) + arg tests
+- [ ] 05-02: Process lifecycle: spawn, stdin writer task, stderr tail, bounded wait, kill fallback, Windows no-console flag
+- [ ] 05-03: `src/record/report.rs` verdict strings + cross-OS fake-encoder lifecycle tests (success, missing binary, non-zero exit, empty output)
+
+### Phase 6: Frame Source
+**Goal**: Screencast frames flow from a real page into the encoder without ever stalling the CDP reader or changing what the page can see, and a blank capture is reported rather than passed off as success
+**Depends on**: Phase 5
+**Requirements**: CAPT-01, CAPT-02, CAPT-05, OUT-03, SAFE-01
+**Success Criteria** (what must be TRUE):
+  1. On the local fixture server, frames arrive as JPEG via `Page.startScreencast` and every `screencastFrame` is acked on receipt; frame count equals ack count in tests
+  2. With a deliberately slow encoder, the CDP reader keeps serving other commands, the queue stays bounded, newest frames are dropped and the drop count is reported
+  3. A loaded page that yields no frames for the configured period produces a "no frames" result instead of success; a 2 MB `Page.screencastFrame` passes through `shrink_oversized_event` unchanged
+  4. On an idle page, video duration is within 5% of wall-clock time, and odd or changing frame sizes (e.g. 1001x641, mid-recording resize) still yield a playable file
+  5. Only `Page` screencast methods are sent (CDP trace shows no `Runtime.enable`, `Emulation.*`, DOM overlay or new launch flag); `bladebro audit` 111/111, `diff_oracle` divergent 0, `qol_probe` 122/122 still pass
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01: `src/record/source.rs` ack-first handler, bounded `try_send` queue, drop/lag counters, `shrink_oversized_event` test
+- [ ] 06-02: No-frames detection + duration/odd-size live checks on fixtures
+- [ ] 06-03: CDP trace check and stealth/regression instruments (audit, diff_oracle, qol_probe)
+
+### Phase 7: RecordHub and state Ops
+**Goal**: An agent can start and stop a named recording through the existing `state` tool and get a complete, honest report, while Bladebro behaves exactly as today when recording is not used
+**Depends on**: Phase 6 (and the Phase 1 upstream answer)
+**Requirements**: CTRL-01, CTRL-04, CTRL-05, OUT-05
+**Success Criteria** (what must be TRUE):
+  1. Calling `state` with `record-start` and a name, browsing, then `record-stop` leaves a playable file, and the result gives absolute path, bytes, duration, frame count, dropped-frame count and segment boundaries
+  2. A second `record-start` during an active recording returns an error naming the active file; the tool count stays at five and the schema delta matches the upstream-agreed shape
+  3. With recording off, a CDP trace of a standard session matches today's (no screencast, no new domains) and no recording files are created
+  4. Existing `state` ops and the rest of the five tools are unchanged: `qol_probe` 122/122 and `lane_matrix` pass; integration tests cover start/stop, double-start error, off-mode no-op and missing-ffmpeg error
+**Plans**: 3 plans
+
+Plans:
+- [ ] 07-01: `src/record/session.rs` RecordHub state machine owned by the surface loop, bound by target id
+- [ ] 07-02: `state` op schema + dispatch hooks (`mcp/tools.rs`, `mcp/server/state.rs`, CLI parity), stop report
+- [ ] 07-03: Integration tests (start/stop, double-start, off-mode trace, missing ffmpeg) + qol_probe/lane_matrix run
+
+### Phase 8: Tab Following
+**Goal**: A recording keeps capturing what the agent is looking at when it switches tabs or a popup opens, and users who want separate files per tab can have them
+**Depends on**: Phase 7
+**Requirements**: CAPT-03, CAPT-04
+**Success Criteria** (what must be TRUE):
+  1. In default mode, `switch-tab`, `open-tab` and a popup rebind capture into the same file, and `record-stop` lists each switch as a segment boundary with its time offset
+  2. Closing the recorded tab or a cross-origin process swap does not silently end the recording; the outcome is reported
+  3. With per-tab-files mode enabled, each tab produces its own file and `record-stop` lists all of them
+  4. Integration tests on popup and tab-switch fixtures cover both modes
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08-01: Rebind on switch/open/popup in default mode + segment markers + fixtures/tests
+- [ ] 08-02: Per-tab-files mode + tests
+
+### Phase 9: Finalization on Every Exit Path
+**Goal**: However a session ends, the recording is finalized or honestly reported as interrupted, and no ffmpeg process is left behind
+**Depends on**: Phase 8
+**Requirements**: LIFE-01, LIFE-02, LIFE-03, LIFE-04
+**Success Criteria** (what must be TRUE):
+  1. Recordings are finalized (stdin EOF + bounded wait) on `record-stop`, tab close, daemon shutdown or idle timeout, `bladebro stop`, one-shot CLI exit and SIGTERM/Ctrl-C, verified per path
+  2. A browser crash or relaunch mid-recording yields an "interrupted/unfinalized" result and the partial file is kept
+  3. After normal exits and simulated crashes no ffmpeg process remains; the reaper in `src/session_profile/reap.rs` cleans up orphaned encoders, covered by an orphan-process integration test
+  4. When free space drops below the threshold, recording stops with a "disk low" result; size-per-minute numbers for the default and max settings are documented
+**Plans**: 3 plans
+
+Plans:
+- [ ] 09-01: `finish()` hooks in MCP teardown, daemon shutdown/idle, `bladebro stop`, one-shot CLI, signal handling
+- [ ] 09-02: Crash/relaunch handling + reaper extension for ffmpeg children + orphan test
+- [ ] 09-03: Free-space check ("disk low" stop) + size-per-minute measurements in docs
+
+### Phase 10: Evidence Extras
+**Goal**: A reviewer can see at a glance what the recording shows and jump to the moment that matters
+**Depends on**: Phase 9
+**Requirements**: OUT-06, OUT-07
+**Success Criteria** (what must be TRUE):
+  1. `record-stop` returns a poster frame PNG path that opens and shows page content
+  2. An agent can pass an optional marker (e.g. a failure note) and its time offset appears in the result and the timeline
+  3. A JSON timeline sidecar next to the video lists action verdicts with time offsets aligned to the video, built from existing verdicts with no extra CDP calls
+  4. Tests cover marker offsets and timeline generation; recording-off output is unchanged
+**Plans**: 2 plans
+
+Plans:
+- [ ] 10-01: Poster frame + marker parameter and offsets
+- [ ] 10-02: Action timeline sidecar from existing verdicts + tests
+
+### Phase 11: Integration Docs
+**Goal**: The QA flows that consume Bladebro can turn recording on per test case by following the docs, with no extra model effort
+**Depends on**: Phase 10
+**Requirements**: INT-01, INT-02
+**Success Criteria** (what must be TRUE):
+  1. Docs show the Claude Code GSD flow (`gsd-charlotte-qa`, `gsd-test-writer`) enabling recording per test case with `BLADE_RECORD` and `state` `record-start` / `record-stop`, including where the path appears in the result
+  2. Docs show the DSH plugin flow (`mcp__bladebro__*`) doing the same
+  3. README documents the recording feature as actually built (ops, env/config keys, formats, result fields, ffmpeg requirement, size-per-minute, sensitivity warning), replacing "Session video recording: Not supported"
+  4. Following each snippet against a fixture page produces a recording at the documented path
+**Plans**: 2 plans
+
+Plans:
+- [ ] 11-01: README recording section + help text
+- [ ] 11-02: GSD and DSH integration snippets, verified against a fixture
+
+### Phase 12: Full Instrument Gate
+**Goal**: The milestone is proven ready for an upstream PR: complete tests, green on all platforms, and stealth unchanged with recording on
+**Depends on**: Phase 11
+**Requirements**: VER-03, VER-04
+**Success Criteria** (what must be TRUE):
+  1. Tests exist and pass for config precedence, name sanitization, ffmpeg arguments, verdict strings, fake-encoder lifecycle, and the 2 MB `Page.screencastFrame` through `shrink_oversized_event`
+  2. `cargo clippy --release -- -D warnings` is clean and `cargo test --release` passes on ubuntu, macos and windows CI
+  3. With recording on: `bladebro audit` 111/111, `diff_oracle` divergent 0, `qol_probe` 122/122, `tools/lane_matrix.py all 5` green, and the live sites pass (sannysoft all pass, incolumitas no bot detection, creepjs headless 0% / stealth 0%) with before/after numbers recorded
+  4. The diff against `upstream/main` is additive (new `src/record/` module plus hook lines) and a PR description with verification evidence is drafted
+**Plans**: 2 plans
+
+Plans:
+- [ ] 12-01: Test-suite completeness audit and gap fill (VER-03)
+- [ ] 12-02: Full gate run on all instruments and live sites, evidence write-up, additive-diff check
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Decisions and Upstream Issue | 0/1 | Not started | - |
+| 2. Sidecar Prototype Gate | 0/3 | Not started | - |
+| 3. Recording Config and Safe Output Paths | 0/3 | Not started | - |
+| 4. ffmpeg Discovery and Doctor | 0/2 | Not started | - |
+| 5. Encoder Process Manager | 0/3 | Not started | - |
+| 6. Frame Source | 0/3 | Not started | - |
+| 7. RecordHub and state Ops | 0/3 | Not started | - |
+| 8. Tab Following | 0/2 | Not started | - |
+| 9. Finalization on Every Exit Path | 0/3 | Not started | - |
+| 10. Evidence Extras | 0/2 | Not started | - |
+| 11. Integration Docs | 0/2 | Not started | - |
+| 12. Full Instrument Gate | 0/2 | Not started | - |
