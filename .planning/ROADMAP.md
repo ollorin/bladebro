@@ -70,8 +70,8 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: `src/record.rs` header + `src/record/config.rs`: settings, precedence, format/size/fps resolution, unit tests
-- [ ] 03-02: Name sanitization and recordings-dir creation (canonical dir, `create_new`, 0600/0700, platform helpers in `src/platform.rs`), cross-OS tests
+- [ ] 03-01: `src/record.rs` header + `src/record/values.rs` + `src/record/config.rs`: settings, precedence, format/size/fps resolution, unit tests
+- [ ] 03-02: Name sanitization and recordings-dir creation (canonical dir, `create_new`, 0600/0700, helpers in `src/record/` (not `src/platform.rs`, SYNC-01)), cross-OS tests
 - [ ] 03-03: Windows ACL decision note and README sensitive-content warning
 
 ### Phase 4: ffmpeg Discovery and Doctor
