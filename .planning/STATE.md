@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** A QA run with recording enabled always leaves a playable video file at a predictable path that the tool result reports, without touching the stealth path or breaking Bladebro's five-tool contract.
-**Current focus:** Phase 4.1 - Headless/Headed Launch Switch and Layered Config (INSERTED)
+**Current focus:** Phase 5 - Encoder Process Manager
 
 ## Current Position
 
-Phase: 4.1 (INSERTED) next, after Phase 4 of 12 (ffmpeg Discovery and Doctor) complete
+Phase: 4.1 (INSERTED) complete, after Phase 4; next is Phase 5 (Encoder Process Manager)
 Plan: 3 of 3 in current phase (Phase 2 complete, gate PASS-WITH-CAVEATS; see tools/record_sidecar/RESULTS.md)
-Status: Phase 4 executed and verified on macOS only (442 tests; Windows/Linux not executed, no CI run, nothing pushed). ffmpeg discovery in src/record/ffmpeg/{parse,lookup,probe,report}.rs; doctor hook in src/updater/doctor.rs. Ready to plan Phase 5.
-Last activity: 2026-10-21 - Phase 4 executed and verified
+Status: Phase 4.1 executed and verified on macOS only (515 tests; Windows/Linux not executed, no CI run, nothing pushed). BLADE_HEADLESS, .bladebro.json project layer, launch.json user layer, `bladebro headless`, docs/recording-and-launch-config.md with drift test. Ready to plan Phase 5.
+Last activity: 2026-10-21 - Phase 4.1 executed and verified
 
 Progress: [████░░░░░░] 33% (4/12 phases executed)
 

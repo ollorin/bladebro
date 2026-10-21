@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
 - [x] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
 - [x] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
-- [ ] **Phase 4.1: Headless/Headed Launch Switch and Layered Config (INSERTED)** - `BLADE_HEADLESS`, project/user config layers, honest stealth flag, mode shown in doctor, and the options reference page with a drift test
+- [x] **Phase 4.1: Headless/Headed Launch Switch and Layered Config (INSERTED)** - `BLADE_HEADLESS`, project/user config layers, honest stealth flag, mode shown in doctor, and the options reference page with a drift test
 - [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
 - [ ] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [ ] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
@@ -107,6 +107,7 @@ Plans:
 - [x] 04.1-01: `BLADE_HEADLESS` resolver + minimal launch hook in `src/browser/launch.rs` + launched-headless flag + tests
 - [x] 04.1-02: Layered config (project file, user config, `bladebro headless` toggle), mode in doctor and launch note, daemon-restart handling
 - [x] 04.1-03: `docs/recording-and-launch-config.md`, drift test, README pointer, live check in both modes
+- [x] 04.1-05, 04.1-06 (gap closure): opus-found poisoned daemon, launch note, drift test, client-hints values, PATH-exec regression
 - [x] 04.1-04 (gap closure): headless audit parity (screen pin + UA client-hints metadata), found by the 04.1-03 live audit (97/100 before, 100/100 after)
 
 ### Phase 5: Encoder Process Manager
@@ -246,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 2. Sidecar Prototype Gate | 3/3 | Complete (PASS-WITH-CAVEATS) | 2026-10-21 |
 | 3. Recording Config and Safe Output Paths | 3/3 (+03-04 gap closure) | Complete (macOS only; CI not run) | 2026-10-21 |
 | 4. ffmpeg Discovery and Doctor | 2/2 | Complete (macOS only; CI not run; 442 tests) | 2026-10-21 |
-| 4.1 Launch Mode and Layered Config (INSERTED) | 4/4 | Complete (macOS only; CI not run) | - |
+| 4.1 Launch Mode and Layered Config (INSERTED) | 6/6 | Complete (macOS only; CI not run) | - |
 | 5. Encoder Process Manager | 0/3 | Not started | - |
 | 6. Frame Source | 0/3 | Not started | - |
 | 7. RecordHub and state Ops | 0/3 | Not started | - |
