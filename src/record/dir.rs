@@ -35,7 +35,7 @@ pub fn prepare_dir_guarded(dir: &Path, artifacts: &Path) -> Result<PathBuf, Stri
 
 /// Canonicalize the longest existing ancestor and append the remaining
 /// components (resolving `.`/`..` lexically on the not-yet-existing tail).
-fn resolve_lenient(p: &Path) -> PathBuf {
+pub(crate) fn resolve_lenient(p: &Path) -> PathBuf {
     let mut tail: Vec<std::ffi::OsString> = Vec::new();
     let mut cur = p.to_path_buf();
     loop {

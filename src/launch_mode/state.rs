@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use super::display::launch_note;
-use super::mode::{resolve_mode, LaunchMode};
+use super::mode::{resolve_in, LaunchMode};
 
 static HEADLESS_BY_REQUEST: AtomicBool = AtomicBool::new(false);
 static NOTE_PRINTED: AtomicBool = AtomicBool::new(false);
@@ -21,10 +21,22 @@ pub fn headless_by_request() -> bool {
     HEADLESS_BY_REQUEST.load(Ordering::SeqCst)
 }
 
-/// Uncached resolution from the real environment. 04.1-02 adds the project
-/// and user layers here.
+/// Uncached resolution from the real environment, cwd and data root
+/// (env > project file > user launch.json > default). Warnings go to stderr.
 pub fn resolve_now() -> Result<LaunchMode, String> {
-    resolve_mode(&|k| std::env::var(k).ok(), None, None)
+    // No cwd (deleted directory): no project layer, the rest still applies.
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let home = crate::platform::home_dir();
+    let (mode, warnings) = resolve_in(
+        &|k| std::env::var(k).ok(),
+        &cwd,
+        Some(&home),
+        &crate::platform::blade_dir(),
+    )?;
+    for w in warnings {
+        eprintln!("[bladebro] warning: {w}");
+    }
+    Ok(mode)
 }
 
 /// Resolved once per process: a GL-ladder or crash relaunch never flips mode.

@@ -1,6 +1,6 @@
 //! Pure parsing and layered resolution of the launch mode.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::record::values::parse_switch;
 
@@ -96,6 +96,29 @@ pub fn resolve_mode(
     })
 }
 
+/// Resolve from explicit inputs: reads only the given paths (project walk-up
+/// from `cwd`, `<blade_dir>/launch.json`). Warnings (an ignored untrusted
+/// project file) are returned for the caller to print.
+pub fn resolve_in(
+    env: &dyn Fn(&str) -> Option<String>,
+    cwd: &Path,
+    home: Option<&Path>,
+    blade_dir: &Path,
+) -> Result<(LaunchMode, Vec<String>), String> {
+    let (project, warnings) = super::project::project_in(cwd, home, blade_dir)?;
+    let project_layer = project.map(|l| Layer {
+        headless: l.file.headless,
+        path: l.path,
+    });
+    let user_path = blade_dir.join(super::user::USER_LAUNCH_FILE);
+    let user_layer = super::user::load_user_launch(&user_path)?.map(|f| Layer {
+        headless: f.headless,
+        path: user_path,
+    });
+    let mode = resolve_mode(env, project_layer.as_ref(), user_layer.as_ref())?;
+    Ok((mode, warnings))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +194,67 @@ mod tests {
         assert!(m(Some(true)).forced_headless());
         assert!(!m(Some(false)).forced_headless());
         assert!(!m(None).forced_headless());
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("bladebro-resolve-in-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("scratch");
+        std::fs::canonicalize(&d).expect("canon")
+    }
+
+    fn write_file(path: &Path, body: &str) {
+        std::fs::write(path, body).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+    }
+
+    #[test]
+    fn resolve_in_layers() {
+        let s = scratch("layers");
+        let (p, bd, home) = (s.join("p"), s.join("bd"), s.join("home"));
+        let cwd = p.join("a").join("b");
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&bd).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        let none = env_of(None);
+
+        // user layer only
+        write_file(&bd.join("launch.json"), r#"{"headless":true}"#);
+        let (m, w) = resolve_in(&none, &cwd, Some(&home), &bd).unwrap();
+        assert_eq!(m.headless, Some(true));
+        assert_eq!(m.source, Source::User(bd.join("launch.json")));
+        assert!(w.is_empty());
+
+        // project beats user
+        write_file(&p.join(".bladebro.json"), r#"{"headless":false}"#);
+        let (m, _) = resolve_in(&none, &cwd, Some(&home), &bd).unwrap();
+        assert_eq!(m.headless, Some(false));
+        assert_eq!(m.source, Source::Project(p.join(".bladebro.json")));
+
+        // env beats project
+        let (m, _) = resolve_in(&env_of(Some("1")), &cwd, Some(&home), &bd).unwrap();
+        assert_eq!((m.headless, m.source), (Some(true), Source::Env));
+
+        // project without the key falls through to user
+        write_file(&p.join(".bladebro.json"), r#"{"record":{"fps":8}}"#);
+        let (m, _) = resolve_in(&none, &cwd, Some(&home), &bd).unwrap();
+        assert_eq!(m.source, Source::User(bd.join("launch.json")));
+
+        // an untrusted file yields a warning, not a print
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let f = p.join(".bladebro.json");
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o666)).unwrap();
+            let (m, w) = resolve_in(&none, &cwd, Some(&home), &bd).unwrap();
+            assert_eq!(m.source, Source::User(bd.join("launch.json")));
+            assert_eq!(w.len(), 1, "{w:?}");
+        }
+        let _ = std::fs::remove_dir_all(&s);
     }
 }
