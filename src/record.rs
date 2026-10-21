@@ -8,7 +8,8 @@
 //! - `names`: caller name sanitization, UTC stamp, short id, file names.
 //! - `dir`: private canonical recordings dir, create_new file creation; never rotated.
 //! - `ffmpeg`: ffmpeg lookup (BLADE_FFMPEG > PATH > known dirs), bounded
-//!   -version/-encoders probe cached once per process, pure output parsers.
+//!   -version/-encoders probe cached once per process, pure output parsers,
+//!   doctor report (DoctorLine).
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
@@ -24,9 +25,9 @@ pub use config::{
 };
 pub use dir::{create_recording_file, prepare_dir};
 pub use ffmpeg::{
-    discover, discover_cached, find_ffmpeg, known_locations, parse_encoders, parse_version, probe,
-    Discovery, EncoderSet, FfmpegVersion, Found, Lookup, ProbeInfo, Source, TargetOs,
-    PROBE_TIMEOUT,
+    discover, discover_cached, doctor_check, doctor_line, find_ffmpeg, known_locations,
+    parse_encoders, parse_version, probe, Discovery, DoctorLine, EncoderSet, FfmpegVersion, Found,
+    Level, Lookup, ProbeInfo, Source, TargetOs, PROBE_TIMEOUT,
 };
 pub use names::{file_name, sanitize_stem};
 pub use values::{Format, FrameSize};

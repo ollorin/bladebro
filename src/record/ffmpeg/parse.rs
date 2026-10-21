@@ -82,6 +82,15 @@ impl EncoderSet {
     pub fn has(&self, name: &str) -> bool {
         self.names.contains(name)
     }
+
+    /// Test constructor: a set from encoder names.
+    #[cfg(test)]
+    pub(crate) fn from_names(names: &[&str], listed: bool) -> Self {
+        Self {
+            names: names.iter().map(|n| n.to_string()).collect(),
+            listed,
+        }
+    }
 }
 
 /// Parse `ffmpeg -encoders` (D4-7): only video encoders (flags start with `V`)
