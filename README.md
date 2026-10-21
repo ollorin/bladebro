@@ -650,25 +650,11 @@ Data root resolution (Unix): `BLADE_HOME` → `$XDG_STATE_HOME/blade` → `$HOME
 
 ## Recording (in development)
 
-> **Not functional yet.** The config and output-path layer exists; the recorder itself is not wired in. Setting these variables records nothing today.
+> **Not functional yet.** Recording settings exist but the recorder is not wired in.
 
-**Recordings contain whatever was on screen**: passwords as typed into visible fields, session tokens, personal data, private pages. Treat every recording as sensitive. Do not enable recording for sessions that use real credentials. bladebro never prunes recordings; delete them in your harness.
+**Recordings contain whatever was on screen**, including passwords and tokens: treat them as sensitive.
 
-| Var | Default | What it does |
-|---|---|---|
-| `BLADE_RECORD` | off | `1`/`on`/`true`/`yes`: on, default dir. `0`/`off`/`false`/`no`: off. Absolute path: on, record into that dir. Relative paths are rejected |
-| `BLADE_RECORD_FORMAT` | `webm` | `webm` (VP9) or `mp4` (H.264) |
-| `BLADE_RECORD_FPS` | `10` | Whole frames per second, 5-15 |
-| `BLADE_RECORD_SIZE` | `1280x720` | `WIDTHxHEIGHT`, both sides even, 160x120 to 3840x2160 |
-| `BLADE_FFMPEG` | auto | Absolute path to the ffmpeg binary used for recording. Set but unusable is reported, never silently ignored. Otherwise PATH, then known install locations. `bladebro doctor` shows what was found |
-
-Config file: `<data root>/record.json` (data root: see above; on Windows `%USERPROFILE%\.blade`). Fields: `enabled` (bool), `dir` (absolute path), `format`, `fps`, `size`, `quality` (JPEG 1-100, default `70`, file only). Unknown fields are an error. Precedence: per-call > env > `record.json` > default. Per-call input covers `format`, `fps`, `size` and `name` only; `enabled`, `dir` and `quality` have no per-call layer. A bad value in any layer is an error, even when a higher layer overrides it. Invalid values are rejected, never clamped. Errors name their source (`BLADE_RECORD_FPS:`, `record.json fps:`, `per-call fps:`).
-
-Where files go:
-- Default dir: `<data root>/recordings/`. A dir inside `<data root>/artifacts/` is refused (artifacts rotate at 300 files). Nothing in bladebro rotates, prunes or deletes recordings.
-- File names: `<name>-<UTC timestamp>-<id>.webm` (or `.mp4`). The name keeps only `A-Z a-z 0-9 . _ -`, is capped at 80 characters, and falls back to `recording`. Existing files are never overwritten.
-- Unix: a new or empty dir is set to `0700`; files are `0600`. A non-empty dir that is group- or other-accessible is refused (run `chmod 700` on it, or use a dedicated dir). A symlinked dir and a dir owned by another user are refused.
-- Windows: files inherit the directory's permissions. The default under your profile is private to your account; keep `BLADE_RECORD` inside your profile. bladebro sets no Windows ACLs.
+Every option (recording, ffmpeg, `BLADE_HEADLESS`, `.bladebro.json`, `bladebro headless`) is documented in [docs/recording-and-launch-config.md](docs/recording-and-launch-config.md).
 
 ## 🔄 Maintenance
 

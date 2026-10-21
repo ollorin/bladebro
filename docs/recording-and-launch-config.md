@@ -1,6 +1,12 @@
 # Recording and launch configuration
 
-Single reference for every bladebro-fork option: session recording, the ffmpeg override and the managed browser's launch mode. Each option documented here is also reachable from the README.
+Single reference for every bladebro-fork option: session recording, the ffmpeg override and the managed browser's launch mode. The README only points here.
+
+## Quick answers
+
+- Hide the browser for tests: `BLADE_HEADLESS=1` (one run), `bladebro headless on` (your machine) or `"headless": true` in a committed `.bladebro.json` (a suite).
+- Keep it visible: leave everything unset (macOS and Windows show a window; Linux uses its private virtual display), or set `BLADE_HEADLESS=0` to override a lower layer.
+- Where settings live: environment, then `.bladebro.json` found from the current directory upward, then `<data root>/launch.json` and `<data root>/record.json`. See [Configuration layers and precedence](#configuration-layers-and-precedence).
 
 ## Environment variables
 
@@ -114,3 +120,85 @@ A cloned repository controls its `.bladebro.json`, so the file is treated as unt
 - A symlinked, foreign-owned or group/other-writable file is ignored with a warning (Unix).
 - A file in a parent folder cannot cross a `.git` boundary, and a file in your home directory is never read.
 - Size is capped at 64 KiB and unknown keys are rejected.
+
+## Examples
+
+### 1. QA server, hidden browser
+
+Claude Code `.mcp.json`, a second server entry next to the normal one:
+
+```json
+{
+  "mcpServers": {
+    "bladebro-qa": {
+      "command": "bladebro",
+      "args": ["mcp"],
+      "env": { "BLADE_HEADLESS": "1" }
+    }
+  }
+}
+```
+
+DSH profile `cordis.patch.yml` (the same `env` block the README shows for `CHROME_PATH`):
+
+```yaml
+- id: bladebro
+  config:
+    env:
+      BLADE_HEADLESS: "1"
+```
+
+DSH accepts one `bladebro` namespace, so a DSH profile is either QA (hidden) or interactive, not both.
+
+### 2. Normal interactive entry
+
+The README `mcpServers` entry, unchanged and without `env`:
+
+```json
+{
+  "mcpServers": {
+    "bladebro": {
+      "command": "bladebro",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Unset means a visible browser on macOS and Windows.
+
+### 3. Suite repo with a committed project file
+
+Commit `.bladebro.json` at the repo root:
+
+```json
+{ "headless": true, "record": { "format": "webm", "fps": 10 } }
+```
+
+Everyone who runs bladebro from inside that repo gets a hidden browser and these recording settings. `record.dir` may only point inside the repo or `<data root>/recordings`. A repo-local recordings dir belongs in `.gitignore`, because recordings may contain secrets.
+
+### 4. Toggle on your machine
+
+```bash
+bladebro headless status   # browser mode: platform default (source: default)
+bladebro headless on       # saved to <data root>/launch.json
+bladebro stop              # a running daemon keeps its old mode
+bladebro nav http://127.0.0.1:8000/   # now hidden
+bladebro headless off
+```
+
+One-off, without touching any file:
+
+```bash
+BLADE_HEADLESS=1 bladebro nav http://127.0.0.1:8000/
+```
+
+## Troubleshooting
+
+- `browser mode mismatch`: a daemon from another mode is running. Run `bladebro stop`, then retry.
+- `BLADE_HEADLESS: "<value>" is not valid`: use `1`, `on`, `true`, `yes`, `0`, `off`, `false` or `no`, or unset it. The same spellings apply to `BLADE_RECORD`.
+- A window still appears: an old daemon from a previous build is still running (`bladebro stop`); you are on the real-browser lane (`bladebro rb visible off`); or a higher layer says headed. `bladebro doctor` shows the mode and its source.
+- No window with `BLADE_HEADLESS=0` on Linux: by design, the browser runs on bladebro's private Xvfb display.
+- `.bladebro.json` ignored with a warning: it is a symlink (replace it with a regular file), owned by another user, or group/other-writable (`chmod 644 .bladebro.json`).
+- `record.dir ... ignored`: the path resolves outside the project and `<data root>/recordings`. Use a path inside the project.
+- Old `BLADE_CHROME_FLAGS=--headless=new` workaround: remove it and use `BLADE_HEADLESS=1`.
