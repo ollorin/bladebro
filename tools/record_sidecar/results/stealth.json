@@ -1,0 +1,72 @@
+{
+  "audit_baseline_02_01": {
+    "score": "100/100",
+    "exit": 0,
+    "verdict": "PASS"
+  },
+  "audit_without": {
+    "score": "100/100",
+    "exit": 0,
+    "verdict": "PASS"
+  },
+  "audit_with_screencast": {
+    "score": "100/100",
+    "exit": 0,
+    "verdict": "PASS",
+    "attempts": 1,
+    "sidecar": {
+      "frames_received": 5,
+      "acks_sent": 5,
+      "acks_ok": 5,
+      "acks_err": 0,
+      "first_frame_ms": 8,
+      "stop_reason": "browser-gone",
+      "wall_ms": 5299,
+      "segments": 1,
+      "nonempty_buckets": 1,
+      "bucket_count": 1
+    }
+  },
+  "audit_with_screencast_no_page_enable": {
+    "score": "100/100",
+    "exit": 0,
+    "verdict": "PASS",
+    "attempts": 2,
+    "sidecar": {
+      "frames_received": 6,
+      "acks_sent": 6,
+      "acks_ok": 6,
+      "acks_err": 0,
+      "first_frame_ms": 38,
+      "stop_reason": "browser-gone",
+      "wall_ms": 5260,
+      "segments": 1,
+      "nonempty_buckets": 1,
+      "bucket_count": 1
+    },
+    "last_sidecar_error": null
+  },
+  "screencast_proven_active_during_audit": true,
+  "audit_changed": false,
+  "diff_oracle": {
+    "ran": false,
+    "exits": [
+      2,
+      1
+    ],
+    "reason": "[oracle] ERROR: no Chrome/Chromium found (set CHROME_PATH) | ModuleNotFoundError: No module named 'websockets'"
+  },
+  "battery_page": "anim.html",
+  "battery_sidecar_during_B": {
+    "frames_received": 297,
+    "acks_ok": 297,
+    "acks_err": 0,
+    "stop_reason": "signal",
+    "wall_ms": 3292
+  },
+  "battery_keys": 99,
+  "battery_divergent": [],
+  "battery_noise": [
+    "voices"
+  ]
+}

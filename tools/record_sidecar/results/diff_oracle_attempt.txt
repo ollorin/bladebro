@@ -1,0 +1,19 @@
+[oracle] ERROR: no Chrome/Chromium found (set CHROME_PATH)
+exit=2
+--- second attempt with CHROME_PATH set to the system Chrome ---
+[oracle] baseline: stock /Applications/Google Chrome.app/Contents/MacOS/Google Chrome on :None
+Traceback (most recent call last):
+  File "/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/diff_oracle/oracle.py", line 524, in <module>
+    main()
+  File "/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/diff_oracle/oracle.py", line 411, in main
+    stock = pristine_probe(chrome, free_port(), display, args.url, battery, lane=args.lane)
+  File "/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/diff_oracle/oracle.py", line 245, in pristine_probe
+    return asyncio.run(drive())
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/base_events.py", line 642, in run_until_complete
+    return future.result()
+  File "/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/diff_oracle/oracle.py", line 223, in drive
+    import websockets
+ModuleNotFoundError: No module named 'websockets'
+exit=1
