@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
-use super::display::launch_note;
+use super::client::note_text;
 use super::mode::{resolve_in, LaunchMode};
 
 static HEADLESS_BY_REQUEST: AtomicBool = AtomicBool::new(false);
@@ -55,10 +55,11 @@ pub fn note_launch(m: &LaunchMode, headful: bool) {
     if !NOTE_PRINTED.swap(true, Ordering::SeqCst) {
         eprintln!(
             "{}",
-            launch_note(
+            note_text(
                 m,
                 headful,
-                cfg!(any(target_os = "linux", target_os = "android"))
+                cfg!(any(target_os = "linux", target_os = "android")),
+                std::env::var("BLADE_CHROME_FLAGS").ok().as_deref()
             )
         );
     }

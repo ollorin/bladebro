@@ -112,7 +112,9 @@ pub fn load_project(path: &Path, blade_dir: &Path) -> Result<ProjectOutcome, Str
     if let Some(rec) = record.as_mut() {
         if let Some(raw) = rec.dir.take() {
             let canon = |p: &Path| crate::record::dir::resolve_lenient(p);
-            match vet_project_dir(&raw, &root, blade_dir, &canon) {
+            let is_link =
+                |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
+            match vet_project_dir(&raw, &root, blade_dir, &canon, &is_link) {
                 Ok(d) => rec.dir = Some(d),
                 Err(w) => warnings.push(format!("{}: {w}", path.display())),
             }
@@ -152,12 +154,29 @@ pub fn vet_project_dir(
     root: &Path,
     blade_dir: &Path,
     canon: &dyn Fn(&Path) -> PathBuf,
+    is_link: &dyn Fn(&Path) -> bool,
 ) -> Result<PathBuf, String> {
     let joined = if raw.is_absolute() {
         raw.to_path_buf()
     } else {
         root.join(raw)
     };
+    // Any symlink component below the project root is refused, including a
+    // dangling one (which `canon` cannot resolve, so it would pass the
+    // containment check below and be followed later, e.g. on Windows).
+    if let Ok(rel) = normalize(&joined).strip_prefix(normalize(root)) {
+        let mut cur = normalize(root);
+        for c in rel.components() {
+            cur.push(c.as_os_str());
+            if is_link(&cur) {
+                return Err(format!(
+                    "record.dir {} ignored: {} is a symlink; use a real directory inside the project",
+                    raw.display(),
+                    cur.display()
+                ));
+            }
+        }
+    }
     let resolved = canon(&normalize(&joined));
     let allowed_root = canon(root);
     let allowed_rec = canon(&blade_dir.join(crate::record::values::RECORDINGS_SUBDIR));
@@ -308,11 +327,46 @@ mod tests {
         p.to_path_buf()
     }
 
+    fn no_link(_: &Path) -> bool {
+        false
+    }
+
+    #[test]
+    fn vet_dir_rejects_any_symlink_component_inside_the_project() {
+        let root = Path::new("/proj");
+        let bd = Path::new("/bd");
+        let link = |p: &Path| p == Path::new("/proj/dl");
+        let v = |s: &str| vet_project_dir(Path::new(s), root, bd, &ident, &link);
+        let e = v("dl/x").unwrap_err();
+        assert!(e.contains("is a symlink") && e.contains("/proj/dl"), "{e}");
+        assert!(v("dl").is_err());
+        assert!(v("/proj/dl/x").is_err());
+        assert!(v("other/x").is_ok());
+        // Outside the project the symlink walk does not apply (containment decides).
+        assert!(v("/bd/recordings/x").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn vet_dir_rejects_a_dangling_symlink() {
+        let d = scratch();
+        let root = d.join("proj");
+        std::fs::create_dir_all(&root).unwrap();
+        std::os::unix::fs::symlink("/nonexistent-bb/zz", root.join("dl")).unwrap();
+        let canon = |p: &Path| crate::record::dir::resolve_lenient(p);
+        let is_link =
+            |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
+        let e =
+            vet_project_dir(Path::new("dl/x"), &root, &d.join("bd"), &canon, &is_link).unwrap_err();
+        assert!(e.contains("is a symlink"), "{e}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn vet_dir_pure_rows() {
         let root = Path::new("/proj");
         let bd = Path::new("/bd");
-        let ok = |s: &str| vet_project_dir(Path::new(s), root, bd, &ident);
+        let ok = |s: &str| vet_project_dir(Path::new(s), root, bd, &ident, &no_link);
         assert_eq!(ok("rec").unwrap(), PathBuf::from("/proj/rec"));
         assert_eq!(ok("./a/../rec").unwrap(), PathBuf::from("/proj/rec"));
         assert!(ok("../out").unwrap_err().contains("ignored"));
@@ -337,9 +391,18 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
         let canon = |p: &Path| crate::record::dir::resolve_lenient(p);
-        let e = vet_project_dir(Path::new("link/rec"), &root, &d.join("bd"), &canon).unwrap_err();
+        let is_link =
+            |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
+        let e = vet_project_dir(
+            Path::new("link/rec"),
+            &root,
+            &d.join("bd"),
+            &canon,
+            &is_link,
+        )
+        .unwrap_err();
         assert!(e.contains("ignored"), "{e}");
-        assert!(vet_project_dir(Path::new("rec"), &root, &d.join("bd"), &canon).is_ok());
+        assert!(vet_project_dir(Path::new("rec"), &root, &d.join("bd"), &canon, &is_link).is_ok());
         let _ = std::fs::remove_dir_all(&d);
     }
 

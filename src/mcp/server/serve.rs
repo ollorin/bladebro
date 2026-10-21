@@ -291,7 +291,7 @@ pub(super) async fn serve(use_pipe: bool, host: &str, port: u16) -> Result<()> {
                                         "id": id,
                                         "result": {
                                             "content": [{ "type": "text", "text":
-                                                format!("\u{2717} Could not launch Chrome: {e}. Check that Chromium is installed and try again.") }],
+                                                format!("\u{2717} Could not launch Chrome: {e}.{}", crate::launch_mode::launch_error_suffix(&e.to_string())) }],
                                             "isError": true,
                                         }
                                     });

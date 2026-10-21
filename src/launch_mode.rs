@@ -6,6 +6,7 @@
 //! - `find`: pure walk-up discovery of `.bladebro.json`.
 //! - `project`: project file loading, trust rules, `record.dir` vetting.
 //! - `user`: `<data root>/launch.json` load/write.
+//! - `client`: the CLI's own launch note after it starts the daemon; raw `--headless` wording.
 //! - `daemon`: request tag + mode-mismatch refusal for the CLI daemon.
 //! - `display`: the single display decision (`plan_display`) and launch-note wording.
 //! - `registry`: option registry (env vars, config keys) + the DOC-02 docs drift tests.
@@ -17,6 +18,7 @@
 //! lines listed in .planning/HOOKS.md.
 
 pub mod cli;
+pub mod client;
 pub mod daemon;
 pub mod display;
 pub mod find;
@@ -33,6 +35,7 @@ pub use cli::{
     doctor_check, doctor_line, help_json, run_cli, status_text, toggle_in, ModeCheck, CHECK_NAME,
     HELP_TEXT,
 };
+pub use client::{daemon_start_note, launch_error_suffix, raw_headless_flag};
 pub use daemon::{
     daemon_mismatch, mismatch_message, parse_request, request_fields, request_fields_for,
     request_tag,

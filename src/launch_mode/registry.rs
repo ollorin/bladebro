@@ -171,41 +171,106 @@ mod tests {
         );
     }
 
+    /// Every `.rs` file below `dir`, recursively. A directory that cannot be
+    /// read fails the test: a silent skip would hide files from the scan.
+    fn rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let rd = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        for entry in rd {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                rs_files(&path, out);
+            } else if path.extension().is_some_and(|x| x == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
     #[test]
     fn source_literals_are_registered() {
-        let sources: &[(&str, &str)] = &[
-            ("record/values.rs", include_str!("../record/values.rs")),
-            ("record/config.rs", include_str!("../record/config.rs")),
-            ("record/layered.rs", include_str!("../record/layered.rs")),
-            ("record/dir.rs", include_str!("../record/dir.rs")),
-            (
-                "record/ffmpeg/lookup.rs",
-                include_str!("../record/ffmpeg/lookup.rs"),
-            ),
-            (
-                "record/ffmpeg/report.rs",
-                include_str!("../record/ffmpeg/report.rs"),
-            ),
-            ("launch_mode/mode.rs", include_str!("mode.rs")),
-            ("launch_mode/display.rs", include_str!("display.rs")),
-            ("launch_mode/state.rs", include_str!("state.rs")),
-            ("launch_mode/find.rs", include_str!("find.rs")),
-            ("launch_mode/project.rs", include_str!("project.rs")),
-            ("launch_mode/user.rs", include_str!("user.rs")),
-            ("launch_mode/cli.rs", include_str!("cli.rs")),
-            ("launch_mode/daemon.rs", include_str!("daemon.rs")),
-        ];
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        for sub in ["launch_mode", "record"] {
+            rs_files(&src.join(sub), &mut files);
+        }
+        assert!(
+            files.len() >= 20,
+            "scan found too few files: {}",
+            files.len()
+        );
         let mut bad = Vec::new();
-        for (name, text) in sources {
-            for t in blade_tokens(text) {
+        for path in &files {
+            // This file's own tests feed deliberately fake tokens (BLADE_A_B,
+            // BLADE_ alone, NOBLADE_X) to the scanner; scanning it would flag
+            // the fixtures. Its non-test content is only registered names.
+            if path.file_name().is_some_and(|n| n == "registry.rs") {
+                continue;
+            }
+            let text =
+                std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            for t in blade_tokens(&text) {
                 if !ENV_VARS.contains(&t.as_str()) && !UPSTREAM_ALLOWLIST.contains(&t.as_str()) {
-                    bad.push(format!("{name}: {t}"));
+                    bad.push(format!(
+                        "{}: {t}",
+                        path.strip_prefix(&src).unwrap().display()
+                    ));
                 }
             }
         }
         assert!(
             bad.is_empty(),
             "BLADE_* names in fork sources that are not registered: {bad:?}; add them to ENV_VARS (and the page) or UPSTREAM_ALLOWLIST"
+        );
+    }
+
+    /// `(file label, key)` rows of the page's `## Config keys` table.
+    fn page_config_keys() -> BTreeSet<(String, String)> {
+        let start = PAGE
+            .find("\n## Config keys\n")
+            .expect("page has no `## Config keys` section")
+            + 1;
+        let end = PAGE[start + 1..]
+            .find("\n## ")
+            .map_or(PAGE.len(), |i| start + 1 + i);
+        let section = &PAGE[start..end];
+        let mut rows = BTreeSet::new();
+        for line in section.lines().filter(|l| l.starts_with('|')) {
+            let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+            if cells.len() < 2 || cells[0] == "File" || cells[0].starts_with("---") {
+                continue;
+            }
+            let strip = |c: &str| c.trim_matches('`').to_string();
+            assert!(
+                rows.insert((strip(cells[0]), strip(cells[1]))),
+                "duplicate row: {line}"
+            );
+        }
+        rows
+    }
+
+    fn code_config_keys() -> BTreeSet<(String, String)> {
+        let mut rows = BTreeSet::new();
+        for (file, keys) in [
+            (CONFIG_FILE.to_string(), serde_keys::<FileConfig>()),
+            (PROJECT_FILE.to_string(), serde_keys::<ProjectFile>()),
+            (format!("{PROJECT_FILE} record"), serde_keys::<FileConfig>()),
+            (USER_LAUNCH_FILE.to_string(), serde_keys::<UserLaunchFile>()),
+        ] {
+            for k in keys {
+                rows.insert((file.clone(), k));
+            }
+        }
+        rows
+    }
+
+    #[test]
+    fn page_config_keys_table_equals_the_serde_keys() {
+        let page = page_config_keys();
+        let code = code_config_keys();
+        let phantom: Vec<_> = page.difference(&code).collect();
+        let missing: Vec<_> = code.difference(&page).collect();
+        assert!(
+            phantom.is_empty() && missing.is_empty(),
+            "`## Config keys` drifted from the serde structs. On the page but not in code: {phantom:?}; in code but not on the page: {missing:?}"
         );
     }
 

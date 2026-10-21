@@ -106,29 +106,33 @@ impl Page {
 
             // The old hand-built metadata hardcoded a GREASE brand
             // ("Not:A-Brand"/99) matching no real build; the metadata below
-            // instead comes from the browser itself or Chromium's own
-            // deterministic GREASE algorithm for the real version.
+            // instead uses Chromium's own deterministic GREASE algorithm plus
+            // the browser's real full version (Browser.getVersion).
             // (4.1) Measured on Chrome 154 headless: an override without
             // metadata leaves navigator.userAgentData empty, so metadata is
-            // attached (see launch_mode::uad for the sources).
+            // attached on the headless path (see launch_mode::uad).
             let mut ua_params = serde_json::json!({
                 "userAgent": fixed_ua,
                 "platform": real_platform,
             });
-            let probe = cdp
-                .send(
-                    "Runtime.evaluate",
-                    Some(serde_json::json!({
-                        "expression": crate::launch_mode::uad::PROBE_JS,
-                        "returnByValue": true,
-                        "awaitPromise": true,
-                    })),
-                )
-                .await
-                .ok()
-                .and_then(|r| r["result"]["value"].as_str().map(String::from));
-            if let Some(meta) = crate::launch_mode::uad::build(probe.as_deref(), &fixed_ua) {
-                ua_params["userAgentMetadata"] = meta;
+            // Headless-by-request only: any other path (e.g. the unset Linux
+            // no-Xvfb fallback) keeps the pre-4.1 override, unmeasured.
+            if crate::launch_mode::headless_by_request() {
+                let product = cdp
+                    .send("Browser.getVersion", None)
+                    .await
+                    .ok()
+                    .and_then(|r| r["product"].as_str().map(String::from));
+                let real_full = product
+                    .as_deref()
+                    .and_then(crate::launch_mode::uad::product_version);
+                if let Some(meta) = crate::launch_mode::uad::derive(
+                    &fixed_ua,
+                    real_full.as_deref(),
+                    &crate::launch_mode::uad::platform_version(),
+                ) {
+                    ua_params["userAgentMetadata"] = meta;
+                }
             }
             if let Err(e) = cdp
                 .send("Network.setUserAgentOverride", Some(ua_params))

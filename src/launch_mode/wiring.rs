@@ -94,7 +94,8 @@ const DAEMON: &str = include_str!("../cli/daemon.rs");
 
 #[test]
 fn cli_tags_daemon_requests_and_daemon_guards_after_lane_refresh() {
-    assert_eq!(CLI.matches("crate::launch_mode::request_tag()").count(), 1);
+    // Two uses: the pre-daemon validation and the per-request tag.
+    assert_eq!(CLI.matches("crate::launch_mode::request_tag()").count(), 2);
     assert_eq!(CLI.matches("\"launch\":").count(), 1);
     assert_eq!(
         DAEMON
@@ -108,4 +109,60 @@ fn cli_tags_daemon_requests_and_daemon_guards_after_lane_refresh() {
         .unwrap();
     let launch = DAEMON.find("let need_launch").unwrap();
     assert!(refresh < guard && guard < launch);
+}
+
+#[test]
+fn run_tool_validates_before_auto_starting_a_daemon() {
+    let a = CLI.find("async fn run_tool(").unwrap();
+    let body = &CLI[a..];
+    let validate = body.find("crate::launch_mode::request_tag()").unwrap();
+    let start = body.find("auto_start_daemon()?").unwrap();
+    assert!(
+        validate < start,
+        "an invalid setting must never start a daemon"
+    );
+    // Validation also precedes the first send to an existing daemon.
+    assert!(validate < body.find("send_to_daemon(tool, args)").unwrap());
+}
+
+#[test]
+fn run_tool_prints_the_launch_note_only_after_it_started_the_daemon() {
+    let a = CLI.find("async fn run_tool(").unwrap();
+    let body = &CLI[a..];
+    assert_eq!(
+        body.matches("crate::launch_mode::daemon_start_note()")
+            .count(),
+        1
+    );
+    let note = body
+        .find("crate::launch_mode::daemon_start_note()")
+        .unwrap();
+    let start = body.find("auto_start_daemon()?").unwrap();
+    assert!(
+        start < note,
+        "note belongs after the auto-start, not on a reused daemon"
+    );
+    // stderr only: a stdout print would break --json.
+    let line_end = body[note..].find('\n').unwrap();
+    let after = &body[note..note + line_end + 120];
+    assert!(after.contains("eprintln!"), "{after}");
+}
+
+const SERVE: &str = include_str!("../mcp/server/serve.rs");
+
+#[test]
+fn mcp_launch_failure_suffix_is_launch_mode_aware() {
+    assert!(SERVE.contains("crate::launch_mode::launch_error_suffix(&e.to_string())"));
+}
+
+const ATTACH: &str = include_str!("../page/attach.rs");
+
+#[test]
+fn ua_metadata_is_headless_by_request_only() {
+    let g = ATTACH
+        .find("crate::launch_mode::headless_by_request()")
+        .unwrap();
+    let m = ATTACH.find("ua_params[\"userAgentMetadata\"]").unwrap();
+    assert!(g < m);
+    assert!(!ATTACH.contains("PROBE_JS"));
 }

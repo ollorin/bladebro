@@ -30,7 +30,8 @@ directory upward) > <data root>/launch.json (this toggle) > platform default.
 
 The setting applies at the next browser launch. If a daemon is running, run
 `bladebro stop` first; a command whose mode differs from the running daemon
-is refused with that instruction. The real-browser lane ignores it: use
+is refused with that instruction. An MCP server pins its mode for its
+lifetime: restart the client's server. The real-browser lane ignores it: use
 `rb visible on|off`. Full reference: docs/recording-and-launch-config.md
 "#;
 
@@ -87,9 +88,14 @@ pub fn toggle_in(blade_dir: &Path, sub: &str) -> std::result::Result<String, Str
     };
     let path = write_user_launch(blade_dir, on)?;
     Ok(format!(
-        "headless: {sub} (saved to {})\napplies at the next browser launch; run `bladebro stop` first if a daemon is running",
+        "headless: {sub} (saved to {})\napplies at the next browser launch; run `bladebro stop` first if a daemon is running (MCP servers: restart the client's server)",
         path.display()
     ))
+}
+
+/// Error text when `on|off` is refused because resolution already fails.
+pub fn reject_message(e: &str) -> String {
+    format!("launch.json was not changed: the current setting is invalid ({e}); fix it first, then retry")
 }
 
 fn resolve_real() -> std::result::Result<(LaunchMode, Vec<String>), String> {
@@ -120,7 +126,14 @@ pub fn run_cli(rest: &[String], json_mode: bool) -> Result<()> {
     let bd = crate::platform::blade_dir();
     let saved = match sub {
         "status" => None,
-        "on" | "off" => Some(toggle_in(&bd, sub).map_err(BladeError::Other)?),
+        "on" | "off" => {
+            // Reject cleanly BEFORE writing when the setting cannot resolve
+            // (invalid project file or env): never write and then fail.
+            if let Err(e) = resolve_real() {
+                return Err(BladeError::Other(reject_message(&e)));
+            }
+            Some(toggle_in(&bd, sub).map_err(BladeError::Other)?)
+        }
         // BladeError::Usage already prints the `usage: ` prefix.
         _ => {
             return Err(BladeError::Usage(
@@ -183,13 +196,29 @@ pub fn doctor_line(res: std::result::Result<LaunchMode, String>, linux: bool) ->
     }
 }
 
+/// Doctor wording when BLADE_CHROME_FLAGS carries `--headless` but
+/// BLADE_HEADLESS does not force headless.
+pub fn raw_flag_detail(m: &LaunchMode) -> String {
+    format!(
+        "headless via BLADE_CHROME_FLAGS --headless (headless-only stealth masks are not applied); set BLADE_HEADLESS=1 instead (source: {})",
+        m.source.label()
+    )
+}
+
 pub fn doctor_check() -> ModeCheck {
     match resolve_real() {
         Ok((m, warnings)) => {
             for w in warnings {
                 eprintln!("[bladebro] warning: {w}");
             }
-            doctor_line(Ok(m), LINUX)
+            let mut c = doctor_line(Ok(m.clone()), LINUX);
+            // A raw --headless flag decides the launch: never report "headed".
+            if super::client::raw_headless_flag(std::env::var("BLADE_CHROME_FLAGS").ok().as_deref())
+                && !m.forced_headless()
+            {
+                c.detail = raw_flag_detail(&m);
+            }
+            c
         }
         Err(e) => doctor_line(Err(e), LINUX),
     }
@@ -205,6 +234,36 @@ mod tests {
             headless: h,
             source: s,
         }
+    }
+
+    #[test]
+    fn toggle_message_mentions_mcp_restart() {
+        let d = std::env::temp_dir().join(format!("bb-toggle-{}", std::process::id()));
+        let t = toggle_in(&d, "on").unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(
+            t.contains("MCP servers: restart the client's server"),
+            "{t}"
+        );
+        assert!(HELP_TEXT.contains("MCP server pins its mode"));
+    }
+
+    #[test]
+    fn invalid_setting_rejects_the_toggle_before_writing() {
+        let e = reject_message("BLADE_HEADLESS: \"x\" is not valid");
+        assert!(e.starts_with("launch.json was not changed"), "{e}");
+        let src = include_str!("cli.rs");
+        let body = &src[src.find("pub fn run_cli").unwrap()..];
+        let guard = body.find("resolve_real()").unwrap();
+        let write = body.find("toggle_in(&bd, sub)").unwrap();
+        assert!(guard < write, "the resolution check must precede the write");
+    }
+
+    #[test]
+    fn raw_flag_doctor_detail_is_not_headed() {
+        let d = raw_flag_detail(&m(None, Source::Default));
+        assert!(d.starts_with("headless via BLADE_CHROME_FLAGS") && !d.starts_with("headed"));
+        assert!(d.contains("BLADE_HEADLESS=1"));
     }
 
     #[test]

@@ -567,6 +567,10 @@ async fn run_tool(
     if !no_daemon {
         #[cfg(unix)]
         {
+            // Fork hook (.planning/HOOKS.md): refuse an invalid launch setting BEFORE any
+            // daemon starts; a daemon inherits the env and would stay poisoned.
+            crate::launch_mode::request_tag().map_err(BladeError::Other)?;
+
             // Try the running daemon first.
             if daemon_running() {
                 match send_to_daemon(tool, args) {
@@ -608,6 +612,11 @@ async fn run_tool(
             }
 
             if daemon_running() {
+                // Fork hook (.planning/HOOKS.md): the daemon's stderr is /dev/null, so this
+                // client (which just started it) prints the launch note, once, to stderr.
+                if let Some(note) = crate::launch_mode::daemon_start_note() {
+                    eprintln!("{note}");
+                }
                 match send_to_daemon(tool, args) {
                     Ok(result) => {
                         let code = print_result(&result, json_mode);

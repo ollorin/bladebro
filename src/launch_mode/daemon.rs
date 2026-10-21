@@ -67,13 +67,27 @@ pub fn parse_request(req: &Value) -> Option<(bool, String)> {
     ))
 }
 
-/// The `launch` field this client puts on every daemon request.
-pub fn request_tag() -> Result<Value, String> {
-    let lane_real = crate::realbrowser::lane_from(
+/// True when this process resolves to the real-browser lane.
+pub fn lane_is_real() -> bool {
+    crate::realbrowser::lane_from(
         std::env::var("BLADE_LANE").ok().as_deref(),
         crate::realbrowser::config().enabled,
-    );
-    request_fields_for(lane_real, super::state::effective())
+    )
+}
+
+/// The `launch` field this client puts on every daemon request. Also the
+/// client-side validation: `run_tool` calls it BEFORE auto-starting a daemon,
+/// so an invalid setting never starts a daemon that would inherit it.
+pub fn request_tag() -> Result<Value, String> {
+    request_fields_for(lane_is_real(), super::state::effective())
+}
+
+/// The daemon's environment cannot change after it started, so an invalid
+/// launch setting there stays invalid until it is stopped.
+pub fn invalid_setting_message(e: &str) -> String {
+    format!(
+        "this daemon was started with an invalid launch setting ({e}); run `bladebro stop`, fix the setting, then retry"
+    )
 }
 
 /// Daemon side: error text when this request must be refused. Skipped on the
@@ -84,7 +98,7 @@ pub fn daemon_mismatch(req: &Value) -> Option<String> {
         return None;
     }
     match super::state::effective() {
-        Err(e) => Some(e),
+        Err(e) => Some(invalid_setting_message(&e)),
         Ok(m) => mismatch_message(&m, headless, &source),
     }
 }
@@ -137,6 +151,15 @@ mod tests {
         assert_eq!(parse_request(&json!({"launch": {"headless": "x"}})), None);
         assert_eq!(parse_request(&Value::Null), None);
         assert_eq!(parse_request(&json!({"launch": null})), None);
+    }
+
+    #[test]
+    fn poisoned_daemon_message_says_stop() {
+        let t = invalid_setting_message("BLADE_HEADLESS: \"maybe\" is not valid");
+        assert!(t.contains("invalid launch setting") && t.contains("bladebro stop"));
+        for bad in ["Connection refused", "No such file", "daemon not running"] {
+            assert!(!t.contains(bad), "{t}");
+        }
     }
 
     #[test]

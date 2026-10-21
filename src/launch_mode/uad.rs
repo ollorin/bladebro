@@ -3,81 +3,20 @@
 //!
 //! Measured (macOS, Chrome 154, 2026-10): once a headless browser gets a UA
 //! override WITHOUT metadata, `navigator.userAgentData` reports empty
-//! `brands`, empty `platform` and empty high-entropy values — a loud tell
+//! `brands`, empty `platform` and empty high-entropy values: a loud tell
 //! (headed Chrome always reports a brand list). So the override must carry
-//! metadata. Sources, best first:
-//! 1. the browser's own `navigator.userAgentData` (only readable in a secure
-//!    context — about:blank is not one), with `HeadlessChrome` renamed;
-//! 2. derived from the real UA major version using Chromium's own
-//!    deterministic GREASE/shuffle algorithm (`derive`), so the result equals
-//!    what a stock headed Chrome of that major reports — never a hand-picked
-//!    brand that matches no real build.
+//! metadata. It is always derived (`derive`): the brand list from Chromium's
+//! own deterministic GREASE/shuffle algorithm for the UA's major version, the
+//! full version from CDP `Browser.getVersion` (what headed Chrome reports in
+//! `fullVersionList`/`uaFullVersion`; the UA string itself only carries the
+//! reduced `154.0.0.0`) and `platformVersion` from the OS (`platform_version`).
+//! No page-side probe: `navigator.userAgentData` is only readable on a secure
+//! origin, and evaluating in the page main world is page-observable.
+//!
+//! Known remaining difference: Windows `platformVersion` stays empty
+//! (headed Chrome reports the build-derived value; not measured here).
 
 use serde_json::{json, Value};
-
-/// Async probe run via `Runtime.evaluate` (awaitPromise) — Runtime stays
-/// disabled. Returns a JSON string, or "" when userAgentData is unavailable.
-pub const PROBE_JS: &str = "(async()=>{const u=navigator.userAgentData;if(!u||!u.brands||!u.brands.length)return '';\
-const h=await u.getHighEntropyValues(['architecture','bitness','model','platformVersion','fullVersionList','wow64']);\
-return JSON.stringify({brands:u.brands,platform:u.platform,mobile:u.mobile,h})})()";
-
-fn rename(brand: &str) -> String {
-    if brand == "HeadlessChrome" {
-        "Google Chrome".into()
-    } else {
-        brand.to_string()
-    }
-}
-
-fn rename_list(v: Option<&Value>) -> Vec<Value> {
-    v.and_then(|l| l.as_array())
-        .map(|l| {
-            l.iter()
-                .map(|b| {
-                    json!({
-                        "brand": rename(b["brand"].as_str().unwrap_or("")),
-                        "version": b["version"].as_str().unwrap_or(""),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Metadata from the browser's own probe result (`PROBE_JS` output).
-/// None when the probe carried no brands.
-pub fn from_probe(probe: &str) -> Option<Value> {
-    let p: Value = serde_json::from_str(probe).ok()?;
-    let brands = rename_list(p.get("brands"));
-    if brands.is_empty() {
-        return None;
-    }
-    let h = p.get("h")?;
-    let mut full = rename_list(h.get("fullVersionList"));
-    if full.is_empty() {
-        full = brands.clone();
-    }
-    let full_version = full
-        .iter()
-        .find(|b| b["brand"] == "Google Chrome")
-        .or_else(|| full.iter().find(|b| b["brand"] == "Chromium"))
-        .and_then(|b| b["version"].as_str())
-        .unwrap_or("")
-        .to_string();
-    let s = |k: &str| h.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
-    Some(json!({
-        "brands": brands,
-        "fullVersionList": full,
-        "fullVersion": full_version,
-        "platform": p.get("platform").and_then(|v| v.as_str()).unwrap_or(""),
-        "platformVersion": s("platformVersion"),
-        "architecture": s("architecture"),
-        "model": s("model"),
-        "mobile": p.get("mobile").and_then(|v| v.as_bool()).unwrap_or(false),
-        "bitness": s("bitness"),
-        "wow64": h.get("wow64").and_then(|v| v.as_bool()).unwrap_or(false),
-    }))
-}
 
 /// Chromium's GREASE brand + order for a major version (mirrors
 /// `GenerateBrandVersionList`: seed = major).
@@ -118,9 +57,74 @@ fn ua_version(ua: &str) -> Option<String> {
     (!v.is_empty()).then_some(v)
 }
 
-/// Metadata derived from the (already de-Headless'd) UA string alone.
-pub fn derive(ua: &str) -> Option<Value> {
-    let full = ua_version(ua)?;
+/// Parse a `Browser.getVersion` product string (`HeadlessChrome/154.0.8037.58`)
+/// to its dotted full version. Only a four-part numeric version is accepted.
+pub fn product_version(product: &str) -> Option<String> {
+    let v = product.split('/').nth(1)?.trim();
+    let parts: Vec<&str> = v.split('.').collect();
+    (parts.len() == 4
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())))
+    .then(|| v.to_string())
+}
+
+/// Normalize an OS version string to Chrome's `major.minor.patch`: leading
+/// numeric dotted prefix (`6.8.0-45-generic` -> `6.8.0`), padded with `.0`.
+/// Empty when nothing numeric leads (never a guess).
+pub fn normalize_platform_version(raw: &str) -> String {
+    let lead: String = raw
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    let mut parts: Vec<&str> = lead.split('.').filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        return String::new();
+    }
+    parts.truncate(3);
+    while parts.len() < 3 {
+        parts.push("0");
+    }
+    parts.join(".")
+}
+
+/// The OS version headed Chrome reports as `platformVersion`: macOS
+/// `sw_vers -productVersion`, Linux kernel release (`uname -r`). Fixed args,
+/// no shell. Windows (and any failure) gives "" rather than a guess.
+pub fn platform_version() -> String {
+    static CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let (prog, arg) = if cfg!(target_os = "macos") {
+                ("sw_vers", "-productVersion")
+            } else if cfg!(any(target_os = "linux", target_os = "android")) {
+                ("uname", "-r")
+            } else {
+                return String::new();
+            };
+            std::process::Command::new(prog)
+                .arg(arg)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| normalize_platform_version(&String::from_utf8_lossy(&o.stdout)))
+                .unwrap_or_default()
+        })
+        .clone()
+}
+
+/// Metadata derived from the (already de-Headless'd) UA string. `real_full`
+/// is the browser's true full version (`product_version`; the UA only has the
+/// reduced `X.0.0.0`), `platform_version` the OS version (may be empty).
+pub fn derive(ua: &str, real_full: Option<&str>, platform_version: &str) -> Option<Value> {
+    let ua_full = ua_version(ua)?;
+    let major: u32 = ua_full.split('.').next()?.parse().ok()?;
+    // Only trust a real version whose major matches the UA's.
+    let full = real_full
+        .filter(|v| v.split('.').next().and_then(|m| m.parse::<u32>().ok()) == Some(major))
+        .map(str::to_string)
+        .unwrap_or(ua_full);
     let major: u32 = full.split('.').next()?.parse().ok()?;
     let platform = if ua.contains("Macintosh") {
         "macOS"
@@ -157,18 +161,13 @@ pub fn derive(ua: &str) -> Option<Value> {
         "fullVersionList": full_list,
         "fullVersion": full,
         "platform": platform,
-        "platformVersion": "",
+        "platformVersion": platform_version,
         "architecture": arch,
         "model": "",
         "mobile": false,
         "bitness": "64",
         "wow64": false,
     }))
-}
-
-/// Probe result first, UA derivation second.
-pub fn build(probe: Option<&str>, ua: &str) -> Option<Value> {
-    probe.and_then(from_probe).or_else(|| derive(ua))
 }
 
 #[cfg(test)]
@@ -179,7 +178,7 @@ mod tests {
 
     #[test]
     fn derive_matches_chromium_grease_for_154() {
-        let m = derive(UA).unwrap();
+        let m = derive(UA, Some("154.0.8037.58"), "26.6.2").unwrap();
         let b: Vec<String> = m["brands"]
             .as_array()
             .unwrap()
@@ -195,34 +194,70 @@ mod tests {
         // Same list a headed Chrome 154 reports (baseline audit capture).
         assert_eq!(b, ["Chromium/154", "Google Chrome/154", "Not A(Brand/99"]);
         assert_eq!(m["platform"], "macOS");
-        assert_eq!(m["fullVersion"], "154.0.0.0");
-        assert_eq!(m["mobile"], false);
-    }
-
-    #[test]
-    fn derive_rejects_unknown_ua() {
-        assert!(derive("curl/8").is_none());
-        assert!(derive("Mozilla/5.0 (Plan9) Chrome/9.0").is_none());
-    }
-
-    #[test]
-    fn probe_renames_headless_brand() {
-        let probe = r#"{"brands":[{"brand":"HeadlessChrome","version":"154"},{"brand":"Chromium","version":"154"},{"brand":"Not A(Brand","version":"99"}],
-"platform":"macOS","mobile":false,"h":{"architecture":"arm","bitness":"64","model":"","platformVersion":"15.2.0","wow64":false,
-"fullVersionList":[{"brand":"HeadlessChrome","version":"154.0.8037.58"},{"brand":"Chromium","version":"154.0.8037.58"}]}}"#;
-        let m = from_probe(probe).unwrap();
-        assert_eq!(m["brands"][0]["brand"], "Google Chrome");
         assert_eq!(m["fullVersion"], "154.0.8037.58");
-        assert_eq!(m["platformVersion"], "15.2.0");
+        assert_eq!(m["platformVersion"], "26.6.2");
+        assert_eq!(m["mobile"], false);
+        let full: Vec<String> = m["fullVersionList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| {
+                format!(
+                    "{}/{}",
+                    b["brand"].as_str().unwrap(),
+                    b["version"].as_str().unwrap()
+                )
+            })
+            .collect();
+        assert_eq!(
+            full,
+            [
+                "Chromium/154.0.8037.58",
+                "Google Chrome/154.0.8037.58",
+                "Not A(Brand/99.0.0.0"
+            ]
+        );
         assert!(!m.to_string().contains("Headless"));
     }
 
     #[test]
-    fn empty_probe_falls_back_to_derive() {
-        assert!(from_probe("").is_none());
-        assert!(from_probe(r#"{"brands":[],"h":{}}"#).is_none());
-        let m = build(Some(""), UA).unwrap();
-        assert_eq!(m["brands"].as_array().unwrap().len(), 3);
-        assert!(build(None, "nothing").is_none());
+    fn derive_falls_back_to_ua_version_when_real_is_missing_or_foreign() {
+        assert_eq!(derive(UA, None, "").unwrap()["fullVersion"], "154.0.0.0");
+        // A different major (stale/foreign product string) is never mixed in.
+        assert_eq!(
+            derive(UA, Some("120.0.1.2"), "").unwrap()["fullVersion"],
+            "154.0.0.0"
+        );
+    }
+
+    #[test]
+    fn derive_rejects_unknown_ua() {
+        assert!(derive("curl/8", None, "").is_none());
+        assert!(derive("Mozilla/5.0 (Plan9) Chrome/9.0", None, "").is_none());
+    }
+
+    #[test]
+    fn product_version_parses_only_four_part_numeric() {
+        assert_eq!(
+            product_version("HeadlessChrome/154.0.8037.58").as_deref(),
+            Some("154.0.8037.58")
+        );
+        assert_eq!(
+            product_version("Chrome/154.0.0.0").as_deref(),
+            Some("154.0.0.0")
+        );
+        assert_eq!(product_version("Chrome/154"), None);
+        assert_eq!(product_version("Chrome/154.0.x.1"), None);
+        assert_eq!(product_version("nothing"), None);
+    }
+
+    #[test]
+    fn platform_version_normalizes_os_strings() {
+        assert_eq!(normalize_platform_version("26.6.2\n"), "26.6.2");
+        assert_eq!(normalize_platform_version("15.2"), "15.2.0");
+        assert_eq!(normalize_platform_version("6.8.0-45-generic\n"), "6.8.0");
+        assert_eq!(normalize_platform_version("6"), "6.0.0");
+        assert_eq!(normalize_platform_version(""), "");
+        assert_eq!(normalize_platform_version("garbage"), "");
     }
 }
