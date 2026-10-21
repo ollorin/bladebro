@@ -23,6 +23,7 @@ pub mod error;
 pub mod fingerprint;
 mod framing;
 pub mod knowledge;
+pub mod launch_mode;
 pub mod logins;
 pub mod mcp;
 pub mod page;

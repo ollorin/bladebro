@@ -207,10 +207,10 @@ pub fn parse_record_env(raw: Option<&str>) -> Result<RecordEnv, String> {
         None | Some("") => return Ok(RecordEnv::Unset),
         Some(t) => t,
     };
-    match t.to_ascii_lowercase().as_str() {
-        "0" | "off" | "false" | "no" => Ok(RecordEnv::Set(Toggle::Off)),
-        "1" | "on" | "true" | "yes" => Ok(RecordEnv::Set(Toggle::On(None))),
-        _ => {
+    match parse_switch(t) {
+        Some(false) => Ok(RecordEnv::Set(Toggle::Off)),
+        Some(true) => Ok(RecordEnv::Set(Toggle::On(None))),
+        None => {
             if Path::new(t).is_absolute() {
                 Ok(RecordEnv::Set(Toggle::On(Some(PathBuf::from(t)))))
             } else {
@@ -223,9 +223,32 @@ pub fn parse_record_env(raw: Option<&str>) -> Result<RecordEnv, String> {
     }
 }
 
+/// Shared on/off spellings for BLADE_RECORD and BLADE_HEADLESS (one parser so
+/// the two switches can never diverge). Case-insensitive, trimmed.
+pub fn parse_switch(t: &str) -> Option<bool> {
+    match t.trim().to_ascii_lowercase().as_str() {
+        "1" | "on" | "true" | "yes" => Some(true),
+        "0" | "off" | "false" | "no" => Some(false),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_switch_table() {
+        for t in ["1", "on", "ON", " true ", "yes"] {
+            assert_eq!(parse_switch(t), Some(true), "{t:?}");
+        }
+        for t in ["0", "off", "False", "no"] {
+            assert_eq!(parse_switch(t), Some(false), "{t:?}");
+        }
+        for t in ["", "2", "maybe", "y"] {
+            assert_eq!(parse_switch(t), None, "{t:?}");
+        }
+    }
 
     /// Absolute-path literal that is absolute on the current OS. `/x` is not
     /// absolute on Windows, so tests build `C:\x` there.
