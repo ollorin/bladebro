@@ -10,12 +10,15 @@ Opt-in session video recording for Bladebro, built so a QA agent's run leaves a 
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
+**Standing rule (all phases):** any phase that adds or changes an option, environment variable, config key or per-call parameter must update `docs/recording-and-launch-config.md` (created in Phase 4.1) in the same phase; the verifier checks it and the drift test (DOC-02) enforces it once it exists.
+
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Decisions** - Record the design decisions for the `state` op shape, recordings directory and multi-tab policy (no code; no upstream approval needed, the fork is the main repo)
 - [x] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
 - [x] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
 - [x] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
+- [ ] **Phase 4.1: Headless/Headed Launch Switch and Layered Config (INSERTED)** - `BLADE_HEADLESS`, project/user config layers, honest stealth flag, mode shown in doctor, and the options reference page with a drift test
 - [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
 - [ ] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [ ] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
@@ -87,6 +90,23 @@ Plans:
 Plans:
 - [x] 04-01: `src/record/ffmpeg.rs` lookup order (BLADE_FFMPEG > PATH > known dirs) + probe/parse + OnceLock cache, unit tests (moved out of platform.rs: fork-only, SYNC-01)
 - [x] 04-02: `doctor` reporting for ffmpeg and encoders
+
+### Phase 4.1: Headless/Headed Launch Switch and Layered Config (INSERTED)
+**Goal**: A user can run QA suites with a hidden browser and everything else with a visible one, set per suite or per project, and every option and config is documented in one place that tests keep honest
+**Depends on**: Phase 4
+**Requirements**: HEAD-01, HEAD-02, HEAD-03, HEAD-04, DOC-02
+**Success Criteria** (what must be TRUE):
+  1. With `BLADE_HEADLESS=1` the managed browser launches with no visible window on macOS (process arguments show `--headless=new`, no window appears) and with `BLADE_HEADLESS=0` it launches visible; with the variable unset behavior is unchanged on every OS (macOS/Windows headed, Linux Xvfb with headless fallback)
+  2. Settings resolve per-call > env > project config file (found walking up from the working directory) > user config > default, proven by unit tests; the recording settings from Phase 3 use the same layers; `bladebro headless on|off|status` writes and reads the user layer
+  3. In headless mode the stealth layer's launched-headless flag is true and `bladebro audit` passes in both modes (100/100 on this macOS build); changing the mode while a daemon runs either restarts the browser or prints a message telling the user to run `bladebro stop`
+  4. `bladebro doctor` and a one-line launch note show the mode and its source
+  5. `docs/recording-and-launch-config.md` exists and documents every option and config added so far (BLADE_RECORD*, BLADE_FFMPEG, BLADE_HEADLESS, config files and precedence, headless-for-tests vs headed-for-everything-else examples); a drift test fails if a variable or key in the code is missing from the page or documented but absent from the code; the README holds only a pointer; all edits to existing upstream files are listed in `.planning/HOOKS.md`
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04.1-01: `BLADE_HEADLESS` resolver + minimal launch hook in `src/browser/launch.rs` + launched-headless flag + tests
+- [ ] 04.1-02: Layered config (project file, user config, `bladebro headless` toggle), mode in doctor and launch note, daemon-restart handling
+- [ ] 04.1-03: `docs/recording-and-launch-config.md`, drift test, README pointer, live check in both modes
 
 ### Phase 5: Encoder Process Manager
 **Goal**: Given a stream of JPEG frames, Bladebro produces a finalized video file and reports success only when that is proven, on Linux, macOS and Windows
@@ -186,12 +206,13 @@ Plans:
 ### Phase 11: Integration Docs
 **Goal**: The QA flows that consume Bladebro can turn recording on per test case by following the docs, with no extra model effort
 **Depends on**: Phase 10
-**Requirements**: INT-01, INT-02
+**Requirements**: INT-01, INT-02, DOC-01
 **Success Criteria** (what must be TRUE):
   1. Docs show the Claude Code GSD flow (`gsd-charlotte-qa`, `gsd-test-writer`) enabling recording per test case with `BLADE_RECORD` and `state` `record-start` / `record-stop`, including where the path appears in the result
   2. Docs show the DSH plugin flow (`mcp__bladebro__*`) doing the same
   3. README documents the recording feature as actually built (ops, env/config keys, formats, result fields, ffmpeg requirement, size-per-minute, sensitivity warning), replacing "Session video recording: Not supported"
   4. Following each snippet against a fixture page produces a recording at the documented path
+  5. `docs/recording-and-launch-config.md` is complete for the whole milestone (DOC-01): every option, config key, per-call parameter, result field and example is present, each copy-paste example has been run against a fixture, and the drift test passes
 **Plans**: 2 plans
 
 Plans:
@@ -216,14 +237,15 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Decisions | 1/1 | Complete (upstream issue dropped: fork is main) | 2026-10-21 |
 | 2. Sidecar Prototype Gate | 3/3 | Complete (PASS-WITH-CAVEATS) | 2026-10-21 |
 | 3. Recording Config and Safe Output Paths | 3/3 (+03-04 gap closure) | Complete (macOS only; CI not run) | 2026-10-21 |
-| 4. ffmpeg Discovery and Doctor | 0/2 | Not started | - |
+| 4. ffmpeg Discovery and Doctor | 2/2 | Complete (macOS only; CI not run; 442 tests) | 2026-10-21 |
+| 4.1 Launch Mode and Layered Config (INSERTED) | 0/3 | Not started | - |
 | 5. Encoder Process Manager | 0/3 | Not started | - |
 | 6. Frame Source | 0/3 | Not started | - |
 | 7. RecordHub and state Ops | 0/3 | Not started | - |

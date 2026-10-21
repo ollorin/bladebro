@@ -58,6 +58,18 @@ Requirements for the first milestone. Each maps to a roadmap phase.
 - [ ] **SYNC-01**: Upstream updates keep merging cleanly into the fork: a documented, scripted procedure merges `upstream/main`, the recording code is additive (new `src/record/` module plus a short, listed set of hook lines), and a trial merge plus the instrument gate passes after each merge
 - [ ] **VER-04**: The full instrument gate passes: clippy `-D warnings`, `cargo test --release` on ubuntu/macos/windows, audit 111/111, diff_oracle divergent 0, `qol_probe` 122/122, `lane_matrix`, and the live stealth sites with recording on
 
+### Launch Mode & Layered Configuration
+
+- [ ] **HEAD-01**: User can force the managed browser hidden or visible on macOS, Windows and Linux with `BLADE_HEADLESS=1` / `BLADE_HEADLESS=0`; unset keeps today's behavior (headed on macOS/Windows, Xvfb or headless fallback on Linux)
+- [ ] **HEAD-02**: Settings resolve through layers per-call > environment variable > project config file (found by walking up from the working directory, so it can be committed with a repo or suite) > user config (set with a `bladebro headless on|off|status` toggle) > built-in default; the project and user layers also supply the recording settings from Phase 3
+- [ ] **HEAD-03**: When headless is forced, the stealth layer is told the true launch mode so headless-only masks apply, `bladebro audit` passes in both modes, and a mode change while a daemon is running either restarts the browser or says plainly to run `bladebro stop` first
+- [ ] **HEAD-04**: `bladebro doctor` and a one-line launch note state the browser mode and where the setting came from (env, project file, user config or default)
+
+### Documentation
+
+- [ ] **DOC-01**: A single reference page `docs/recording-and-launch-config.md` documents every option and config (environment variables, config files, precedence, per-call parameters, defaults and valid ranges, copy-paste examples for headless tests, headed interactive use, per-test recording, and the Claude Code and DSH setups, plus troubleshooting); every example is run against a fixture before release
+- [ ] **DOC-02**: A drift test fails when an environment variable or config key defined in the code is missing from that page, or documented but absent from the code; every phase that adds or changes an option updates the page as part of its definition of done; the README keeps only a short pointer to it
+
 ### Integration
 
 - [ ] **INT-01**: Documentation shows how the Claude Code GSD flow (`gsd-charlotte-qa`, `gsd-test-writer`) enables recording per test case
@@ -135,12 +147,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VER-04 | Phase 12 | Pending |
 | INT-01 | Phase 11 | Pending |
 | INT-02 | Phase 11 | Pending |
+| HEAD-01 | Phase 4.1 | Pending |
+| HEAD-02 | Phase 4.1 | Pending |
+| HEAD-03 | Phase 4.1 | Pending |
+| HEAD-04 | Phase 4.1 | Pending |
+| DOC-02 | Phase 4.1 | Pending |
+| DOC-01 | Phase 11 | Pending |
 
 **Coverage:**
-- v1 requirements: 35 total
-- Mapped to phases: 35
+- v1 requirements: 41 total
+- Mapped to phases: 41
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-21*
-*Last updated: 2026-10-21 after roadmap creation*
+*Last updated: 2026-10-21 after inserting Phase 4.1 (launch mode, layered config, docs requirements)*
