@@ -1,0 +1,9 @@
+{
+ "file": "results/tabswitch_sample.webm",
+ "packets": 1916,
+ "duplicate_pts": 9,
+ "non_monotonic_steps": 9,
+ "strict_decode_exit": 0,
+ "strict_decode_error_lines": 65,
+ "all_lines_are_dts_warnings": true
+}
