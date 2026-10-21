@@ -74,6 +74,9 @@ pub struct RecordConfig {
     pub queue_len: usize,
     /// Requested name, raw (sanitized in 03-02).
     pub name: Option<String>,
+    /// `<blade_dir>/artifacts`; `prepare_dir_guarded` refuses a recordings dir
+    /// that resolves into it (symlinks, `..`, case-insensitive FS included).
+    pub artifacts_dir: PathBuf,
 }
 
 /// Load `record.json`. A missing file is `Ok(None)`: no config is a normal
@@ -211,6 +214,7 @@ pub fn resolve(
         quality: file_quality.unwrap_or(DEFAULT_QUALITY),
         queue_len: QUEUE_LEN,
         name: over.name.clone(),
+        artifacts_dir: artifacts,
     })
 }
 

@@ -22,7 +22,72 @@ pub const MAX_CREATE_ATTEMPTS: u32 = 8;
 /// point at a user's shared folder). D3-11: on Windows there are no mode bits;
 /// the file inherits the directory ACL (see 03-03 WINDOWS-ACL-DECISION.md).
 pub fn prepare_dir(dir: &Path) -> Result<PathBuf, String> {
+    prepare_dir_inner(dir, None)
+}
+
+/// `prepare_dir` plus the artifacts guard: refuses a dir that, once symlinks,
+/// `..` and filesystem case are resolved, is `artifacts` or inside it. The
+/// config-level check is lexical only; this one compares canonical paths, both
+/// before creating anything and again on the final canonical dir.
+pub fn prepare_dir_guarded(dir: &Path, artifacts: &Path) -> Result<PathBuf, String> {
+    prepare_dir_inner(dir, Some(artifacts))
+}
+
+/// Canonicalize the longest existing ancestor and append the remaining
+/// components (resolving `.`/`..` lexically on the not-yet-existing tail).
+fn resolve_lenient(p: &Path) -> PathBuf {
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    let mut cur = p.to_path_buf();
+    loop {
+        if let Ok(c) = std::fs::canonicalize(&cur) {
+            let mut out = c;
+            for t in tail.iter().rev() {
+                if t == ".." {
+                    out.pop();
+                } else if t != "." {
+                    out.push(t);
+                }
+            }
+            return out;
+        }
+        match (cur.file_name().map(|n| n.to_os_string()), cur.parent()) {
+            (Some(n), Some(par)) => {
+                tail.push(n);
+                cur = par.to_path_buf();
+            }
+            _ => {
+                // `..` has no file_name; keep it so it is applied above.
+                if cur.ends_with("..") {
+                    tail.push("..".into());
+                    match cur.parent() {
+                        Some(par) => cur = par.to_path_buf(),
+                        None => return p.to_path_buf(),
+                    }
+                } else {
+                    return p.to_path_buf();
+                }
+            }
+        }
+    }
+}
+
+fn check_not_artifacts(dir: &Path, artifacts: &Path) -> Result<(), String> {
+    let (rd, ra) = (resolve_lenient(dir), resolve_lenient(artifacts));
+    if rd.starts_with(&ra) {
+        return Err(format!(
+            "recordings dir {} resolves into {}, which rotates at 300 files; choose another dir",
+            dir.display(),
+            artifacts.display()
+        ));
+    }
+    Ok(())
+}
+
+fn prepare_dir_inner(dir: &Path, artifacts: Option<&Path>) -> Result<PathBuf, String> {
     let d = dir.display();
+    if let Some(a) = artifacts {
+        check_not_artifacts(dir, a)?;
+    }
     #[cfg(unix)]
     crate::platform::validate_dir_ancestors(dir).map_err(|e| format!("recordings dir {d}: {e}"))?;
 
@@ -34,9 +99,13 @@ pub fn prepare_dir(dir: &Path) -> Result<PathBuf, String> {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("cannot create recordings dir {d}: {e}"))?;
             }
-            std::fs::create_dir(dir)
-                .map_err(|e| format!("cannot create recordings dir {d}: {e}"))?;
-            created = true;
+            // 0700 from birth on Unix. AlreadyExists means a concurrent first
+            // use won the race: fall through to the same metadata checks.
+            match make_private_dir(dir) {
+                Ok(()) => created = true,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(format!("cannot create recordings dir {d}: {e}")),
+            }
             let m = std::fs::symlink_metadata(dir)
                 .map_err(|e| format!("cannot stat recordings dir {d}: {e}"))?;
             check_kind(&m, dir)?;
@@ -73,7 +142,22 @@ pub fn prepare_dir(dir: &Path) -> Result<PathBuf, String> {
     #[cfg(not(unix))]
     let _ = created;
 
-    std::fs::canonicalize(dir).map_err(|e| format!("cannot resolve recordings dir {d}: {e}"))
+    let canon = std::fs::canonicalize(dir)
+        .map_err(|e| format!("cannot resolve recordings dir {d}: {e}"))?;
+    if let Some(a) = artifacts {
+        check_not_artifacts(&canon, a)?;
+    }
+    Ok(canon)
+}
+
+fn make_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut b = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        b.mode(0o700);
+    }
+    b.create(dir)
 }
 
 fn check_kind(m: &std::fs::Metadata, dir: &Path) -> Result<(), String> {
@@ -144,7 +228,7 @@ static SEQ: AtomicU32 = AtomicU32::new(0);
 
 /// Prepare the dir and create `<stem>-<stamp>-<id>.<ext>` in it.
 pub fn create_recording_file(cfg: &RecordConfig) -> Result<(std::fs::File, PathBuf), String> {
-    let dir = prepare_dir(&cfg.dir)?;
+    let dir = prepare_dir_guarded(&cfg.dir, &cfg.artifacts_dir)?;
     let stem = sanitize_stem(cfg.name.as_deref().unwrap_or(""));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -295,13 +379,98 @@ mod tests {
             d.components().all(|c| c.as_os_str() != "artifacts"),
             "{d:?}"
         );
-        assert_eq!(d.components().last().unwrap().as_os_str(), "recordings");
+        assert_eq!(d.file_name().unwrap(), "recordings");
         drop(c);
+    }
+
+    #[test]
+    fn guarded_refuses_dotdot_into_artifacts() {
+        let bh = scratch();
+        let art = bh.join("artifacts");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::create_dir_all(bh.join("recordings")).unwrap();
+        let e = prepare_dir_guarded(&bh.join("recordings").join("..").join("artifacts"), &art)
+            .unwrap_err();
+        assert!(e.contains("resolves into"), "{e}");
+        let e = prepare_dir_guarded(&bh.join("recordings/../artifacts/sub"), &art).unwrap_err();
+        assert!(e.contains("resolves into"), "{e}");
+        assert!(!art.join("sub").exists());
+        // Not-yet-existing artifacts dir is still guarded.
+        let bh2 = scratch();
+        let e = prepare_dir_guarded(&bh2.join("artifacts").join("x"), &bh2.join("artifacts"))
+            .unwrap_err();
+        assert!(e.contains("resolves into"), "{e}");
+        assert!(!bh2.join("artifacts").exists());
+        // Sibling is fine.
+        prepare_dir_guarded(&bh.join("artifacts2"), &art).unwrap();
+        let _ = std::fs::remove_dir_all(&bh);
+        let _ = std::fs::remove_dir_all(&bh2);
+    }
+
+    #[test]
+    fn create_recording_file_enforces_artifacts_guard() {
+        let bh = scratch();
+        let art = bh.join("artifacts");
+        std::fs::create_dir_all(&art).unwrap();
+        let mut c = cfg(&bh.join("recordings/../artifacts"), None, Format::WebM);
+        c.artifacts_dir = art.clone();
+        assert!(create_recording_file(&c).is_err());
+        assert_eq!(std::fs::read_dir(&art).unwrap().count(), 0);
+        let _ = std::fs::remove_dir_all(&bh);
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn guarded_refuses_case_variant_of_artifacts() {
+        let bh = scratch();
+        let art = bh.join("artifacts");
+        std::fs::create_dir_all(&art).unwrap();
+        // Only meaningful on a case-insensitive volume (default APFS/NTFS).
+        if !bh.join("Artifacts").exists() {
+            let _ = std::fs::remove_dir_all(&bh);
+            return;
+        }
+        let e = prepare_dir_guarded(&bh.join("Artifacts"), &art).unwrap_err();
+        assert!(e.contains("resolves into"), "{e}");
+        assert_eq!(std::fs::read_dir(&art).unwrap().count(), 0);
+        let _ = std::fs::remove_dir_all(&bh);
+    }
+
+    #[test]
+    fn concurrent_first_prepare_all_succeed() {
+        let root = scratch();
+        let d = root.join("nested").join("rec");
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let d = d.clone();
+                std::thread::spawn(move || prepare_dir(&d))
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap().unwrap();
+        }
+        assert!(d.is_dir());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[cfg(unix)]
     mod unix {
         use super::*;
+
+        #[test]
+        fn guarded_refuses_symlink_into_artifacts() {
+            let bh = scratch();
+            let art = bh.join("artifacts");
+            std::fs::create_dir_all(&art).unwrap();
+            let link = bh.join("lnk");
+            std::os::unix::fs::symlink(&art, &link).unwrap();
+            // Via a symlinked ancestor of the (new) dir.
+            let e = prepare_dir_guarded(&link.join("rec"), &art).unwrap_err();
+            assert!(e.contains("resolves into"), "{e}");
+            assert!(!art.join("rec").exists());
+            let _ = std::fs::remove_dir_all(&bh);
+        }
+
         use std::os::unix::fs::PermissionsExt;
 
         fn mode(p: &Path) -> u32 {
