@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Decisions** - Record the design decisions for the `state` op shape, recordings directory and multi-tab policy (no code; no upstream approval needed, the fork is the main repo)
 - [x] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
 - [x] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
-- [ ] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
+- [x] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
 - [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
 - [ ] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [ ] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off

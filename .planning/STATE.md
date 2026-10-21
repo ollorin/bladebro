@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** A QA run with recording enabled always leaves a playable video file at a predictable path that the tool result reports, without touching the stealth path or breaking Bladebro's five-tool contract.
-**Current focus:** Phase 4 - ffmpeg Discovery and Doctor
+**Current focus:** Phase 5 - Encoder Process Manager
 
 ## Current Position
 
-Phase: 3 of 12 (Recording Config and Safe Output Paths) complete
+Phase: 4 of 12 (ffmpeg Discovery and Doctor) complete
 Plan: 3 of 3 in current phase (Phase 2 complete, gate PASS-WITH-CAVEATS; see tools/record_sidecar/RESULTS.md)
-Status: Phase 3 executed and verified on macOS only (400 tests; not executed on Windows/Linux, no CI run, nothing pushed). Ready to plan Phase 4. Config in src/record/{values,config,names,dir}.rs; BLADE_RECORD env, BLADE_HOME/record.json, defaults VP9/WebM 10fps 1280x720.
-Last activity: 2026-10-21 - Phase 3 executed and verified
+Status: Phase 4 executed and verified on macOS only (442 tests; Windows/Linux not executed, no CI run, nothing pushed). ffmpeg discovery in src/record/ffmpeg/{parse,lookup,probe,report}.rs; doctor hook in src/updater/doctor.rs. Ready to plan Phase 5.
+Last activity: 2026-10-21 - Phase 4 executed and verified
 
-Progress: [███░░░░░░░] 25% (3/12 phases executed)
+Progress: [████░░░░░░] 33% (4/12 phases executed)
 
 ## Performance Metrics
 
