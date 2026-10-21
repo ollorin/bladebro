@@ -28,6 +28,7 @@ pub mod mcp;
 pub mod page;
 pub mod platform;
 pub mod realbrowser;
+pub mod record;
 pub mod reddit;
 pub mod session_profile;
 pub mod state;

@@ -5,4 +5,4 @@ reviewed quickly and conflicts localized. New files (e.g. `src/record/**`, `tool
 
 | Phase | File | Lines / symbol | Reason | Added by commit |
 |-------|------|----------------|--------|-----------------|
-| - | (none yet) | | | |
+| 3 | src/lib.rs | `pub mod record;` (between realbrowser and reddit) | expose the fork-only recording module | pending (filled after Task 1 commit) |
