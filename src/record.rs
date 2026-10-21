@@ -23,6 +23,9 @@ pub use config::{
     load_file_config, resolve, resolve_from_env, FileConfig, RecordConfig, RecordOverrides,
 };
 pub use dir::{create_recording_file, prepare_dir};
-pub use ffmpeg::{parse_encoders, parse_version, EncoderSet, FfmpegVersion};
+pub use ffmpeg::{
+    find_ffmpeg, known_locations, parse_encoders, parse_version, EncoderSet, FfmpegVersion, Found,
+    Lookup, Source, TargetOs,
+};
 pub use names::{file_name, sanitize_stem};
 pub use values::{Format, FrameSize};
