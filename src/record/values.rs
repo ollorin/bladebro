@@ -9,6 +9,17 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+// Env var names: the option registry (launch_mode::registry) and the parsers
+// share these, so a renamed variable cannot drift from the docs check (DOC-02).
+/// Recording switch / directory.
+pub const ENV_RECORD: &str = "BLADE_RECORD";
+/// Recording container.
+pub const ENV_RECORD_FORMAT: &str = "BLADE_RECORD_FORMAT";
+/// Recording frame rate.
+pub const ENV_RECORD_FPS: &str = "BLADE_RECORD_FPS";
+/// Recording frame size.
+pub const ENV_RECORD_SIZE: &str = "BLADE_RECORD_SIZE";
+
 /// 10 fps: vp9 4.55 cpu-s/min at 10 fps 1280x720 with 0 live drops
 /// (tools/record_sidecar/RESULTS.md "Recommended defaults for Phase 3").
 pub const DEFAULT_FPS: u32 = 10;

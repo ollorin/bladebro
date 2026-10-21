@@ -18,6 +18,7 @@ mod report;
 
 pub use lookup::{
     find_ffmpeg, find_ffmpeg_from_process, known_locations, EnvFn, Found, Lookup, Source, TargetOs,
+    ENV_FFMPEG,
 };
 
 pub use probe::{

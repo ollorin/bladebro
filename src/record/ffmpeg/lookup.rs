@@ -7,6 +7,9 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+/// Name of the ffmpeg override variable (shared with the option registry, DOC-02).
+pub const ENV_FFMPEG: &str = "BLADE_FFMPEG";
+
 /// Env lookup injected into the pure core.
 pub type EnvFn<'a> = &'a dyn Fn(&str) -> Option<OsString>;
 
@@ -98,7 +101,7 @@ impl Source {
     /// Label for doctor output.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Override => "BLADE_FFMPEG",
+            Self::Override => ENV_FFMPEG,
             Self::Path => "PATH",
             Self::Known => "known location",
         }
@@ -157,7 +160,7 @@ fn check_executable(path: &Path) -> Result<(), String> {
 /// entries are skipped: CWD binary hijack, D4-3), then `known`. Reads only
 /// through `env`; never touches the process env.
 pub fn find_ffmpeg(env: EnvFn, known: &[PathBuf], os: TargetOs) -> Lookup {
-    if let Some(v) = env_nonblank(env, "BLADE_FFMPEG") {
+    if let Some(v) = env_nonblank(env, ENV_FFMPEG) {
         let value = v.to_string_lossy().trim().to_string();
         let p = PathBuf::from(&value);
         if !p.is_absolute() {

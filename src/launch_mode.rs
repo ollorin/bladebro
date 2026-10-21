@@ -8,6 +8,7 @@
 //! - `user`: `<data root>/launch.json` load/write.
 //! - `daemon`: request tag + mode-mismatch refusal for the CLI daemon.
 //! - `display`: the single display decision (`plan_display`) and launch-note wording.
+//! - `registry`: option registry (env vars, config keys) + the DOC-02 docs drift tests.
 //! - `state`: pinned per-process mode, launch-note latch, headless-by-request flag.
 //! - `wiring`: cfg(test) checks that every upstream hook is in place.
 //!
@@ -20,6 +21,7 @@ pub mod display;
 pub mod find;
 pub mod mode;
 pub mod project;
+pub mod registry;
 pub mod state;
 pub mod user;
 #[cfg(test)]

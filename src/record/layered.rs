@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 use super::config::{FileConfig, RecordConfig, RecordOverrides};
 use super::values::{
     check_fps, parse_fps, parse_quality, parse_record_env, Format, FrameSize, RecordEnv, Toggle,
-    DEFAULT_FPS, DEFAULT_QUALITY, QUEUE_LEN, RECORDINGS_SUBDIR,
+    DEFAULT_FPS, DEFAULT_QUALITY, ENV_RECORD, ENV_RECORD_FORMAT, ENV_RECORD_FPS, ENV_RECORD_SIZE,
+    QUEUE_LEN, RECORDINGS_SUBDIR,
 };
 
 /// The project file's `record` section plus its path for error messages.
@@ -88,16 +89,16 @@ pub fn resolve_layered(
     let nonblank = |k: &str| env(k).filter(|v| !v.trim().is_empty());
 
     // --- env layer (parse all of it first) ---
-    let rec_env = parse_record_env(nonblank("BLADE_RECORD").as_deref())
-        .map_err(|e| format!("BLADE_RECORD: {e}"))?;
-    let env_format = nonblank("BLADE_RECORD_FORMAT")
-        .map(|v| Format::parse(&v).map_err(|e| format!("BLADE_RECORD_FORMAT: {e}")))
+    let rec_env = parse_record_env(nonblank(ENV_RECORD).as_deref())
+        .map_err(|e| format!("{ENV_RECORD}: {e}"))?;
+    let env_format = nonblank(ENV_RECORD_FORMAT)
+        .map(|v| Format::parse(&v).map_err(|e| format!("{ENV_RECORD_FORMAT}: {e}")))
         .transpose()?;
-    let env_fps = nonblank("BLADE_RECORD_FPS")
-        .map(|v| parse_fps(&v).map_err(|e| format!("BLADE_RECORD_FPS: {e}")))
+    let env_fps = nonblank(ENV_RECORD_FPS)
+        .map(|v| parse_fps(&v).map_err(|e| format!("{ENV_RECORD_FPS}: {e}")))
         .transpose()?;
-    let env_size = nonblank("BLADE_RECORD_SIZE")
-        .map(|v| FrameSize::parse(&v).map_err(|e| format!("BLADE_RECORD_SIZE: {e}")))
+    let env_size = nonblank(ENV_RECORD_SIZE)
+        .map(|v| FrameSize::parse(&v).map_err(|e| format!("{ENV_RECORD_SIZE}: {e}")))
         .transpose()?;
 
     // --- file layers ---
