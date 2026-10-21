@@ -13,7 +13,7 @@ Opt-in session video recording for Bladebro, built so a QA agent's run leaves a 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Decisions** - Record the design decisions for the `state` op shape, recordings directory and multi-tab policy (no code; no upstream approval needed, the fork is the main repo)
-- [ ] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
+- [x] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
 - [ ] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
 - [ ] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
 - [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
@@ -53,9 +53,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: Sidecar CDP client: attach to a page target, `Page.startScreencast`, ack-on-receipt, pipe JPEG to ffmpeg, stdin-EOF finalize
-- [ ] 02-02: Tab-following and measurement harness (fps, ack latency, drops, drift, headed/headless, viewport change)
-- [ ] 02-03: Stealth check (audit, diff_oracle with screencast active), results file and architecture verdict
+- [x] 02-01: Sidecar CDP client: attach to a page target, `Page.startScreencast`, ack-on-receipt, pipe JPEG to ffmpeg, stdin-EOF finalize
+- [x] 02-02: Tab-following and measurement harness (fps, ack latency, drops, drift, headed/headless, viewport change)
+- [x] 02-03: Stealth check (audit, diff_oracle with screencast active), results file and architecture verdict
 
 ### Phase 3: Recording Config and Safe Output Paths
 **Goal**: Users can turn recording on and tune it through env, config or per-call values with a predictable precedence, and every recording file lands safely in a private, never-rotated directory
@@ -221,7 +221,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Decisions | 1/1 | Complete (upstream issue dropped: fork is main) | 2026-10-21 |
-| 2. Sidecar Prototype Gate | 0/3 | Not started | - |
+| 2. Sidecar Prototype Gate | 3/3 | Complete (PASS-WITH-CAVEATS) | 2026-10-21 |
 | 3. Recording Config and Safe Output Paths | 0/3 | Not started | - |
 | 4. ffmpeg Discovery and Doctor | 0/2 | Not started | - |
 | 5. Encoder Process Manager | 0/3 | Not started | - |

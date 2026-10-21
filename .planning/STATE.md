@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 2 of 12 (Sidecar Prototype Gate)
-Plan: 0 of 3 in current phase (Phase 1 complete)
-Status: Ready to plan Phase 2. User decision 2026-10-21: the fork is the main repo; no upstream issue/PR is needed; the only constraint is that upstream updates keep merging cleanly (SYNC-01).
-Last activity: 2026-10-21 — Roadmap created (12 phases, 34/34 requirements mapped)
+Plan: 3 of 3 in current phase (Phase 2 complete, gate PASS-WITH-CAVEATS; see tools/record_sidecar/RESULTS.md)
+Status: Ready to plan Phase 3. Phase 2 verdict recommends VP9/WebM, 10 fps, 1280x720, concat timestamps, separate recorder attachment (not the Page session), and a Page.screencastFrame exemption in shrink_oversized_event. Fork is the main repo; keep code additive (SYNC-01).
+Last activity: 2026-10-21 - Phase 2 executed and verified
 
-Progress: [█░░░░░░░░░] 8% (1/12 phases executed)
+Progress: [██░░░░░░░░] 17% (2/12 phases executed)
 
 ## Performance Metrics
 

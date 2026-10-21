@@ -52,7 +52,7 @@ Sources are under `tools/record_sidecar/results/`. "cap" = drift measured agains
 | audit with screencast attached to audit's own browser | SCORE 100/100, exit 0; sidecar received 5 frames, 5 acks ok, 0 ack errors, first frame 17 ms, attached for 5.2 s (the whole audit run) | stealth.json:audit_with_screencast | attached on attempt 1; see audit note |
 | audit with screencast, no Page.enable | SCORE 100/100, exit 0; 6 frames, 6 acks ok | stealth.json:audit_with_screencast_no_page_enable | needed 2 attempts in the final run (see note) |
 | audit changed by screencast | false | stealth.json:audit_changed | |
-| diff_oracle | did not run: exit 2 "no Chrome/Chromium found (set CHROME_PATH)"; with CHROME_PATH set, exit 1 `ModuleNotFoundError: No module named 'websockets'` (the oracle also requires Linux + Xvfb per its README) | stealth.json:diff_oracle; diff_oracle_attempt.txt | nothing installed |
+| diff_oracle | did not run: exit 2 "no Chrome/Chromium found (set CHROME_PATH)"; with CHROME_PATH set, exit 1 `ModuleNotFoundError: No module named 'websockets'` (its README also targets Linux + Xvfb; the missing module was the actual blocker here) | stealth.json:diff_oracle; diff_oracle_attempt.txt | nothing installed |
 | battery A/B (substitute) | 99 keys; divergent 0; noise 1 key (`voices`, differs between two runs without any screencast) | stealth.json:battery_* | A, then B with the screencast attached, then A2. During B the sidecar received 296 to 299 frames with acks_ok equal |
 
 Notes:
@@ -123,7 +123,7 @@ implementation; this is reasoning from the code plus the out-of-process probe.
 | JPEG quality | 70 | the quality used in every run here; q60 to 80 was not compared, so this is unproven |
 | timestamp strategy | frame durations from `metadata.timestamp` at the capped fps (concat) with a held final frame; wallclock as fallback | all three within 5 % (concat -0.242 % / +0.040 % cap, wallclock -0.355 %, cfr -1.902 %); concat spool decoded clean on all 11 rows; wallclock gave dts warnings at ~100 fps input; vfr rejected (234 of 800 frames kept) and passthrough used. Resolves D-06. Needs a disk spool (concat finalize was the slowest, 562 ms) |
 | tail hold | keep the final frame to the stop time | without it a 10 s capture became 0.001 s |
-| queue length | 16 (8 under test) with drop-at-queue, ack always first | acks 5994 = 5994 under 94.63 % queue drops; first-frame 8 to 43 ms |
+| queue length | 16 (8 under test) with drop-at-queue, ack always first | acks 5994 = 5994 under 94.63 % queue drops; first-frame 5 to 38 ms |
 | size mode | fixed | see max frame size |
 | follow signal | poll the page list (first real page) plus the recorder's own bookkeeping, not `Target.targetCreated` alone | `newest` misses switch-tab |
 | Page.enable | send it | attach without it failed on a starting page |
@@ -139,7 +139,7 @@ frame-producing screencast (100/100 both, 5 to 6 frames); battery divergent == 0
 (8 of 8). All hold, so not FAIL. Not a plain PASS because of these caveats:
 1. SC1 strict decode: 65 dts warning lines on the tab-switch file and on every live wallclock file at ~100 fps (see SC1
    note); the file plays and all frames are read, but the strict wording of the plan is not met.
-2. diff_oracle did not run on macOS (no Chrome path by default, `websockets` missing, Linux + Xvfb required); a
+2. diff_oracle did not run on macOS (no Chrome path by default, `websockets` module missing; README targets Linux + Xvfb); a
    substitute battery diff was run instead. The real oracle must run on Linux CI before Phase 6 (`divergent: 0`).
 3. Xvfb cadence not measured (macOS host). Re-measure on Linux before Phase 6.
 4. Background tabs and minimized windows deliver no frames (0 frames in 16 s; 0.3 fps minimized). Recording follows the
