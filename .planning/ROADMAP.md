@@ -86,7 +86,7 @@ Plans:
 
 Plans:
 - [x] 04-01: `src/record/ffmpeg.rs` lookup order (BLADE_FFMPEG > PATH > known dirs) + probe/parse + OnceLock cache, unit tests (moved out of platform.rs: fork-only, SYNC-01)
-- [ ] 04-02: `doctor` reporting for ffmpeg and encoders
+- [x] 04-02: `doctor` reporting for ffmpeg and encoders
 
 ### Phase 5: Encoder Process Manager
 **Goal**: Given a stream of JPEG frames, Bladebro produces a finalized video file and reports success only when that is proven, on Linux, macOS and Windows
