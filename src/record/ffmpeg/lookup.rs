@@ -230,10 +230,16 @@ mod tests {
         v.iter().map(|p| p.to_string_lossy().into_owned()).collect()
     }
 
+    /// Forward-slash view: `Path::join` emits `\` on Windows hosts, and the
+    /// macOS/Linux location tests compare against `/` literals.
+    fn strs_fwd(v: &[PathBuf]) -> Vec<String> {
+        strs(v).into_iter().map(|s| s.replace('\\', "/")).collect()
+    }
+
     #[test]
     fn macos_known_locations() {
         let env = env_of(&[]);
-        let v = strs(&known_locations(TargetOs::MacOs, Path::new("/h"), &env));
+        let v = strs_fwd(&known_locations(TargetOs::MacOs, Path::new("/h"), &env));
         assert_eq!(v.len(), 4, "{v:?}");
         let want = [
             "/opt/homebrew/bin",
@@ -250,7 +256,7 @@ mod tests {
     #[test]
     fn linux_known_locations() {
         let env = env_of(&[]);
-        let v = strs(&known_locations(TargetOs::Linux, Path::new("/h"), &env));
+        let v = strs_fwd(&known_locations(TargetOs::Linux, Path::new("/h"), &env));
         let want = ["/usr/bin", "/usr/local/bin", "/snap/bin", "/h/.local/bin"];
         assert_eq!(v.len(), 4, "{v:?}");
         for (got, w) in v.iter().zip(want) {

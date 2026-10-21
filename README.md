@@ -660,6 +660,7 @@ Data root resolution (Unix): `BLADE_HOME` → `$XDG_STATE_HOME/blade` → `$HOME
 | `BLADE_RECORD_FORMAT` | `webm` | `webm` (VP9) or `mp4` (H.264) |
 | `BLADE_RECORD_FPS` | `10` | Whole frames per second, 5-15 |
 | `BLADE_RECORD_SIZE` | `1280x720` | `WIDTHxHEIGHT`, both sides even, 160x120 to 3840x2160 |
+| `BLADE_FFMPEG` | auto | Absolute path to the ffmpeg binary used for recording. Set but unusable is reported, never silently ignored. Otherwise PATH, then known install locations. `bladebro doctor` shows what was found |
 
 Config file: `<data root>/record.json` (data root: see above; on Windows `%USERPROFILE%\.blade`). Fields: `enabled` (bool), `dir` (absolute path), `format`, `fps`, `size`, `quality` (JPEG 1-100, default `70`, file only). Unknown fields are an error. Precedence: per-call > env > `record.json` > default. Per-call input covers `format`, `fps`, `size` and `name` only; `enabled`, `dir` and `quality` have no per-call layer. A bad value in any layer is an error, even when a higher layer overrides it. Invalid values are rejected, never clamped. Errors name their source (`BLADE_RECORD_FPS:`, `record.json fps:`, `per-call fps:`).
 
