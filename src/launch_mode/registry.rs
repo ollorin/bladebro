@@ -192,6 +192,9 @@ mod tests {
         for sub in ["launch_mode", "record"] {
             rs_files(&src.join(sub), &mut files);
         }
+        // The module roots sit beside their folders, not inside them.
+        files.push(src.join("launch_mode.rs"));
+        files.push(src.join("record.rs"));
         assert!(
             files.len() >= 20,
             "scan found too few files: {}",
@@ -199,15 +202,18 @@ mod tests {
         );
         let mut bad = Vec::new();
         for path in &files {
-            // This file's own tests feed deliberately fake tokens (BLADE_A_B,
+            // This file's own tests (after its first cfg(test)) feed deliberately fake tokens (BLADE_A_B,
             // BLADE_ alone, NOBLADE_X) to the scanner; scanning it would flag
             // the fixtures. Its non-test content is only registered names.
-            if path.file_name().is_some_and(|n| n == "registry.rs") {
-                continue;
-            }
-            let text =
+            let is_registry = path.file_name().is_some_and(|n| n == "registry.rs");
+            let full =
                 std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            for t in blade_tokens(&text) {
+            let text = if is_registry {
+                full.split("#[cfg(test)]").next().unwrap_or(&full)
+            } else {
+                &full
+            };
+            for t in blade_tokens(text) {
                 if !ENV_VARS.contains(&t.as_str()) && !UPSTREAM_ALLOWLIST.contains(&t.as_str()) {
                     bad.push(format!(
                         "{}: {t}",

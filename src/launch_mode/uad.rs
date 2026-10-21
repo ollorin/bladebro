@@ -89,29 +89,62 @@ pub fn normalize_platform_version(raw: &str) -> String {
     parts.join(".")
 }
 
-/// The OS version headed Chrome reports as `platformVersion`: macOS
-/// `sw_vers -productVersion`, Linux kernel release (`uname -r`). Fixed args,
-/// no shell. Windows (and any failure) gives "" rather than a guess.
+/// The OS version headed Chrome reports as `platformVersion`, read through the
+/// OS API and never by spawning a program: a PATH-resolved `sw_vers`/`uname`
+/// could be planted by a cloned repo when PATH contains `.` or an empty entry.
+/// macOS `sysctl kern.osproductversion`, Linux `uname().release`. Windows (and
+/// any failure) gives "" rather than a guess.
 pub fn platform_version() -> String {
     static CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     CACHE
-        .get_or_init(|| {
-            let (prog, arg) = if cfg!(target_os = "macos") {
-                ("sw_vers", "-productVersion")
-            } else if cfg!(any(target_os = "linux", target_os = "android")) {
-                ("uname", "-r")
-            } else {
-                return String::new();
-            };
-            std::process::Command::new(prog)
-                .arg(arg)
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| normalize_platform_version(&String::from_utf8_lossy(&o.stdout)))
-                .unwrap_or_default()
-        })
+        .get_or_init(|| normalize_platform_version(&os_version_raw()))
         .clone()
+}
+
+#[cfg(target_os = "macos")]
+fn os_version_raw() -> String {
+    let mut buf = [0u8; 64];
+    let mut len: libc::size_t = buf.len();
+    // SAFETY: the name is a NUL-terminated literal; buf/len describe a valid
+    // writable buffer; no new value is set (null, 0).
+    let rc = unsafe {
+        libc::sysctlbyname(
+            c"kern.osproductversion".as_ptr(),
+            buf.as_mut_ptr().cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 {
+        return String::new();
+    }
+    let n = len.min(buf.len());
+    let bytes = &buf[..n];
+    let end = bytes.iter().position(|b| *b == 0).unwrap_or(n);
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn os_version_raw() -> String {
+    // SAFETY: utsname is plain bytes; zeroed is a valid initial state.
+    let mut u: libc::utsname = unsafe { std::mem::zeroed() };
+    // SAFETY: u is a valid writable utsname.
+    if unsafe { libc::uname(&mut u) } != 0 {
+        return String::new();
+    }
+    let bytes: Vec<u8> = u
+        .release
+        .iter()
+        .take_while(|c| **c != 0)
+        .map(|c| *c as u8)
+        .collect();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
+fn os_version_raw() -> String {
+    String::new()
 }
 
 /// Metadata derived from the (already de-Headless'd) UA string. `real_full`
@@ -251,8 +284,36 @@ mod tests {
         assert_eq!(product_version("nothing"), None);
     }
 
+    /// N1 regression: no program may be spawned here (PATH-planted `sw_vers`).
+    #[test]
+    fn uad_source_never_spawns_a_program() {
+        let src = include_str!("uad.rs");
+        let non_test = src.split("#[cfg(test)]").next().unwrap_or(src);
+        for needle in [
+            "Command::new(",
+            "process::Command",
+            "sw_vers\"",
+            "\"uname\"",
+        ] {
+            assert!(!non_test.contains(needle), "uad.rs must not use `{needle}`");
+        }
+    }
+
+    #[test]
+    fn platform_version_comes_from_the_os_api() {
+        let v = platform_version();
+        if cfg!(any(target_os = "macos", target_os = "linux")) {
+            let parts: Vec<&str> = v.split('.').collect();
+            assert_eq!(parts.len(), 3, "got {v:?}");
+            assert!(parts.iter().all(|p| p.parse::<u32>().is_ok()), "got {v:?}");
+        }
+    }
+
     #[test]
     fn platform_version_normalizes_os_strings() {
+        assert_eq!(normalize_platform_version("  14.5 "), "14.5.0");
+        assert_eq!(normalize_platform_version("5.15.0.1.2"), "5.15.0");
+        assert_eq!(normalize_platform_version("v6.1"), "");
         assert_eq!(normalize_platform_version("26.6.2\n"), "26.6.2");
         assert_eq!(normalize_platform_version("15.2"), "15.2.0");
         assert_eq!(normalize_platform_version("6.8.0-45-generic\n"), "6.8.0");

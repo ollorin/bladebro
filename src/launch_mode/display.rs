@@ -30,7 +30,7 @@ pub fn plan_display(headless: Option<bool>, linux: bool) -> DisplayPlan {
 /// Headless window pin: slightly smaller than the pinned 1920x1080 screen so
 /// the window sits inside it (measured Chrome 154: headless adds a 16 px frame,
 /// so a 1920-wide window reported `outerWidth` 1936 > `screen.width`).
-pub const HEADLESS_WINDOW_SIZE: &str = "--window-size=1904,1040";
+pub const HEADLESS_WINDOW_SIZE: &str = "--window-size=1880,1010";
 pub const HEADLESS_SCREEN_INFO: &str = "--screen-info={1920x1080}";
 
 /// Pin a window inside a 1920x1080 screen (see [`HEADLESS_WINDOW_SIZE`]) for a headless launch on macOS/Windows.
