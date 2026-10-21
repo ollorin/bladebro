@@ -39,6 +39,19 @@ export function bytesPerMinute(sizeBytes, durationS) {
   return +((sizeBytes / durationS) * 60).toFixed(1);
 }
 
+// fps_buckets[i] = frames received in second i of capture (sparse: holes are zero). A stall is any
+// whole second with no frame, including the silence after the LAST frame up to the end of the
+// run (a run whose frames stop at 23 s of 60 s must count 37 s, not 0).
+export function stallSeconds(buckets, wallMs) {
+  const b = buckets ?? [];
+  const first = b.findIndex((v) => v);
+  if (first < 0) return { interior_stall_s: null, trailing_silence_s: null, stall_seconds: null };
+  let interior = 0;
+  for (let i = first; i < b.length - 1; i++) if (!b[i]) interior++;
+  const trailing = Math.max(0, Math.floor(wallMs / 1000) - b.length);
+  return { interior_stall_s: interior, trailing_silence_s: trailing, stall_seconds: interior + trailing };
+}
+
 export function summarizeSegments(segments) {
   const frames = (segments ?? []).map((s) => s.frames);
   return {
@@ -111,9 +124,13 @@ function cmdMerge(name, statsPath, video) {
     segments: st.segments,
     segment_summary: summarizeSegments(st.segments),
     events: st.events,
-    encoder: st.encoder ? { finalized: st.encoder.finalized, bench: st.encoder.bench, exit_code: st.encoder.exit_code } : null,
+    stop_begin_ms: st.stop_begin_ms ?? null,
+    encoder: st.encoder ? { finalized: st.encoder.finalized, bench: st.encoder.bench, exit_code: st.encoder.exit_code, finalize_ms: st.encoder.finalize_ms ?? null } : null,
     probe,
+    // drift_pct: vs wall_ms (the plan's reference, includes finalize). drift_pct_capture: vs the
+    // stop request, i.e. the capture window only. Only the second isolates capture timing.
     drift_pct: probe.duration_s && st.wall_ms ? driftPct(probe.duration_s, st.wall_ms) : null,
+    drift_pct_capture: probe.duration_s && st.stop_begin_ms ? driftPct(probe.duration_s, st.stop_begin_ms) : null,
     bytes_per_min: bytesPerMinute(probe.size_bytes ?? statSync(resolve(video)).size, probe.duration_s),
   };
   if (st.encoder && st.encoder.finalized === false) {

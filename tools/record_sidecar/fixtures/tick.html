@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>tick</title>
+<style>body{margin:0;background:#222;color:#eee;font:48px monospace;padding:40px}</style>
+</head><body><h1 id="t">tick 0</h1>
+<script>
+// One repaint per second and nothing else: a sparse-damage page. Chrome's screencast only
+// emits frames on damage, so this gives a frame cadence of ~1 Hz (unlike idle.html, which
+// repaints almost never, and anim.html, which repaints every vsync).
+let n = 0;
+setInterval(() => { n++; document.getElementById('t').textContent = 'tick ' + n; }, 1000);
+</script></body></html>

@@ -1,6 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { driftPct, parseProbe, bytesPerMinute, summarizeSegments, countDecodeErrorLines } from '../measure.mjs';
+import { driftPct, parseProbe, bytesPerMinute, summarizeSegments, countDecodeErrorLines, stallSeconds } from '../measure.mjs';
+
+// Regression: the 60 s acks run delivered frames for 23 s and then nothing. An interior-only
+// count reported 0 stall seconds for it; the trailing silence must count.
+test('stallSeconds: trailing silence after the last frame counts (23 s of frames in a 60 s run = 37 s stall)', () => {
+  const buckets = [92, 100, 100, 100, 100, 97, 101, 91, 99, 100, 100, 100, 100, 100, 100, 100, 100, 100, 99, 100, 100, 101, 66];
+  assert.deepEqual(stallSeconds(buckets, 60068), { interior_stall_s: 0, trailing_silence_s: 37, stall_seconds: 37 });
+});
+
+test('stallSeconds: interior zero seconds count, a steady run has none, no frames -> nulls', () => {
+  assert.deepEqual(stallSeconds([10, 0, 0, 10], 4000), { interior_stall_s: 2, trailing_silence_s: 0, stall_seconds: 2 });
+  assert.deepEqual(stallSeconds([10, 10, 10], 3000), { interior_stall_s: 0, trailing_silence_s: 0, stall_seconds: 0 });
+  assert.deepEqual(stallSeconds([], 5000), { interior_stall_s: null, trailing_silence_s: null, stall_seconds: null });
+});
 
 test('countDecodeErrorLines: counts non-empty stderr lines, empty -> 0', () => {
   assert.equal(countDecodeErrorLines(''), 0);

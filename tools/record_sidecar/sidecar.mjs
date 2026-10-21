@@ -379,6 +379,9 @@ async function main() {
     stopPromise = (async () => {
       stopping = true;
       stats.stop_reason = reason;
+      // Capture length ends at the stop request. wall_ms (below) also includes encoder finalize,
+      // so drift against wall_ms is biased by finalize time; both are kept.
+      stats.stop_begin_ms = Date.now() - startedMs;
       if (pollTimer) clearInterval(pollTimer);
       for (const t of scriptTimers) clearTimeout(t);
       await withTimeout(switchChain, 5000).catch(() => {});
