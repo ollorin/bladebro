@@ -27,6 +27,16 @@ pub fn plan_display(headless: Option<bool>, linux: bool) -> DisplayPlan {
     }
 }
 
+/// Pin `--window-size=1920,1080` for a headless launch on macOS/Windows.
+/// Measured (macOS, Chrome 154): unpinned headless reports Chrome's 800x600
+/// default screen, failing the audit's screen-size / avail / inner-within-screen
+/// vectors that pass headed. There is no real desktop to be wider than, so the
+/// small-CI-screen hazard that keeps the headed pin Linux-only does not apply.
+/// Linux headless is left unchanged (not measured to need it).
+pub fn pin_headless_window(headful: bool) -> bool {
+    !headful && !cfg!(any(target_os = "linux", target_os = "android"))
+}
+
 pub fn describe(m: &LaunchMode, headful: bool, linux: bool) -> &'static str {
     match (headful, linux) {
         (false, _) if m.forced_headless() => "headless",
@@ -103,5 +113,19 @@ mod tests {
         let u = m(Some(false), Source::User(PathBuf::from("/x/u.json")));
         let n = launch_note(&u, true, false);
         assert!(n.contains("user config /x/u.json") && !n.contains('\n'));
+    }
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+
+    #[test]
+    fn headless_pin_is_non_linux_only_and_never_headful() {
+        assert!(!pin_headless_window(true));
+        assert_eq!(
+            pin_headless_window(false),
+            !cfg!(any(target_os = "linux", target_os = "android"))
+        );
     }
 }

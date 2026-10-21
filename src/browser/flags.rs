@@ -367,6 +367,12 @@ pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
     if cfg.headful {
         args.push("--window-size=1920,1080".into());
     }
+    // (4.1) Headless has no display to inherit a screen from: without a pin
+    // Chrome reports its 800x600 default screen (incoherent with the window).
+    if crate::launch_mode::display::pin_headless_window(cfg.headful) {
+        args.push("--window-size=1920,1080".into());
+        args.push("--screen-info={1920x1080}".into());
+    }
     args.extend(cfg.extra.iter().cloned());
     args
 }
@@ -598,7 +604,11 @@ mod launch_flag_tests {
         }
         assert!(a.iter().any(|f| f.starts_with("--user-data-dir=")));
         let h = launch_args(&cfg(GlStage::NativeGl, false, Transport::Ws));
-        assert!(!h.iter().any(|f| f == "--window-size=1920,1080"));
+        // Headless: pinned off Linux (4.1, measured 800x600 default), unchanged on Linux.
+        assert_eq!(
+            h.iter().any(|f| f == "--window-size=1920,1080"),
+            crate::launch_mode::display::pin_headless_window(false)
+        );
     }
 }
 

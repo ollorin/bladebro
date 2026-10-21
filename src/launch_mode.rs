@@ -10,6 +10,7 @@
 //! - `display`: the single display decision (`plan_display`) and launch-note wording.
 //! - `registry`: option registry (env vars, config keys) + the DOC-02 docs drift tests.
 //! - `state`: pinned per-process mode, launch-note latch, headless-by-request flag.
+//! - `uad`: headless client-hints metadata for the UA override (probe or derived).
 //! - `wiring`: cfg(test) checks that every upstream hook is in place.
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
@@ -23,6 +24,7 @@ pub mod mode;
 pub mod project;
 pub mod registry;
 pub mod state;
+pub mod uad;
 pub mod user;
 #[cfg(test)]
 mod wiring;

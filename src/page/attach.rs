@@ -104,21 +104,34 @@ impl Page {
                 .and_then(|v| v.get("plt").and_then(|p| p.as_str()))
                 .unwrap_or(fallback_platform());
 
-            // Override ONLY userAgent + platform. The previous version also
-            // sent a hand-built userAgentMetadata with a hardcoded GREASE
-            // brand ("Not:A-Brand"/99) that matched no real Chrome build —
-            // the real Sec-CH-UA headers would never equal it. Chrome keeps
-            // generating coherent metadata (brands, GREASE, full versions)
-            // from its true version, which matches the fixed UA string
-            // (only "HeadlessChrome" → "Chrome" differs).
-            if let Err(e) = cdp
+            // The old hand-built metadata hardcoded a GREASE brand
+            // ("Not:A-Brand"/99) matching no real build; the metadata below
+            // instead comes from the browser itself or Chromium's own
+            // deterministic GREASE algorithm for the real version.
+            // (4.1) Measured on Chrome 154 headless: an override without
+            // metadata leaves navigator.userAgentData empty, so metadata is
+            // attached (see launch_mode::uad for the sources).
+            let mut ua_params = serde_json::json!({
+                "userAgent": fixed_ua,
+                "platform": real_platform,
+            });
+            let probe = cdp
                 .send(
-                    "Network.setUserAgentOverride",
+                    "Runtime.evaluate",
                     Some(serde_json::json!({
-                        "userAgent": fixed_ua,
-                        "platform": real_platform,
+                        "expression": crate::launch_mode::uad::PROBE_JS,
+                        "returnByValue": true,
+                        "awaitPromise": true,
                     })),
                 )
+                .await
+                .ok()
+                .and_then(|r| r["result"]["value"].as_str().map(String::from));
+            if let Some(meta) = crate::launch_mode::uad::build(probe.as_deref(), &fixed_ua) {
+                ua_params["userAgentMetadata"] = meta;
+            }
+            if let Err(e) = cdp
+                .send("Network.setUserAgentOverride", Some(ua_params))
                 .await
             {
                 crate::browser::set_ua_override_failed();

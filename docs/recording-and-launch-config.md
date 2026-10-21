@@ -36,6 +36,7 @@ Notes:
 - The mode is decided once per process. The daemon and the MCP server keep one mode for their lifetime, so restart them (`bladebro stop`) to change it. A GL-ladder or crash relaunch never flips the mode.
 - Launch note: each managed launch process prints exactly one stderr line `[bladebro] browser mode: <mode> (source: <source>)`. Modes: `headless`, `headed`, `headed (virtual display)`, `headless (no Xvfb; fallback)`. Source: `env BLADE_HEADLESS`, `project file <path>`, `user config <path>` or `default`. stdout is untouched, so `--json` and MCP output stay machine-clean.
 - Stealth: a forced-headless launch sets the launched-headless flag, so the headless-only masks apply. The "no Xvfb display was available" advisory is not emitted when headless was requested, since it would be false.
+- Audit parity: forced-headless scores the same stealth audit as headed (100/100 on macOS, Chrome 154). On macOS/Windows a headless launch pins a 1920x1080 screen/window (otherwise Chrome reports its 800x600 default), and the headless UA override carries client-hints metadata so `navigator.userAgentData` has the same brand list as headed Chrome (`HeadlessChrome` is never exposed).
 - The real-browser lane ignores `BLADE_HEADLESS`; use `bladebro rb visible on|off` there.
 - Older workaround: `BLADE_CHROME_FLAGS="--headless=new"`. Replace it with `BLADE_HEADLESS=1`: with raw flags, stealth believed the launch was headed.
 
