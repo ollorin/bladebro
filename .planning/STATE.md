@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** A QA run with recording enabled always leaves a playable video file at a predictable path that the tool result reports, without touching the stealth path or breaking Bladebro's five-tool contract.
-**Current focus:** Phase 2 - Sidecar Prototype Gate
+**Current focus:** Phase 3 - Recording Config and Safe Output Paths
 
 ## Current Position
 
