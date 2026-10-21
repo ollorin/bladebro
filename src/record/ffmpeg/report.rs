@@ -547,4 +547,32 @@ mod tests {
             assert!(!all.contains("=vp8") && !all.contains("set BLADE_RECORD_FORMAT=vp8"));
         }
     }
+
+    #[test]
+    fn doctor_hook_is_wired() {
+        let src = include_str!("../../updater/doctor.rs");
+        assert_eq!(src.matches("checks.push(check_ffmpeg());").count(), 1);
+        assert!(src.contains("fn check_ffmpeg() -> Check"));
+        assert!(src.contains("crate::record::ffmpeg::doctor_check()"));
+        let start = src.find("fn check_ffmpeg").expect("fn");
+        let rest = &src[start..];
+        let end = ["\nfn ", "\nasync fn "]
+            .iter()
+            .filter_map(|m| rest.find(m))
+            .min()
+            .unwrap_or(rest.len());
+        let body = &rest[..end];
+        assert!(body.contains("Level::Warn => Status::Warn"));
+        assert!(body.contains("Level::Ok => Status::Pass"));
+        assert!(
+            !body.contains("Status::Fail"),
+            "ffmpeg must never fail doctor"
+        );
+        let disk = src.find("checks.push(check_disk_space());").expect("disk");
+        let hook = src.find("checks.push(check_ffmpeg());").expect("hook");
+        let ver = src
+            .find("checks.push(check_version().await);")
+            .expect("ver");
+        assert!(disk < hook && hook < ver);
+    }
 }

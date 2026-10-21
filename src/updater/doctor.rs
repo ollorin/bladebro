@@ -79,6 +79,8 @@ pub async fn run() -> Result<()> {
 
     // 11. Disk space
     checks.push(check_disk_space());
+    // Fork hook (.planning/HOOKS.md): ffmpeg for opt-in recording; never Fail.
+    checks.push(check_ffmpeg());
 
     // 12. Version vs latest
     checks.push(check_version().await);
@@ -692,6 +694,20 @@ fn check_disk_space() -> Check {
         status: Status::Warn,
         detail: "could not measure available space".into(),
         fix: None,
+    }
+}
+
+/// Fork hook: report logic lives in record::ffmpeg (unit-tested there).
+fn check_ffmpeg() -> Check {
+    let line = crate::record::ffmpeg::doctor_check();
+    Check {
+        name: crate::record::ffmpeg::CHECK_NAME,
+        status: match line.level {
+            crate::record::ffmpeg::Level::Ok => Status::Pass,
+            crate::record::ffmpeg::Level::Warn => Status::Warn,
+        },
+        detail: line.detail,
+        fix: line.fix,
     }
 }
 
