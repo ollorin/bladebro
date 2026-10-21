@@ -50,11 +50,12 @@ Requirements for the first milestone. Each maps to a roadmap phase.
 - [ ] **SAFE-03**: Files are created 0600 in a 0700 directory on Unix, the Windows ACL decision is documented, and the README warns that recordings can contain sensitive content
 - [ ] **SAFE-04**: Success is reported only after a finished stop with ffmpeg exit 0 and a non-empty file; a missing ffmpeg or encoder yields an honest error and browsing continues unaffected
 
-### Verification & Upstream
+### Verification & Fork Sync
 
 - [ ] **VER-01**: A sidecar prototype in `tools/record_sidecar/` demonstrates capture across a tab switch with recorded measurements (fps, ack latency, drops, duration drift) and is kept as a supported probe
-- [ ] **VER-02**: An upstream issue for the `state` op schema and recordings directory is opened and answered before the in-tree PR
+- [x] **VER-02**: The `state` op shape, recordings directory and multi-tab policy are decided by us and recorded in a decision record before any schema code is written (no upstream approval needed; the fork is the main repo)
 - [ ] **VER-03**: Tests cover config precedence, name sanitization, ffmpeg arguments, verdict strings, fake-encoder lifecycle, and a 2 MB `Page.screencastFrame` passing through `shrink_oversized_event` unchanged
+- [ ] **SYNC-01**: Upstream updates keep merging cleanly into the fork: a documented, scripted procedure merges `upstream/main`, the recording code is additive (new `src/record/` module plus a short, listed set of hook lines), and a trial merge plus the instrument gate passes after each merge
 - [ ] **VER-04**: The full instrument gate passes: clippy `-D warnings`, `cargo test --release` on ubuntu/macos/windows, audit 111/111, diff_oracle divergent 0, `qol_probe` 122/122, `lane_matrix`, and the live stealth sites with recording on
 
 ### Integration
@@ -90,7 +91,7 @@ Deferred to future milestones. Tracked but not in the current roadmap.
 | Inline video bytes in tool results | Token cost |
 | Audio capture, live-view URL, rrweb DOM replay | Not needed for QA evidence |
 | Auto speed-up / idle-cut editing, pixel-diff verdicts | Out of the driver's role |
-| Updater, npm packaging, version bumps, releases | Maintainer territory |
+| Updater, npm packaging, version bumps, releases | Left as upstream has them to keep merges clean (the fork's updater still points at upstream releases; revisit separately) |
 | Rewriting the `gsd-charlotte-qa` persona | Separate follow-up in the get-shit-done repo |
 
 ## Traceability
@@ -128,15 +129,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAFE-03 | Phase 3 | Pending |
 | SAFE-04 | Phase 5 | Pending |
 | VER-01 | Phase 2 | Pending |
-| VER-02 | Phase 1 | Pending |
+| VER-02 | Phase 1 | Complete |
+| SYNC-01 | Phase 12 | Pending |
 | VER-03 | Phase 12 | Pending |
 | VER-04 | Phase 12 | Pending |
 | INT-01 | Phase 11 | Pending |
 | INT-02 | Phase 11 | Pending |
 
 **Coverage:**
-- v1 requirements: 34 total
-- Mapped to phases: 34
+- v1 requirements: 35 total
+- Mapped to phases: 35
 - Unmapped: 0 ✓
 
 ---

@@ -1,3 +1,5 @@
+> **Update 2026-10-21:** the fork is the main repo. No upstream issue/PR/approval is needed; references below to asking upstream or to a 'Phase 7 gate' are superseded. The decisions themselves stand; the only upstream constraint is keeping merges from `upstream/main` clean (SYNC-01).
+
 # Phase 1 Decisions - Session Recording
 
 Date: 2026-10-21

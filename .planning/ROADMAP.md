@@ -2,7 +2,7 @@
 
 ## Overview
 
-Opt-in session video recording for Bladebro, built so a QA agent's run leaves a playable video at a predictable path reported in the tool result. The journey starts with no-code decisions and an upstream schema issue, then a throwaway sidecar prototype that must pass before any in-tree work. In-tree work then goes from pure, browser-independent pieces (config, safe paths, ffmpeg discovery, encoder process) through the frame source, the `state` op surface, tab following and finalization on every exit path. Evidence extras, integration docs and a full instrument gate (stealth, cross-platform, regression) close the milestone. Every in-tree phase carries its own tests; the final gate re-verifies everything together with recording on.
+Opt-in session video recording for Bladebro, built so a QA agent's run leaves a playable video at a predictable path reported in the tool result. The journey starts with no-code design decisions, then a throwaway sidecar prototype that must pass before any in-tree work. In-tree work then goes from pure, browser-independent pieces (config, safe paths, ffmpeg discovery, encoder process) through the frame source, the `state` op surface, tab following and finalization on every exit path. Evidence extras, integration docs and a full instrument gate (stealth, cross-platform, regression) close the milestone. Every in-tree phase carries its own tests; the final gate re-verifies everything together with recording on.
 
 ## Phases
 
@@ -12,7 +12,7 @@ Opt-in session video recording for Bladebro, built so a QA agent's run leaves a 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Decisions and Upstream Issue** - Record design decisions and open the ask-first upstream issue for the `state` op schema and recordings directory (no code)
+- [x] **Phase 1: Decisions** - Record the design decisions for the `state` op shape, recordings directory and multi-tab policy (no code; no upstream approval needed, the fork is the main repo)
 - [ ] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
 - [ ] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
 - [ ] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
@@ -27,18 +27,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ## Phase Details
 
-### Phase 1: Decisions and Upstream Issue
-**Goal**: The open design questions have recorded answers, and the upstream maintainers have been asked about the `state` op schema and recordings directory before any schema code is written
+### Phase 1: Decisions
+**Goal**: The open design questions have recorded answers before any schema code is written
 **Depends on**: Nothing (first phase)
 **Requirements**: VER-02
 **Success Criteria** (what must be TRUE):
-  1. An upstream issue on dondai44423/bladebro exists that proposes Option A (`state` ops `record-start` / `record-stop` reusing `name`), the dedicated `~/.blade/recordings/` directory and `BLADE_RECORD`, with the token cost of the schema addition stated
+  1. The decision record states the chosen `state` op shape (Option A: `record-start` / `record-stop` reusing `name`), the dedicated `~/.blade/recordings/` directory and `BLADE_RECORD`, with the token cost of the schema addition measured
   2. A decision record in `.planning/` captures the multi-tab policy (one file following the active tab, segment boundaries), the recordings directory choice, and marks codec, fps cap and timestamp strategy as provisional pending Phase 2 measurements
-  3. The issue's answer (or the fallback decision if none arrives) is recorded before Phase 7 starts; Phase 7 is blocked until then
+  3. Nothing blocks Phase 7: the fork owner decides, and the upstream-issue draft is kept only as design rationale (it is not posted and will not be)
 **Plans**: 1 plan
 
 Plans:
-- [x] 01-01: Write decision record and draft/open the upstream schema + recordings-dir issue
+- [x] 01-01: Write decision record (an unposted upstream-issue draft was also produced; now rationale only)
 
 ### Phase 2: Sidecar Prototype Gate
 **Goal**: A standalone sidecar proves that CDP screencast plus ffmpeg produces a correct, playable recording across a tab switch, and its measurements decide the in-tree architecture and defaults
@@ -123,11 +123,11 @@ Plans:
 
 ### Phase 7: RecordHub and state Ops
 **Goal**: An agent can start and stop a named recording through the existing `state` tool and get a complete, honest report, while Bladebro behaves exactly as today when recording is not used
-**Depends on**: Phase 6 (and the Phase 1 upstream answer)
+**Depends on**: Phase 6
 **Requirements**: CTRL-01, CTRL-04, CTRL-05, OUT-05
 **Success Criteria** (what must be TRUE):
   1. Calling `state` with `record-start` and a name, browsing, then `record-stop` leaves a playable file, and the result gives absolute path, bytes, duration, frame count, dropped-frame count and segment boundaries
-  2. A second `record-start` during an active recording returns an error naming the active file; the tool count stays at five and the schema delta matches the upstream-agreed shape
+  2. A second `record-start` during an active recording returns an error naming the active file; the tool count stays at five and the schema delta matches the shape in the Phase 1 decision record
   3. With recording off, a CDP trace of a standard session matches today's (no screencast, no new domains) and no recording files are created
   4. Existing `state` ops and the rest of the five tools are unchanged: `qol_probe` 122/122 and `lane_matrix` pass; integration tests cover start/stop, double-start error, off-mode no-op and missing-ffmpeg error
 **Plans**: 3 plans
@@ -199,14 +199,14 @@ Plans:
 - [ ] 11-02: GSD and DSH integration snippets, verified against a fixture
 
 ### Phase 12: Full Instrument Gate
-**Goal**: The milestone is proven ready for an upstream PR: complete tests, green on all platforms, and stealth unchanged with recording on
+**Goal**: The milestone is proven ready to merge into the fork's main: complete tests, green on all platforms, stealth unchanged with recording on, and upstream updates still merge cleanly
 **Depends on**: Phase 11
-**Requirements**: VER-03, VER-04
+**Requirements**: VER-03, VER-04, SYNC-01
 **Success Criteria** (what must be TRUE):
   1. Tests exist and pass for config precedence, name sanitization, ffmpeg arguments, verdict strings, fake-encoder lifecycle, and the 2 MB `Page.screencastFrame` through `shrink_oversized_event`
   2. `cargo clippy --release -- -D warnings` is clean and `cargo test --release` passes on ubuntu, macos and windows CI
   3. With recording on: `bladebro audit` 111/111, `diff_oracle` divergent 0, `qol_probe` 122/122, `tools/lane_matrix.py all 5` green, and the live sites pass (sannysoft all pass, incolumitas no bot detection, creepjs headless 0% / stealth 0%) with before/after numbers recorded
-  4. The diff against `upstream/main` is additive (new `src/record/` module plus hook lines) and a PR description with verification evidence is drafted
+  4. The diff against `upstream/main` is additive (new `src/record/` module plus a listed set of hook lines); a scripted trial merge of the current `upstream/main` into the branch is conflict-free (or conflicts only in the listed hook lines) and the instrument gate passes on the merged result; a merge procedure is documented (SYNC-01)
 **Plans**: 2 plans
 
 Plans:
@@ -220,7 +220,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Decisions and Upstream Issue | 1/1 | Executed; issue drafted, awaiting user approval to post; Phase 7 gate open | - |
+| 1. Decisions | 1/1 | Complete (upstream issue dropped: fork is main) | 2026-10-21 |
 | 2. Sidecar Prototype Gate | 0/3 | Not started | - |
 | 3. Recording Config and Safe Output Paths | 0/3 | Not started | - |
 | 4. ffmpeg Discovery and Doctor | 0/2 | Not started | - |

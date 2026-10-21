@@ -1,3 +1,4 @@
+<!-- SUPERSEDED 2026-10-21: user decided the fork is the main repo; this issue will NOT be posted. Kept only as design rationale. -->
 <!-- DRAFT - NOT POSTED. Do not post without explicit user approval. -->
 # DRAFT - NOT POSTED
 Target repo: dondai44423/bladebro (upstream). Template: .github/ISSUE_TEMPLATE/feature_request.yml (label: enhancement)
