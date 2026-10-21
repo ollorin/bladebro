@@ -1,0 +1,312 @@
+{
+  "scenario": "tabswitch",
+  "host": {
+    "os": "macOS arm64",
+    "ffmpeg": "n9.0.2",
+    "transport": "ws",
+    "headless": true
+  },
+  "poll": {
+    "name": "tabswitch_poll",
+    "chrome": "Chrome/154.0.8037.58",
+    "follow": "poll",
+    "stop_reason": "duration",
+    "wall_ms": 32066,
+    "frames_received": 1916,
+    "stale_frames": 0,
+    "acks_sent": 1916,
+    "acks_ok": 1915,
+    "acks_err": 1,
+    "frames_written": 1917,
+    "frames_dropped": 0,
+    "dup_frames_written": 0,
+    "queue_max": 8,
+    "ack_send_us": {
+      "p50": 47.541999998429674,
+      "p95": 120.24999999994179,
+      "max": 287.91699999965203
+    },
+    "ack_rtt_ms": {
+      "p50": 0.37595800000053714,
+      "p95": 0.5189579999987473,
+      "max": 21.94787499999984
+    },
+    "capture_to_recv_ms": {
+      "p50": 2.34521484375,
+      "p95": 3.900146484375,
+      "max": 12.6279296875
+    },
+    "effective_fps_recv": 59.75,
+    "first_frame_ms": 8,
+    "max_gap_ms": 57,
+    "fps_buckets": [
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      57,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      58,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      1
+    ],
+    "frame_sizes": {
+      "756x469": 1916
+    },
+    "segments": [
+      {
+        "t_ms": 0,
+        "targetId": "C401640F583A8ED39D780645A3D4BC3C",
+        "url": "http://127.0.0.1:8765/a.html",
+        "frames": 600,
+        "switch_ms": null
+      },
+      {
+        "t_ms": 10069,
+        "targetId": "B936DD803EE546DF071EC326A25C450A",
+        "url": "http://127.0.0.1:8765/b.html",
+        "frames": 615,
+        "switch_ms": 14
+      },
+      {
+        "t_ms": 20357,
+        "targetId": "C401640F583A8ED39D780645A3D4BC3C",
+        "url": "http://127.0.0.1:8765/a.html",
+        "frames": 701,
+        "switch_ms": 10
+      }
+    ],
+    "segment_summary": {
+      "count": 3,
+      "frames_per_segment": [
+        600,
+        615,
+        701
+      ],
+      "all_nonzero": true
+    },
+    "events": [],
+    "encoder": {
+      "finalized": true,
+      "bench": {
+        "utime_s": 6.799,
+        "stime_s": 1.95,
+        "rtime_s": 20.381
+      },
+      "exit_code": 0
+    },
+    "probe": {
+      "codec": "vp9",
+      "width": 1280,
+      "height": 720,
+      "duration_s": 31.985,
+      "nb_read_frames": 1917,
+      "size_bytes": 508246,
+      "decode_exit": 0,
+      "decode_error_lines": 44,
+      "decode_errors": "[null @ 0x8cac20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 556 >= 556\n[null @ 0x8cac20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 637 >= 637\n[null @ 0x8cac20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 642 >= 642\n[null @ 0x8cac20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 645 >= 645\n[null @ 0x8cac20280] Application",
+      "playable": false,
+      "decodes_clean_exit": true
+    },
+    "drift_pct": -0.253,
+    "bytes_per_min": 953408.2,
+    "json_list_while_b_current": [
+      {
+        "id": "B936DD803EE546DF071EC326A25C450A",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/b.html"
+      },
+      {
+        "id": "69BE7344EF17E8C2BDE1BEC29244AC95",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/"
+      },
+      {
+        "id": "F22D3604CF02CF89A03886BEC7D451E1",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html"
+      },
+      {
+        "id": "C401640F583A8ED39D780645A3D4BC3C",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/a.html"
+      },
+      {
+        "id": "F9F49E6D8CD55DC25DE48D6D394C1E99",
+        "type": "background_page",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html"
+      },
+      {
+        "id": "1FF8C3906AC8BE175378E2E4C1269DF6",
+        "type": "service_worker",
+        "url": "chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js"
+      }
+    ]
+  },
+  "newest": {
+    "name": "tabswitch_newest",
+    "chrome": "Chrome/154.0.8037.58",
+    "follow": "newest",
+    "stop_reason": "duration",
+    "wall_ms": 32069,
+    "frames_received": 1217,
+    "stale_frames": 0,
+    "acks_sent": 1217,
+    "acks_ok": 1216,
+    "acks_err": 1,
+    "frames_written": 1218,
+    "frames_dropped": 0,
+    "dup_frames_written": 0,
+    "queue_max": 6,
+    "ack_send_us": {
+      "p50": 55.50000000016553,
+      "p95": 142.95899999888206,
+      "max": 433.9999999997417
+    },
+    "ack_rtt_ms": {
+      "p50": 0.3916250000002037,
+      "p95": 0.556583000000046,
+      "max": 2.362875000000713
+    },
+    "capture_to_recv_ms": {
+      "p50": 2.56396484375,
+      "p95": 4.065185546875,
+      "max": 4.89404296875
+    },
+    "effective_fps_recv": 37.95,
+    "first_frame_ms": 25,
+    "max_gap_ms": 30,
+    "fps_buckets": [
+      59,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      59,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      19
+    ],
+    "frame_sizes": {
+      "756x469": 1217
+    },
+    "segments": [
+      {
+        "t_ms": 0,
+        "targetId": "949CF35C485DABD9FCA9D63F5025EB33",
+        "url": "http://127.0.0.1:8765/a.html",
+        "frames": 599,
+        "switch_ms": null
+      },
+      {
+        "t_ms": 10031,
+        "targetId": "DAB357EF15B4D0ADEA9D5671352B796A",
+        "url": "http://127.0.0.1:8765/b.html",
+        "frames": 618,
+        "switch_ms": 27
+      }
+    ],
+    "segment_summary": {
+      "count": 2,
+      "frames_per_segment": [
+        599,
+        618
+      ],
+      "all_nonzero": true
+    },
+    "events": [],
+    "encoder": {
+      "finalized": true,
+      "bench": {
+        "utime_s": 3.707,
+        "stime_s": 1.184,
+        "rtime_s": 20.413
+      },
+      "exit_code": 0
+    },
+    "probe": {
+      "codec": "vp9",
+      "width": 1280,
+      "height": 720,
+      "duration_s": 31.984,
+      "nb_read_frames": 1218,
+      "size_bytes": 323121,
+      "decode_exit": 0,
+      "decode_error_lines": 36,
+      "decode_errors": "[null @ 0xbd3018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 314 >= 314\n[null @ 0xbd3018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 331 >= 331\n[null @ 0xbd3018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 333 >= 333\n[null @ 0xbd3018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 367 >= 367\n[null @ 0xbd3018280] Application",
+      "playable": false,
+      "decodes_clean_exit": true
+    },
+    "drift_pct": -0.265,
+    "bytes_per_min": 606155,
+    "json_list_while_b_current": [
+      {
+        "id": "DAB357EF15B4D0ADEA9D5671352B796A",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/b.html"
+      },
+      {
+        "id": "105043C87FD0AA1A49FD3E9F85E469E3",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/"
+      },
+      {
+        "id": "824A98E9F76FA0399510ECD399A66933",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html"
+      },
+      {
+        "id": "949CF35C485DABD9FCA9D63F5025EB33",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/a.html"
+      },
+      {
+        "id": "84F744A70AEABCA5D8A0A024C134DB2A",
+        "type": "background_page",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html"
+      },
+      {
+        "id": "21096A75FE8F2A4755AFD7F8E1E01C6C",
+        "type": "service_worker",
+        "url": "chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js"
+      }
+    ]
+  },
+  "follow_finding": "poll: open-tab tracked=true, switch-tab tracked=true, segment urls=a.html>b.html>a.html | newest: open-tab tracked=true, switch-tab tracked=false, segment urls=a.html>b.html"
+}
