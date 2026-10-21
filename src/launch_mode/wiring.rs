@@ -89,3 +89,23 @@ fn doctor_runs_the_launch_mode_check_after_ffmpeg() {
     assert!(DOCTOR.find("checks.push(check_ffmpeg());").unwrap() < DOCTOR.find(push).unwrap());
     assert!(DOCTOR.contains("fn check_launch_mode() -> Check"));
 }
+
+const DAEMON: &str = include_str!("../cli/daemon.rs");
+
+#[test]
+fn cli_tags_daemon_requests_and_daemon_guards_after_lane_refresh() {
+    assert_eq!(CLI.matches("crate::launch_mode::request_tag()").count(), 1);
+    assert_eq!(CLI.matches("\"launch\":").count(), 1);
+    assert_eq!(
+        DAEMON
+            .matches("crate::launch_mode::daemon_mismatch(&req)")
+            .count(),
+        1
+    );
+    let refresh = DAEMON.find("crate::realbrowser::refresh_lane()").unwrap();
+    let guard = DAEMON
+        .find("crate::launch_mode::daemon_mismatch(&req)")
+        .unwrap();
+    let launch = DAEMON.find("let need_launch").unwrap();
+    assert!(refresh < guard && guard < launch);
+}

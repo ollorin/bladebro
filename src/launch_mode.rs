@@ -6,6 +6,7 @@
 //! - `find`: pure walk-up discovery of `.bladebro.json`.
 //! - `project`: project file loading, trust rules, `record.dir` vetting.
 //! - `user`: `<data root>/launch.json` load/write.
+//! - `daemon`: request tag + mode-mismatch refusal for the CLI daemon.
 //! - `display`: the single display decision (`plan_display`) and launch-note wording.
 //! - `state`: pinned per-process mode, launch-note latch, headless-by-request flag.
 //! - `wiring`: cfg(test) checks that every upstream hook is in place.
@@ -14,6 +15,7 @@
 //! lines listed in .planning/HOOKS.md.
 
 pub mod cli;
+pub mod daemon;
 pub mod display;
 pub mod find;
 pub mod mode;
@@ -26,6 +28,10 @@ mod wiring;
 pub use cli::{
     doctor_check, doctor_line, help_json, run_cli, status_text, toggle_in, ModeCheck, CHECK_NAME,
     HELP_TEXT,
+};
+pub use daemon::{
+    daemon_mismatch, mismatch_message, parse_request, request_fields, request_fields_for,
+    request_tag,
 };
 pub use display::{describe, launch_note, plan_display, DisplayPlan};
 pub use find::{find_project_file, PROJECT_FILE};

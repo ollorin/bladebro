@@ -245,6 +245,14 @@ pub async fn run_daemon() -> Result<()> {
                     crate::realbrowser::launch_fingerprint(),
                     launched,
                 );
+                // Fork hook (.planning/HOOKS.md): never keep the old mode silently (HEAD-03).
+                if let Some(error) = crate::launch_mode::daemon_mismatch(&req) {
+                    let resp = json!({ "ok": false, "error": error });
+                    let resp_str = serde_json::to_string(&resp).unwrap_or_default();
+                    let _ = reader.get_mut().write_all(resp_str.as_bytes()).await;
+                    let _ = reader.get_mut().write_all(b"\n").await;
+                    continue;
+                }
                 let need_launch = drifted
                     || page.is_none()
                     || page.as_ref().map(|p| p.is_closed()).unwrap_or(true);

@@ -350,7 +350,9 @@ fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
         }
     }
 
-    let req = serde_json::to_string(&json!({ "tool": tool, "args": args }))?;
+    // Fork hook (.planning/HOOKS.md): the daemon refuses a launch-mode mismatch (HEAD-03).
+    let launch = crate::launch_mode::request_tag().map_err(BladeError::Other)?;
+    let req = serde_json::to_string(&json!({ "tool": tool, "args": args, "launch": launch }))?;
     writeln!(stream, "{req}")?;
     stream.flush()?;
 
