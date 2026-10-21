@@ -24,8 +24,9 @@ pub use config::{
 };
 pub use dir::{create_recording_file, prepare_dir};
 pub use ffmpeg::{
-    find_ffmpeg, known_locations, parse_encoders, parse_version, EncoderSet, FfmpegVersion, Found,
-    Lookup, Source, TargetOs,
+    discover, discover_cached, find_ffmpeg, known_locations, parse_encoders, parse_version, probe,
+    Discovery, EncoderSet, FfmpegVersion, Found, Lookup, ProbeInfo, Source, TargetOs,
+    PROBE_TIMEOUT,
 };
 pub use names::{file_name, sanitize_stem};
 pub use values::{Format, FrameSize};
