@@ -318,11 +318,18 @@ let navOffset = null;
 }
 const cb = cr?.fps_buckets || [];
 const around = navOffset !== null ? Math.floor(navOffset) : null;
+// Average over the seconds that actually exist inside the recording: a window that starts before
+// the sidecar attached has fewer than 5 real seconds and must not be divided by 5.
+const fpsWin = (lo, hi) => {
+  const a = Math.max(0, lo), b = Math.min(hi, Math.floor((cr?.wall_ms ?? 0) / 1000));
+  return b > a ? +(sumRange(cb, a, b) / (b - a)).toFixed(2) : null;
+};
 out_.coexistence = {
   baseline: base,
   with_sidecar: { ...withS, sidecar: brief(cr), nav_anim_offset_s: navOffset,
-    fps_5s_before_same_tab_nav: around !== null ? (sumRange(cb, around - 5, around) / 5) : null,
-    fps_5s_after_same_tab_nav: around !== null ? (sumRange(cb, around + 1, around + 6) / 5) : null,
+    seconds_available_before_same_tab_nav: around !== null ? Math.min(5, around) : null,
+    fps_5s_before_same_tab_nav: around !== null ? fpsWin(around - 5, around) : null,
+    fps_5s_after_same_tab_nav: around !== null ? fpsWin(around + 1, around + 6) : null,
     segments: cr?.segments ?? null },
   kept_working: base.kept_working === true && withS.kept_working === true,
   note: "kept_working requires every command rc 0 and the eval readback clicked, in both runs",
