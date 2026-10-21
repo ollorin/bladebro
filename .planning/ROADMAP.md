@@ -85,7 +85,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: `src/record/ffmpeg.rs` lookup order (BLADE_FFMPEG > PATH > known dirs) + probe/parse + OnceLock cache, unit tests (moved out of platform.rs: fork-only, SYNC-01)
+- [x] 04-01: `src/record/ffmpeg.rs` lookup order (BLADE_FFMPEG > PATH > known dirs) + probe/parse + OnceLock cache, unit tests (moved out of platform.rs: fork-only, SYNC-01)
 - [ ] 04-02: `doctor` reporting for ffmpeg and encoders
 
 ### Phase 5: Encoder Process Manager
