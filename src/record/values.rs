@@ -150,17 +150,24 @@ impl FrameSize {
 /// negatives and words are rejected, never clamped.
 pub fn parse_fps(s: &str) -> Result<u32, String> {
     let t = s.trim();
-    let n: u32 = t.parse().map_err(|_| {
+    let n: i64 = t.parse().map_err(|_| {
         format!(
             "fps {t:?} is not a whole number; valid range {MIN_FPS}-{MAX_FPS} (default {DEFAULT_FPS})"
         )
     })?;
-    if !(MIN_FPS..=MAX_FPS).contains(&n) {
+    check_fps(n)
+}
+
+/// Range-check an fps already read as an integer (record.json carries JSON
+/// numbers, not strings). i64 keeps negatives and huge values in the range
+/// check instead of a parse failure.
+pub fn check_fps(n: i64) -> Result<u32, String> {
+    if !(MIN_FPS as i64..=MAX_FPS as i64).contains(&n) {
         return Err(format!(
             "fps {n} out of range {MIN_FPS}-{MAX_FPS} (default {DEFAULT_FPS})"
         ));
     }
-    Ok(n)
+    Ok(n as u32)
 }
 
 /// Validate a JPEG quality read from record.json. The range is checked before
