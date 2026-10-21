@@ -5,16 +5,19 @@
 //!   BLADE_RECORD on/off/dir parsing.
 //! - `config`: record.json loading, RecordOverrides/RecordConfig, precedence
 //!   resolution per-call > env > config file > default.
+//! - `names`: caller name sanitization, UTC stamp, short id, file names.
 //!
-//! Later steps of Phase 3 add `names` and `dir`.
+//! Later steps of Phase 3 add `dir`.
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
 
 pub mod config;
+pub mod names;
 pub mod values;
 
 pub use config::{
     load_file_config, resolve, resolve_from_env, FileConfig, RecordConfig, RecordOverrides,
 };
+pub use names::{file_name, sanitize_stem};
 pub use values::{Format, FrameSize};
