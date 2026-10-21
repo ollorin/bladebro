@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** A QA run with recording enabled always leaves a playable video file at a predictable path that the tool result reports, without touching the stealth path or breaking Bladebro's five-tool contract.
-**Current focus:** Phase 3 - Recording Config and Safe Output Paths
+**Current focus:** Phase 4 - ffmpeg Discovery and Doctor
 
 ## Current Position
 
-Phase: 2 of 12 (Sidecar Prototype Gate)
+Phase: 3 of 12 (Recording Config and Safe Output Paths) complete
 Plan: 3 of 3 in current phase (Phase 2 complete, gate PASS-WITH-CAVEATS; see tools/record_sidecar/RESULTS.md)
-Status: Ready to plan Phase 3. Phase 2 verdict recommends VP9/WebM, 10 fps, 1280x720, concat timestamps, separate recorder attachment (not the Page session), and a Page.screencastFrame exemption in shrink_oversized_event. Fork is the main repo; keep code additive (SYNC-01).
-Last activity: 2026-10-21 - Phase 2 executed and verified
+Status: Phase 3 executed and verified on macOS only (400 tests; not executed on Windows/Linux, no CI run, nothing pushed). Ready to plan Phase 4. Config in src/record/{values,config,names,dir}.rs; BLADE_RECORD env, BLADE_HOME/record.json, defaults VP9/WebM 10fps 1280x720.
+Last activity: 2026-10-21 - Phase 3 executed and verified
 
-Progress: [██░░░░░░░░] 17% (2/12 phases executed)
+Progress: [███░░░░░░░] 25% (3/12 phases executed)
 
 ## Performance Metrics
 

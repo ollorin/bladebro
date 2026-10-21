@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Decisions** - Record the design decisions for the `state` op shape, recordings directory and multi-tab policy (no code; no upstream approval needed, the fork is the main repo)
 - [x] **Phase 2: Sidecar Prototype Gate** - Prove screencast capture, ffmpeg piping and tab-following in `tools/record_sidecar/` with recorded measurements (pass/fail gate)
-- [ ] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
+- [x] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
 - [ ] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
 - [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
 - [ ] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
@@ -70,9 +70,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: `src/record.rs` header + `src/record/values.rs` + `src/record/config.rs`: settings, precedence, format/size/fps resolution, unit tests
-- [ ] 03-02: Name sanitization and recordings-dir creation (canonical dir, `create_new`, 0600/0700, helpers in `src/record/` (not `src/platform.rs`, SYNC-01)), cross-OS tests
-- [ ] 03-03: Windows ACL decision note and README sensitive-content warning
+- [x] 03-01: `src/record.rs` header + `src/record/values.rs` + `src/record/config.rs`: settings, precedence, format/size/fps resolution, unit tests
+- [x] 03-02: Name sanitization and recordings-dir creation (canonical dir, `create_new`, 0600/0700, helpers in `src/record/` (not `src/platform.rs`, SYNC-01)), cross-OS tests
+- [x] 03-03: Windows ACL decision note and README sensitive-content warning
 
 ### Phase 4: ffmpeg Discovery and Doctor
 **Goal**: Bladebro reliably finds a usable ffmpeg, knows which encoders it has, and tells the user in `doctor`
@@ -222,7 +222,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Decisions | 1/1 | Complete (upstream issue dropped: fork is main) | 2026-10-21 |
 | 2. Sidecar Prototype Gate | 3/3 | Complete (PASS-WITH-CAVEATS) | 2026-10-21 |
-| 3. Recording Config and Safe Output Paths | 0/3 | Not started | - |
+| 3. Recording Config and Safe Output Paths | 3/3 (+03-04 gap closure) | Complete (macOS only; CI not run) | 2026-10-21 |
 | 4. ffmpeg Discovery and Doctor | 0/2 | Not started | - |
 | 5. Encoder Process Manager | 0/3 | Not started | - |
 | 6. Frame Source | 0/3 | Not started | - |
