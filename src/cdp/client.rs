@@ -51,6 +51,14 @@ const EVENT_BUS_CAPACITY: usize = 16384;
 /// EVENT_BUS_CAPACITY × MAX_EVENT_BYTES.
 const MAX_EVENT_BYTES: usize = 16 * 1024;
 
+/// Fork hook (.planning/HOOKS.md): byte bound for `Page.screencastFrame`.
+/// Screencast frames are base64 JPEGs routinely far above 16 KiB, and their
+/// `data` + `params.sessionId` (the ack id) are exactly what the recorder
+/// needs. Only a connection that started a screencast receives them and
+/// Chrome keeps at most a couple unacked, so ring retention stays bounded.
+/// 8 MiB covers a 3840x2160 q100 JPEG with margin; above it, stripped.
+pub(crate) const MAX_SCREENCAST_EVENT_BYTES: usize = 8 * 1024 * 1024;
+
 /// The result delivered to a pending command caller.
 type CdpOutcome = std::result::Result<Value, BladeError>;
 
@@ -486,7 +494,10 @@ fn route_cdp_text(
                 // while any subscriber lagged; oversized events keep their
                 // small identity fields and drop the bulk payloads nobody
                 // consumes.
-                if text.len() > MAX_EVENT_BYTES {
+                if text.len() > MAX_EVENT_BYTES
+                    && !(ev.method == "Page.screencastFrame"
+                        && text.len() <= MAX_SCREENCAST_EVENT_BYTES)
+                {
                     shrink_oversized_event(&ev.method, &mut ev.params);
                 }
                 let _ = events_tx.send(ev);

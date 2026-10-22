@@ -13,6 +13,7 @@
 //!   -version/-encoders probe cached once per process, pure output parsers,
 //!   doctor report (DoctorLine).
 //! - `encoder`: ffmpeg encoder: argv builder, timestamp pacing, process lifecycle, honest verdicts (SAFE-04, LIFE-05).
+//! - `source`: screencast frame source: own CDP connection, ack-first, fps gate, bounded hand-off, counters (CAPT-01/02/05, SAFE-01).
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
@@ -23,6 +24,7 @@ pub mod encoder;
 pub mod ffmpeg;
 pub mod layered;
 pub mod names;
+pub mod source;
 pub mod values;
 
 pub use config::{
