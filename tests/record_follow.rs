@@ -1,4 +1,4 @@
-//! Live tests of tab following (08-01) over the real binary's MCP stdio server.
+//! Live tests of tab following (08-01) and per-tab files (08-02) over the real binary's MCP stdio server.
 //! All `#[ignore]`: they need Chrome + ffmpeg and local fixtures, and run through
 //! `tools/record_sidecar/scenarios/follow_live.sh` (headless, scratch home,
 //! 127.0.0.1 fixtures only).
@@ -283,4 +283,155 @@ fn follow_close_recorded() {
         "{stop}"
     );
     assert_video(&path, &stop);
+}
+
+/// The per-file lines of a per-tab result: `<path> (bytes ... segments [...] ...)`.
+fn file_lines(text: &str) -> Vec<String> {
+    text.match_indices(" (bytes ")
+        .map(|(i, _)| {
+            let pre = &text[..i];
+            let start = [
+                pre.rfind("; ").map(|x| x + 2),
+                pre.rfind("): ").map(|x| x + 3),
+            ]
+            .into_iter()
+            .flatten()
+            .max()
+            .unwrap_or(0);
+            let end = i + text[i..].find(')').map_or(0, |c| c + 1);
+            text[start..end].to_string()
+        })
+        .collect()
+}
+
+fn line_path(line: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(line.split(" (bytes ").next().expect("path"))
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn per_tab_three_files() {
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn(
+        "ptt",
+        &live_env(
+            &[("BLADE_RECORD", "1"), ("BLADE_RECORD_TABS", "per-tab")],
+            &ff,
+        ),
+    );
+    assert!(!mcp.nav(&format!("{fix}/a.html")).0);
+    let a = current_id(&mut mcp);
+    let (e, start) = mcp.state(json!({"op":"record-start","name":"pt"}));
+    assert!(!e && start.contains("(per-tab files)"), "{start}");
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/b.html")}));
+    assert!(!e, "{t}");
+    let b = opened_id(&t);
+    sleep(2.5);
+    let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/c.html")}));
+    assert!(!e, "{t}");
+    let c = opened_id(&t);
+    sleep(2.5);
+    for (id, secs) in [(&a, 2.0), (&c, 1.5)] {
+        let (e, t) = mcp.state(json!({"op":"switch-tab","target_id":id}));
+        assert!(!e, "{t}");
+        sleep(secs);
+    }
+    // Closing c finalizes its file while the recording runs.
+    let (e, t) = mcp.state(json!({"op":"close-tab","target_id":c}));
+    assert!(!e, "{t}");
+    sleep(1.5);
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT per-tab stop: {stop}");
+    assert!(!e, "{stop}");
+    assert!(
+        stop.starts_with("recording saved (per-tab, 3 files): "),
+        "{stop}"
+    );
+    let lines = file_lines(&stop);
+    assert_eq!(lines.len(), 3, "{stop}");
+    for (i, (line, want)) in lines
+        .iter()
+        .zip([Tone::Red, Tone::Blue, Tone::Green])
+        .enumerate()
+    {
+        let path = line_path(line);
+        assert!(path.is_absolute(), "{path:?}");
+        assert!(
+            path.display()
+                .to_string()
+                .contains(&format!("-tab{}-", i + 1)),
+            "{path:?}"
+        );
+        assert_eq!(
+            std::fs::metadata(&path).expect("file").len() as f64,
+            field_after(line, "bytes "),
+            "{line}"
+        );
+        assert_video(&path, line);
+        let segs = segments(line);
+        let total = field_after(line, "duration ");
+        for k in 0..segs.len() {
+            assert_eq!(
+                color_at(&path, mid(&segs, k, total)),
+                want,
+                "file {} {line}",
+                i + 1
+            );
+        }
+    }
+    let _ = (b, c);
+    assert!(stop.contains(". Note: tab "), "closed note: {stop}");
+    #[cfg(unix)]
+    assert!(
+        ffmpeg_children(mcp.pid()).is_empty(),
+        "no ffmpeg child after stop"
+    );
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn per_tab_cap() {
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn(
+        "ptcap",
+        &live_env(
+            &[("BLADE_RECORD", "1"), ("BLADE_RECORD_TABS", "per-tab")],
+            &ff,
+        ),
+    );
+    assert!(!mcp.nav(&format!("{fix}/a.html")).0);
+    let (e, start) = mcp.state(json!({"op":"record-start","name":"cap"}));
+    assert!(!e, "{start}");
+    sleep(1.5);
+    let mut ninth = String::new();
+    for i in 0..8 {
+        let page = ["b", "c"][i % 2];
+        let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/{page}.html")}));
+        assert!(!e, "{t}");
+        ninth = opened_id(&t);
+        sleep(2.2);
+    }
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT per-tab cap stop: {stop}");
+    assert!(!e, "the cap is a note, not a failure: {stop}");
+    assert!(
+        stop.starts_with("recording saved (per-tab, 8 files): "),
+        "{stop}"
+    );
+    assert!(
+        stop.contains(&format!("tab {ninth} not recorded from "))
+            && stop.contains("per-tab cap of 8 open files reached (close a tab to free one)"),
+        "{stop}"
+    );
+    for line in file_lines(&stop) {
+        assert!(line_path(&line).exists(), "{line}");
+    }
+    #[cfg(unix)]
+    assert!(
+        ffmpeg_children(mcp.pid()).is_empty(),
+        "no ffmpeg child after stop"
+    );
 }

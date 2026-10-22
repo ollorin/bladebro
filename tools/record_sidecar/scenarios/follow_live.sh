@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live proof of tab following (08-01): MCP stdio tests, CLI daemon lane (switch/open, popup, close of
+# Live proof of tab following (08-01) and per-tab files (08-02): MCP stdio tests, CLI daemon lane (switch/open, popup, close of
 # the recorded tab, cross-origin navigation), off-mode CDP/HTTP comparison against the pre-phase
 # binary, and informational perf / audit numbers.
 # Safety: BLADE_HEADLESS=1 (no window is ever shown), a fresh scratch BLADE_HOME per scenario,
@@ -8,14 +8,15 @@
 # profile or ~/.blade; the real lane is not exercised.
 #
 #   bash tools/record_sidecar/scenarios/follow_live.sh [--only ID]   (default: every scenario)
-#   ids: mcp daemon popup close xorigin off perf audit
+#   ids: mcp daemon popup close xorigin off perf audit per-tab per-tab-close
+#   (08-02) per-tab: project-file layer (record.tabs) -> one file per tab, then BLADE_RECORD_TABS=follow
+#   overrides it -> one file; per-tab-close: a closed tab's file is finished while recording continues.
 #
 # Inputs (harness inputs, not product options):
 #   FOLLOW_BASE_BIN  pre-phase binary. Unset: built from commit bb9e7dd (the tree before the phase 8
 #                    code) into target/follow-base (a temporary git worktree, removed at the end).
 #   FIX_PORT         fixture port (default 8765)
 #   EVIDENCE         output file (default evidence/08-01-live.txt; truncated unless --only is used)
-# Per-tab files (08-02) will add their scenario id here.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../env.sh
@@ -73,7 +74,7 @@ trap cleanup_all EXIT
 fixture_up || exit 1
 cd "$REPO" || exit 1
 cargo build --release >/dev/null 2>&1 || { echo "cargo build failed" >&2; exit 1; }
-{ echo "# follow_live.sh 08-01  started $(date -u +%FT%TZ)  headless=$BLADE_HEADLESS  fixtures=$FIX"
+{ echo "# follow_live.sh 08-01/08-02  started $(date -u +%FT%TZ)  headless=$BLADE_HEADLESS  fixtures=$FIX"
   echo "# binary: $BB ($("$BB" --version 2>/dev/null | head -1))  chrome: $("$BB" version 2>/dev/null | head -1)"
   echo "# git: $(git rev-parse --short HEAD)"; } | tee -a "$EVIDENCE"
 
@@ -119,7 +120,7 @@ sc_mcp() {
   out=$(REC_HUB_FIX="$FIX" REC_HUB_FFMPEG="$FFMPEG" REC_HUB_FFPROBE="$FFPROBE" \
         cargo test --release --test record_follow -- --ignored --test-threads=1 --nocapture 2>&1); rc=$?
   echo "$out" | grep -E "^(RESULT|test |running)|RESULT |test result" | sed 's/^/[mcp] /' | tee -a "$EVIDENCE" >/dev/null
-  check mcp "three live follow tests pass (exit=$rc)" test "$rc" = 0
+  check mcp "the live follow and per-tab tests pass (exit=$rc)" test "$rc" = 0
   end_scn mcp
 }
 
@@ -345,6 +346,92 @@ sc_perf() {
   end_scn perf
 }
 
+# --- per-tab files (08-02) ------------------------------------------------------------------
+# file_lines TEXT: one `<path> (bytes ... segments [...] ...)` per line of a per-tab result
+file_lines() { grep -oE '/[^ ;]+ \(bytes [^)]*\)' <<<"$1"; }
+line_path() { echo "${1%% (bytes*}"; }
+# Project dir whose .bladebro.json turns recording on in per-tab mode (the daemon is started from it).
+new_proj() { PROJ="$(mktemp -d -t bbproj)"; printf '%s\n' '{"record":{"enabled":true,"tabs":"per-tab"}}' > "$PROJ/.bladebro.json"; }
+in_proj() { ( cd "$PROJ" && "$@" ); }
+
+sc_pertab() {
+  say "== per-tab: record.tabs=per-tab from a project .bladebro.json -> one file per tab; BLADE_RECORD_TABS=follow overrides it"
+  new_home; new_proj; unset BLADE_RECORD BLADE_RECORD_TABS
+  in_proj "$BB" nav "$FIX/a.html" >/dev/null 2>&1
+  local A B C s o stop rc i line path total want=(red blue green) n lines allids=''
+  A=$(cur_id)
+  s=$("$BB" state record-start pt 2>&1); say "[per-tab] record-start: $s"
+  check per-tab "start text says per-tab files (project layer enabled recording)" grep -q "(per-tab files)" <<<"$s"
+  sleep 2
+  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3
+  o=$("$BB" state open-tab "$FIX/c.html" 2>&1); C=$(opened_id "$o")
+  sleep 3
+  "$BB" state switch-tab "$A" >/dev/null 2>&1
+  sleep 2
+  say "[per-tab] ffmpeg pids while recording: $(ffmpeg_pids)"
+  check per-tab "three ffmpeg processes while three files are open" test "$(ffmpeg_pids | wc -w | tr -d ' ')" = 3
+  stop=$("$BB" state record-stop 2>&1); rc=$?
+  say "[per-tab] record-stop rc=$rc: $stop"
+  check per-tab "stop exits 0 with the per-tab header (3 files)" test "$rc" = 0 -a "$(grep -c 'recording saved (per-tab, 3 files): ' <<<"$stop")" = 1
+  lines=$(file_lines "$stop"); n=0
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    path=$(line_path "$line")
+    check per-tab "file $((n + 1)) name has -tab$((n + 1))-" grep -q -- "-tab$((n + 1))-" <<<"$path"
+    analyse per-tab "$path" "$line"
+    total=$(num_after "$line" duration)
+    say "[per-tab] file $((n + 1)) segments: $(seg_inner "$line")"
+    check per-tab "file $((n + 1)) is ${want[$n]} at its first segment" test "$(tone_at "$path" "$(mid_of "$line" 0 "$total")")" = "${want[$n]}"
+    allids+="$(seg_ids "$line")"$'\n'
+    n=$((n + 1))
+  done <<<"$lines"
+  check per-tab "three files listed ($n)" test "$n" = 3
+  check per-tab "tab ids in segments are A, B, C" test "$(printf '%s' "$allids" | grep . | sort -u | tr '\n' ' ')" = "$(printf '%s\n' "$A" "$B" "$C" | sort | tr '\n' ' ')"
+  # Second run: env overrides the project file.
+  "$BB" stop >/dev/null 2>&1; sleep 1
+  export BLADE_RECORD_TABS=follow
+  in_proj "$BB" nav "$FIX/a.html" >/dev/null 2>&1
+  s=$("$BB" state record-start pf 2>&1); say "[per-tab] record-start (env follow): $s"
+  sleep 1.5
+  o=$("$BB" state open-tab "$FIX/b.html" 2>&1)
+  sleep 3
+  stop=$("$BB" state record-stop 2>&1); rc=$?
+  say "[per-tab] record-stop (env follow) rc=$rc: $stop"
+  check per-tab "BLADE_RECORD_TABS=follow beats the project file: one file, follow header" test "$rc" = 0 -a "$(grep -c 'recording saved: ' <<<"$stop")" = 1 -a "$(grep -c 'per-tab' <<<"$stop")" = 0
+  unset BLADE_RECORD_TABS
+  rm -rf "$PROJ"
+  end_scn per-tab
+}
+
+sc_pertab_close() {
+  say "== per-tab-close: closing a recorded tab finishes its file at once, while the recording keeps running"
+  new_home; new_proj; unset BLADE_RECORD BLADE_RECORD_TABS
+  in_proj "$BB" nav "$FIX/a.html" >/dev/null 2>&1
+  local B o stop rc bfile dur n
+  "$BB" state record-start ptc >/dev/null 2>&1
+  sleep 1.5
+  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5
+  say "[per-tab-close] ffmpeg pids before the close: $(ffmpeg_pids)"
+  "$BB" state close-tab "$B" 2>&1 | head -1 | sed 's/^/[per-tab-close] close-tab: /' | tee -a "$EVIDENCE"
+  # The daemon is still recording. Wait (bounded) for the closed tab's ffmpeg to finish.
+  n=0; while [ $n -lt 30 ] && [ "$(ffmpeg_pids | wc -w | tr -d ' ')" -gt 1 ]; do sleep 0.5; n=$((n + 1)); done
+  say "[per-tab-close] ffmpeg pids after the close (recording still running): $(ffmpeg_pids)"
+  check per-tab-close "only one ffmpeg left while recording continues" test "$(ffmpeg_pids | wc -w | tr -d ' ')" = 1
+  bfile=$(ls "$BLADE_HOME"/recordings/*-tab2-* 2>/dev/null | head -1)
+  say "[per-tab-close] tab 2 file: $bfile"
+  dur=$("$FFPROBE" -v error -show_entries format=duration -of csv=p=0 "$bfile" 2>/dev/null)
+  check per-tab-close "tab 2 file is finalized before record-stop (ffprobe duration '$dur')" python3 -I -c "import sys; float('${dur:-x}')"
+  check per-tab-close "tab 2 file decodes cleanly" test -z "$("$FFMPEG" -v error -i "$bfile" -f null - 2>&1 >/dev/null)"
+  sleep 1
+  stop=$("$BB" state record-stop 2>&1); rc=$?
+  say "[per-tab-close] record-stop rc=$rc: $stop"
+  check per-tab-close "stop exits 0 with 2 files and a closed note" test "$rc" = 0 -a "$(grep -c 'recording saved (per-tab, 2 files): ' <<<"$stop")" = 1 -a "$(grep -c "tab $B closed at " <<<"$stop")" = 1
+  rm -rf "$PROJ"
+  end_scn per-tab-close
+}
+
 sc_audit() {
   say "== audit: bladebro audit (bar: 100/100, the Phase 7 macOS baseline)"
   new_home
@@ -355,11 +442,12 @@ sc_audit() {
   end_scn audit
 }
 
-for id in mcp daemon popup close xorigin off perf audit; do
+for id in mcp daemon popup close xorigin off perf audit per-tab per-tab-close; do
   want "$id" || continue
   case "$id" in
     mcp) sc_mcp ;; daemon) sc_daemon ;; popup) sc_popup ;; close) sc_close ;; xorigin) sc_xorigin ;;
     off) sc_off ;; perf) sc_perf ;; audit) sc_audit ;;
+    per-tab) sc_pertab ;; per-tab-close) sc_pertab_close ;;
   esac
 done
 
