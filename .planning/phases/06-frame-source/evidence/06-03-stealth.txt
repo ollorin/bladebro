@@ -1,0 +1,20 @@
+# started: 2026-10-22T09:31:21Z  headless=1  chrome: bladebro 4.6.5
+[A] audit without recorder: SCORE 100/100 exit=0
+[B] attempt 1: audit SCORE 100/100 exit=0 recorder frames_received=5
+[B] attempts: 1
+[B] REC_LIVE_REPORT {"encoder":{"bytes":91926,"finalize_ms":80,"frames_dropped":0,"frames_queued":4,"frames_written":21,"ok":true,"outcome":"Finalized","path":"/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/audit_rec.webm","verdict":"recording finalized: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/audit_rec.webm (91926 bytes; 21 frames written, 0 dropped at the queue)"},"frame_sizes":[{"count":4,"first_ms":87,"last_ms":677,"size":"1280x628"}],"harness":[],"health_at_stop":"Receiving { last_age_ms: 1660 }","mode":"plain","secs_requested":150,"source":{"ack_errors":0,"acks_ok":5,"acks_sent":5,"bad_frames":0,"capped":1,"elapsed_ms":2187,"first_frame_ms":24,"forwarded":4,"frames_received":5,"hidden":false,"last_frame_age_ms":1661,"last_frame_ms":526,"longest_gap_ms":443,"lost":0,"methods_sent":[["Page.enable",1],["Page.startScreencast",1],["Page.screencastFrameAck",5]],"ok":false,"outcome":"ConnectionLost { after_ms: 1252 }","queue_dropped":0,"quiet_tail_ms":null,"ts_fallback":0,"unacked":0,"verdict":"capture interrupted: the recorder's CDP connection closed after 1 s (tab closed or browser gone); 5 frames received before that"},"target":"E3800A70B9F2E10C2E348306E7B4071F","wall_ms":2186}
+[B] recorder: outcome=ConnectionLost { after_ms: 1252 } frames_received=5 acks_sent=5 forwarded=4 lost=0 sizes=[{'count': 4, 'first_ms': 87, 'last_ms': 677, 'size': '1280x628'}]
+[B] PASS: frames > 0 and frames == acks
+[A] PASS: baseline audit is 100/100
+[B] PASS: audit with recorder SCORE 100/100 equals baseline 100/100
+[C] diff_oracle: NOT RUN. tools/diff_oracle/oracle.py needs the python 'websockets' module, which is not installed here, and installs are forbidden. The battery A/B below is the Phase 2 substitute. Nothing is claimed for diff_oracle.
+{"keys": 99, "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/A.json"}
+{"keys": 99, "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/B.json"}
+[D] REC_LIVE_REPORT {"encoder":{"bytes":42621,"finalize_ms":89,"frames_dropped":0,"frames_queued":32,"frames_written":35,"ok":true,"outcome":"Finalized","path":"/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/bat.webm","verdict":"recording finalized: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/bat.webm (42621 bytes; 35 frames written, 0 dropped at the queue)"},"frame_sizes":[{"count":32,"first_ms":16,"last_ms":3151,"size":"1280x628"}],"harness":[],"health_at_stop":"Receiving { last_age_ms: 1 }","mode":"plain","secs_requested":180,"source":{"ack_errors":0,"acks_ok":186,"acks_sent":186,"bad_frames":0,"capped":154,"elapsed_ms":3598,"first_frame_ms":13,"forwarded":32,"frames_received":186,"hidden":false,"last_frame_age_ms":503,"last_frame_ms":3095,"longest_gap_ms":18,"lost":0,"methods_sent":[["Page.enable",1],["Page.startScreencast",1],["Page.screencastFrameAck",186],["Page.stopScreencast",1]],"ok":true,"outcome":"Captured","queue_dropped":0,"quiet_tail_ms":null,"ts_fallback":0,"unacked":0,"verdict":"capture ok: 186 frames received, 186 acked, 32 to the encoder, 154 skipped by the fps cap, 0 dropped at the queue, 0 lost; last frame 0.5 s before stop"},"target":"26A5FB6C844AC6F3F8674560DB74BC0B","wall_ms":3096}
+[D] recorder during B: outcome=Captured frames_received=186 acks_sent=186 forwarded=32 sizes=[{'count': 32, 'first_ms': 16, 'last_ms': 3151, 'size': '1280x628'}]
+[D] PASS: frames > 0 and frames == acks
+{"keys": 99, "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.etd5DHmYRn/A2.json"}
+[D] classify: { "divergent": [], "noise": [  "voices" ], "keys": 99}
+[D] PASS: divergent=0 keys=99  noise_keys=['voices'] (battery B vs A, run-to-run noise excluded)
+[end] leftover processes: 0
+# finished: 2026-10-22T09:31:38Z
