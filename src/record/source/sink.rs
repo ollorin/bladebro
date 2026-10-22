@@ -7,11 +7,20 @@ use crate::record::Encoder;
 /// waits (D6-5).
 pub trait FrameSink: Send + Sync + 'static {
     fn send_frame(&self, jpeg: Vec<u8>, ts_ms: u64) -> bool;
+
+    /// The recording's end is now (stop was requested). The encoder holds the
+    /// last frame until this instant rather than until `finish`, which runs
+    /// only after the stop grace and would otherwise add it to the video.
+    fn mark_end(&self) {}
 }
 
 impl FrameSink for Encoder {
     fn send_frame(&self, jpeg: Vec<u8>, ts_ms: u64) -> bool {
         Encoder::send_frame(self, jpeg, ts_ms)
+    }
+
+    fn mark_end(&self) {
+        Encoder::mark_end(self)
     }
 }
 

@@ -233,6 +233,7 @@ for s in "${WANT[@]}"; do
     dur-idle) scenario_dur dur-idle idle.html 20 ;;
     dur-tick) scenario_dur dur-tick tick.html 20 ;;
     dur-anim) scenario_dur dur-anim anim.html 20 ;;
+    dur-tick8) scenario_dur dur-tick8 tick.html 8 ;;   # 06-04: short-run drift check
     resize)   scenario_dur resize anim.html 16 resize ;;
     bg)       scenario_bg ;;
     trace)    scenario_trace ;;

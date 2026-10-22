@@ -248,3 +248,31 @@ async fn writer_abort_is_reported_as_truncated() {
     assert!(!v.contains("0 dropped"), "{v}");
     assert!(pid_gone(pid));
 }
+
+/// The last frame is held to `mark_end`, not to a later `finish` (06-04 gap 3).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mark_end_stops_the_final_hold_before_finish() {
+    let s = Scratch::new();
+    let script = s.script("fake-enc-mark", r#"for a; do out="$a"; done; cat > "$out""#);
+    let run = |mark: bool, name: &'static str| {
+        let (script, dir) = (script.clone(), s.0.clone());
+        async move {
+            let out = dir.join(name);
+            let enc = start_retry(&webm_cfg(&script, 8, Duration::from_secs(15)), &out).unwrap();
+            assert!(enc.send_frame(FRAME.to_vec(), 0));
+            if mark {
+                enc.mark_end();
+            }
+            // Stands in for the source's stop grace between stop and finish.
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            enc.finish().await.frames_written
+        }
+    };
+    let marked = run(true, "m.webm").await;
+    let unmarked = run(false, "u.webm").await;
+    assert_eq!(marked, 1, "hold ends at the mark");
+    assert!(
+        unmarked >= 6,
+        "without a mark the hold runs to finish: {unmarked}"
+    );
+}

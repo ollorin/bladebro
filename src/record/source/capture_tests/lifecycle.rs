@@ -114,3 +114,42 @@ async fn a_closed_connection_reports_connection_lost() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn stop_marks_the_end_before_the_grace_wait() {
+    guard(async {
+        use std::sync::atomic::AtomicBool;
+        struct Marker {
+            at: Mutex<Option<Instant>>,
+            seen: AtomicBool,
+        }
+        impl FrameSink for Marker {
+            fn send_frame(&self, _: Vec<u8>, _: u64) -> bool {
+                self.seen.store(true, Ordering::SeqCst);
+                true
+            }
+            fn mark_end(&self) {
+                self.at.lock().expect("at").get_or_insert(Instant::now());
+            }
+        }
+        let fake = fake_with(FakeOpts {
+            frames: 3,
+            ..Default::default()
+        })
+        .await;
+        let sink = Arc::new(Marker {
+            at: Mutex::new(None),
+            seen: AtomicBool::new(false),
+        });
+        let src = start(&fake, 15, sink.clone()).await;
+        fake.wait_emitter_done().await;
+        let asked = Instant::now();
+        let _ = src.stop().await;
+        let done = Instant::now();
+        let at = sink.at.lock().expect("at").expect("mark_end called");
+        // Marked right at the request; the 100 ms test grace elapsed after it.
+        assert!(at.duration_since(asked) < Duration::from_millis(50));
+        assert!(done.duration_since(at) >= Duration::from_millis(90));
+    })
+    .await;
+}

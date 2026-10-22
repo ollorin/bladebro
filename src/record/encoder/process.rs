@@ -203,6 +203,14 @@ impl Encoder {
         }
     }
 
+    /// Fix the recording's end at this instant (first call wins; `finish`
+    /// keeps an earlier mark). The last frame is held to here, so time spent
+    /// between the stop request and `finish` (the source's ack grace) is not
+    /// added to the video.
+    pub fn mark_end(&self) {
+        let _ = self.shared.end_at.set(std::time::Instant::now());
+    }
+
     pub fn pid(&self) -> Option<u32> {
         self.pid
     }

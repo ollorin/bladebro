@@ -356,6 +356,8 @@ impl Loop {
                 biased;
                 _ = &mut stop_rx, if stopping.is_none() => {
                     stopping = Some(Instant::now() + self.stop_grace);
+                    // The video ends at the stop request, not after the grace.
+                    self.sink.mark_end();
                     let (wire, t) = (self.wire.clone(), Duration::from_secs(2));
                     acks.spawn(async move {
                         let _ = wire.send(RecMethod::StopScreencast, None, t).await;

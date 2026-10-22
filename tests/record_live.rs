@@ -207,6 +207,10 @@ impl FrameSink for SizeTap {
         }
         self.inner.send_frame(jpeg, ts_ms)
     }
+
+    fn mark_end(&self) {
+        self.inner.mark_end()
+    }
 }
 
 /// Slow consumer (D6-15): its own bounded queue of 16 filled by try_send, drained
