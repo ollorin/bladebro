@@ -7,18 +7,28 @@
 //! - `args`: pure argv builder and output-path checks.
 //! - `pace`: frame timestamps to per-frame write counts (D5-1).
 //! - `resolve` (05-02): ffmpeg discovery for the encoder, async-safe.
-//! - `process` (05-02): spawn, writer task, stderr tail, bounded finish.
+//! - `process` (05-02): spawn, stderr tail, bounded finish, kill-and-reap last resort.
+//! - `writer` (05-02): paced stdin writer task; dropping its stdin is the EOF stop.
+//! - `test_util`, `lifecycle_tests` (tests only): fake ffmpeg scripts, unix lifecycle matrix.
 //!
 //! Fork-only module (SYNC-01): no upstream file is touched by it.
 
 mod args;
+#[cfg(all(test, unix))]
+mod lifecycle_tests;
 mod pace;
+mod process;
 mod report;
 mod resolve;
+#[cfg(test)]
+mod test_util;
+mod writer;
 
 pub use args::{build_args, check_out_path, clamp_fps, even_size, EncodeSpec};
 pub use pace::{repeat_counts, Pacer, MAX_GAP_MS};
+pub use process::{push_tail, Encoder, EncoderConfig, FINISH_TIMEOUT, STDERR_TAIL_BYTES};
 pub use report::{
     classify, tail_for_verdict, EncoderError, EncoderReport, ExitInfo, Outcome, VERDICT_TAIL_CHARS,
 };
 pub use resolve::{resolve_ffmpeg, resolve_from, ResolvedFfmpeg};
+pub use writer::HOLD_FLUSH_INTERVAL;
