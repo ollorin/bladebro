@@ -140,7 +140,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: `src/record/source.rs` + `source/{capture,handler,frame,gate,report,wire,sink}.rs`: own page-WS connection, Page.enable + startScreencast, ack-first, fps gate (newest wins), bounded try_send hand-off, drop/lag counters, closed method set, pipe limitation; `shrink_oversized_event` screencast exemption (HOOKS) + 2 MB test
+- [x] 06-01: `src/record/source.rs` + `source/{capture,handler,frame,gate,report,wire,sink}.rs`: own page-WS connection, Page.enable + startScreencast, ack-first, fps gate (newest wins), bounded try_send hand-off, drop/lag counters, closed method set, pipe limitation; `shrink_oversized_event` screencast exemption (HOOKS) + 2 MB test
 - [ ] 06-02: `source/watch.rs` no-frames watchdog + docs; `tests/record_live.rs` (#[ignore]) live driver; duration, odd/changing size and background-tab live checks on fixtures
 - [ ] 06-03: live CDP wire trace + slow-consumer run, audit/battery A/B with the recorder attached, qol_probe, full gates
 
