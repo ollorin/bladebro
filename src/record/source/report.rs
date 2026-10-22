@@ -26,7 +26,14 @@ pub struct SourceStats {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceOutcome {
     Captured,
-    ConnectionLost { after_ms: u64 },
+    ConnectionLost {
+        after_ms: u64,
+    },
+    /// Zero frames at stop (CAPT-05): a blank video, never a success.
+    NoFrames {
+        waited_ms: u64,
+        hidden: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +42,12 @@ pub struct SourceReport {
     pub stats: SourceStats,
     pub target_id: String,
     pub elapsed_ms: u64,
+    /// Age of the newest frame at stop (None: no frame ever arrived).
+    pub last_frame_age_ms: Option<u64>,
+    /// Set when the tail was quiet for at least the no-frames period.
+    pub quiet_tail_ms: Option<u64>,
+    /// Chrome's latest `screencastVisibilityChanged` said hidden.
+    pub hidden: bool,
 }
 
 impl SourceReport {
@@ -53,8 +66,22 @@ impl SourceReport {
                 if s.bad_frames > 0 {
                     v.push_str(&format!(", {} unreadable", s.bad_frames));
                 }
+                if let Some(age) = self.last_frame_age_ms {
+                    v.push_str(&format!("; last frame {:.1} s before stop", secs(age)));
+                }
+                if let Some(q) = self.quiet_tail_ms {
+                    v.push_str(&format!(
+                        " (no new frames for {:.1} s: normal for a static page; a background, minimized or stalled tab looks the same, so the video holds the last frame)",
+                        secs(q)
+                    ));
+                }
                 v
             }
+            SourceOutcome::NoFrames { waited_ms, hidden } => format!(
+                "capture failed: no frames for {:.1} s since recording start, so the video would be blank (not a success). The tab may be in the background, minimized or covered{}, or the screencast stalled; bring the tab to the front and record again.",
+                secs(*waited_ms),
+                if *hidden { ", and Chrome reported it hidden" } else { "" }
+            ),
             SourceOutcome::ConnectionLost { after_ms } => format!(
                 "capture interrupted: the recorder's CDP connection closed after {} s (tab closed or browser gone); {} frames received before that",
                 after_ms / 1000,
@@ -62,6 +89,10 @@ impl SourceReport {
             ),
         }
     }
+}
+
+fn secs(ms: u64) -> f64 {
+    ms as f64 / 1000.0
 }
 
 /// Why a source could not start. Every message ends "Browsing is unaffected."
@@ -118,7 +149,59 @@ mod tests {
             stats,
             target_id: "T".into(),
             elapsed_ms: 0,
+            last_frame_age_ms: None,
+            quiet_tail_ms: None,
+            hidden: false,
         }
+    }
+
+    #[test]
+    fn no_frames_is_never_ok_and_names_the_wait() {
+        let r = report(
+            SourceOutcome::NoFrames {
+                waited_ms: 300,
+                hidden: false,
+            },
+            SourceStats::default(),
+        );
+        assert!(!r.ok());
+        let v = r.verdict();
+        assert!(v.starts_with("capture failed: no frames for 0.3 s"), "{v}");
+        assert!(!v.contains("hidden"));
+        let h = report(
+            SourceOutcome::NoFrames {
+                waited_ms: 6000,
+                hidden: true,
+            },
+            SourceStats::default(),
+        );
+        assert!(h.verdict().contains("Chrome reported it hidden"));
+    }
+
+    #[test]
+    fn captured_verdict_quiet_note_only_when_quiet() {
+        let mut r = report(SourceOutcome::Captured, SourceStats::default());
+        r.last_frame_age_ms = Some(7000);
+        r.quiet_tail_ms = Some(7000);
+        let v = r.verdict();
+        assert!(r.ok());
+        assert!(v.contains("last frame 7.0 s before stop"), "{v}");
+        assert!(v.contains("no new frames for 7.0 s"), "{v}");
+        r.last_frame_age_ms = Some(200);
+        r.quiet_tail_ms = None;
+        let v = r.verdict();
+        assert!(v.contains("last frame 0.2 s"), "{v}");
+        assert!(!v.contains("no new frames"), "{v}");
+    }
+
+    #[test]
+    fn connection_lost_with_zero_frames_stays_interrupted() {
+        let r = report(
+            SourceOutcome::ConnectionLost { after_ms: 1000 },
+            SourceStats::default(),
+        );
+        assert!(!r.ok());
+        assert!(r.verdict().starts_with("capture interrupted"));
     }
 
     #[test]

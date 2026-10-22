@@ -11,6 +11,7 @@ use super::frame::{decode_jpeg, parse_frame_owned};
 use super::gate::{FpsGate, GateStep};
 use super::report::SourceStats;
 use super::sink::FrameSink;
+use super::watch::Liveness;
 use crate::cdp::CdpEvent;
 
 /// A frame waiting for the gate or the sink: base64 stays encoded until it is
@@ -28,6 +29,7 @@ pub(super) struct Step {
 }
 
 pub(super) type SharedStats = Arc<Mutex<SourceStats>>;
+pub(super) type SharedLive = Arc<Mutex<Liveness>>;
 
 pub(super) fn lock(s: &SharedStats) -> MutexGuard<'_, SourceStats> {
     s.lock().unwrap_or_else(|e| e.into_inner())
@@ -36,14 +38,16 @@ pub(super) fn lock(s: &SharedStats) -> MutexGuard<'_, SourceStats> {
 pub(super) struct Handler {
     gate: FpsGate<Held>,
     stats: SharedStats,
+    live: SharedLive,
     last_ack_id: Option<i64>,
 }
 
 impl Handler {
-    pub fn new(fps: u32, stats: SharedStats) -> Self {
+    pub fn new(fps: u32, stats: SharedStats, live: SharedLive) -> Self {
         Self {
             gate: FpsGate::new(fps),
             stats,
+            live,
             last_ack_id: None,
         }
     }
@@ -63,9 +67,24 @@ impl Handler {
                 }
             }
         };
+        if ev.method == "Page.screencastVisibilityChanged" {
+            // Chrome volunteers this on the screencast session; nothing is
+            // requested to get it (SAFE-01) and nothing is sent in reply.
+            if let Some(v) = ev.params.get("visible").and_then(|v| v.as_bool()) {
+                self.live
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .on_visibility(v, now_ms);
+            }
+            return Step::default();
+        }
         if ev.method != "Page.screencastFrame" {
             return Step::default();
         }
+        self.live
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .on_frame(now_ms);
         // Ack decision before anything else touches the frame: Chrome stops
         // sending after 2 unacked, so a missing ack stalls the whole screencast.
         let frame = parse_frame_owned(ev.params);
@@ -94,9 +113,6 @@ impl Handler {
         }
         if st.first_frame_ms.is_none() {
             st.first_frame_ms = Some(now_ms);
-        }
-        if let Some(last) = st.last_frame_ms {
-            st.longest_gap_ms = st.longest_gap_ms.max(now_ms.saturating_sub(last));
         }
         st.last_frame_ms = Some(now_ms);
         let Some(data) = frame.data_b64 else {
@@ -181,7 +197,7 @@ mod tests {
 
     fn handler(fps: u32) -> (Handler, SharedStats) {
         let s: SharedStats = Arc::default();
-        (Handler::new(fps, s.clone()), s)
+        (Handler::new(fps, s.clone(), Arc::default()), s)
     }
 
     fn ev(method: &str, params: Value) -> Result<CdpEvent, RecvError> {

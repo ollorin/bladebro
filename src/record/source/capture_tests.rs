@@ -29,6 +29,7 @@ fn cfg(fps: u32) -> SourceConfig {
         max_height: 720,
         ack_timeout: Duration::from_secs(2),
         stop_grace: Duration::from_millis(100),
+        no_frames_after: Duration::from_secs(5),
     }
 }
 

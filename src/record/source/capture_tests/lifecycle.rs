@@ -15,7 +15,8 @@ async fn stop_closes_the_socket_and_releases_the_sink() {
         let sink = Arc::new(CountingSink::default());
         let src = start(&fake, 10, sink.clone()).await;
         let rep = src.stop().await;
-        assert!(rep.ok());
+        // Zero frames is never a success (CAPT-05), but stop still completes.
+        assert!(matches!(rep.outcome, SourceOutcome::NoFrames { .. }));
         tokio::time::timeout(Duration::from_secs(1), fake.closed())
             .await
             .expect("ws closed after stop");

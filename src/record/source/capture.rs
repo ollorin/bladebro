@@ -8,9 +8,10 @@ use tokio::sync::{broadcast::error::RecvError, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::Instant;
 
-use super::handler::{lock, Handler, SharedStats};
+use super::handler::{lock, Handler, SharedLive, SharedStats};
 use super::report::{SourceError, SourceOutcome, SourceReport, SourceStats};
 use super::sink::FrameSink;
+use super::watch::{Health, NO_FRAMES_AFTER};
 use super::wire::{RecMethod, Wire};
 use crate::cdp::discovery::list_page_targets;
 use crate::cdp::{CdpClient, CdpSession};
@@ -34,6 +35,9 @@ pub struct SourceConfig {
     pub max_height: u32,
     pub ack_timeout: Duration,
     pub stop_grace: Duration,
+    /// No first frame after this long is `NoFrames` (D6-10). A const default,
+    /// not a user option; tests shorten it.
+    pub no_frames_after: Duration,
 }
 
 impl SourceConfig {
@@ -45,6 +49,7 @@ impl SourceConfig {
             max_height: rc.size.height,
             ack_timeout: ACK_TIMEOUT,
             stop_grace: STOP_GRACE,
+            no_frames_after: NO_FRAMES_AFTER,
         }
     }
 }
@@ -62,6 +67,8 @@ pub enum Endpoint {
 pub struct Source {
     wire: Arc<Wire>,
     stats: SharedStats,
+    live: SharedLive,
+    no_frames_after: Duration,
     stop_tx: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<SourceOutcome>>,
     target_id: String,
@@ -154,13 +161,17 @@ impl Source {
 
         let started = Instant::now();
         let stats: SharedStats = Arc::default();
+        let live: SharedLive = Arc::default();
         let (stop_tx, stop_rx) = oneshot::channel();
         let lp = Loop {
             sub,
             wire: wire.clone(),
-            handler: Handler::new(cfg.fps, stats.clone()),
+            handler: Handler::new(cfg.fps, stats.clone(), live.clone()),
             sink,
             stats: stats.clone(),
+            live: live.clone(),
+            no_frames_after: cfg.no_frames_after,
+            warned: false,
             started,
             ack_timeout: cfg.ack_timeout,
             stop_grace: cfg.stop_grace,
@@ -169,6 +180,8 @@ impl Source {
         Ok(Source {
             wire,
             stats,
+            live,
+            no_frames_after: cfg.no_frames_after,
             stop_tx: Some(stop_tx),
             task: Some(task),
             target_id: target_id.to_string(),
@@ -178,7 +191,16 @@ impl Source {
     }
 
     pub fn stats(&self) -> SourceStats {
-        snapshot(&self.stats, &self.wire)
+        snapshot(&self.stats, &self.live, &self.wire)
+    }
+
+    /// Live state of the capture: waiting, no frames, receiving or quiet.
+    pub fn health(&self) -> Health {
+        let now = self.started.elapsed().as_millis() as u64;
+        self.live
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .health(now, self.no_frames_after.as_millis() as u64)
     }
 
     /// The recorder's own connection (tests prove it stays responsive).
@@ -206,11 +228,30 @@ impl Source {
             }
             None => SourceOutcome::Captured,
         };
+        let elapsed_ms = self.started.elapsed().as_millis() as u64;
+        let (frames, last_age, hidden) = {
+            let l = self.live.lock().unwrap_or_else(|e| e.into_inner());
+            (l.frames(), l.last_age(elapsed_ms), l.hidden())
+        };
+        // D6-10 rule 1: zero frames is a blank capture at ANY duration. A
+        // known cause (lost connection) keeps its own, more specific outcome.
+        let outcome = match outcome {
+            SourceOutcome::Captured if frames == 0 => SourceOutcome::NoFrames {
+                waited_ms: elapsed_ms,
+                hidden,
+            },
+            o => o,
+        };
+        // Rule 3: silence after a frame is reported, never a failure.
+        let quiet_tail_ms = last_age.filter(|a| *a >= self.no_frames_after.as_millis() as u64);
         SourceReport {
             outcome,
-            stats: snapshot(&self.stats, &self.wire),
+            stats: snapshot(&self.stats, &self.live, &self.wire),
             target_id: std::mem::take(&mut self.target_id),
-            elapsed_ms: self.started.elapsed().as_millis() as u64,
+            elapsed_ms,
+            last_frame_age_ms: last_age,
+            quiet_tail_ms,
+            hidden,
         }
     }
 }
@@ -224,8 +265,12 @@ impl Drop for Source {
     }
 }
 
-fn snapshot(stats: &SharedStats, wire: &Wire) -> SourceStats {
+fn snapshot(stats: &SharedStats, live: &SharedLive, wire: &Wire) -> SourceStats {
     let mut s = lock(stats).clone();
+    s.longest_gap_ms = live
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .longest_gap_ms();
     s.methods_sent = wire.methods_sent();
     s
 }
@@ -236,6 +281,10 @@ struct Loop {
     handler: Handler,
     sink: Arc<dyn FrameSink>,
     stats: SharedStats,
+    live: SharedLive,
+    no_frames_after: Duration,
+    /// The no-frames warning goes out once.
+    warned: bool,
     started: Instant,
     ack_timeout: Duration,
     stop_grace: Duration,
@@ -265,6 +314,28 @@ impl Loop {
                 st.ack_errors += 1;
             }
         });
+    }
+
+    /// One stderr warning when no first frame arrived within the period;
+    /// recording continues (stdout is untouched).
+    fn warn_if_no_frames(&mut self) {
+        if self.warned {
+            return;
+        }
+        let h = self
+            .live
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .health(self.now_ms(), self.no_frames_after.as_millis() as u64);
+        if let Health::NoFrames { for_ms, hidden } = h {
+            self.warned = true;
+            tracing::warn!(
+                target: "bladebro.record",
+                "no screencast frames for {:.1} s{}; the tab may be in the background, minimized or covered",
+                for_ms as f64 / 1000.0,
+                if hidden { " (Chrome reported it hidden)" } else { "" }
+            );
+        }
     }
 
     async fn run(mut self, mut stop_rx: oneshot::Receiver<()>) -> SourceOutcome {
@@ -319,6 +390,7 @@ impl Loop {
                         lost = true;
                         break;
                     }
+                    self.warn_if_no_frames();
                 }
             }
             // Reap finished ack tasks so a long recording does not grow the set.

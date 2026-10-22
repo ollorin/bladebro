@@ -66,7 +66,7 @@ async fn acks_are_sent_even_when_the_sink_and_decode_fail() {
         assert_eq!(s.bad_frames, 6);
         assert_eq!(s.queue_dropped, 6);
         assert_eq!(s.forwarded, 0);
-        assert!(rep.verdict().ends_with(", 6 unreadable"));
+        assert!(rep.verdict().contains(", 6 unreadable"));
     })
     .await;
 }
