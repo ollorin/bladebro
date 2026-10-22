@@ -115,3 +115,14 @@ pub fn pid_gone(pid: u32) -> bool {
     let r = unsafe { libc::kill(pid as libc::pid_t, 0) };
     r == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
 }
+
+#[cfg(windows)]
+impl Scratch {
+    /// Write a `.cmd` batch fake (CRLF). WRITTEN, NOT COMPILED OR RUN HERE.
+    pub fn cmd(&self, name: &str, body: &str) -> PathBuf {
+        let p = self.0.join(format!("{name}.cmd"));
+        let text = format!("@echo off\r\n{}\r\n", body.replace('\n', "\r\n"));
+        let _ = std::fs::write(&p, text);
+        p
+    }
+}
