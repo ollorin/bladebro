@@ -12,6 +12,7 @@
 //! - `test_util`, `lifecycle_tests`, `matrix_tests` (tests only): fake ffmpeg scripts, unix lifecycle tests and outcome matrix.
 //! - `windows_tests` (tests only, cfg(windows)): .cmd fakes, written but never compiled here.
 //! - `real_tests` (tests only): real ffmpeg end-to-end, skipped when absent.
+//! - `size_change_tests` (tests only): two JPEG sizes into one encoder (tab following), real ffmpeg.
 //!
 //! Fork-only module (SYNC-01): no upstream file is touched by it.
 
@@ -26,6 +27,8 @@ mod process;
 mod real_tests;
 mod report;
 mod resolve;
+#[cfg(test)]
+mod size_change_tests;
 #[cfg(test)]
 pub(crate) mod test_util;
 #[cfg(all(test, windows))]

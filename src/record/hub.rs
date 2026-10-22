@@ -5,6 +5,7 @@
 //! - `msg`: message texts and `scrub` (no dead-tab substrings, ever).
 //! - `report`: pure (source report, encoder report) -> one honest stop line.
 //! - `env`: `HubEnv` (config, ffmpeg, lane, current tab, attach) injected into the machine.
+//! - `follow`: tab following (CAPT-03): follower task, agent-tab rule, segment sink, merge.
 //! - `machine`: `Hub` state machine (start/stop/finish_orphan, start-failure cleanup, encoder hand-back).
 //! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
 //!
@@ -16,6 +17,7 @@
 #[cfg(test)]
 mod adapter_tests;
 pub mod env;
+pub mod follow;
 pub mod live_env;
 pub mod machine;
 #[cfg(all(test, unix))]

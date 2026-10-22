@@ -212,7 +212,7 @@ fn zero_fps_never_divides() {
 
 #[test]
 fn tab_note_is_appended() {
-    let n = msg::tab_moved("T1", "T2");
+    let n = msg::tab_gone("T1", 4.2, "T2");
     let (_, t) = compose(
         &src(SourceOutcome::Captured, 10, 0, None),
         &enc(Outcome::Finalized, 10, 0),
@@ -220,8 +220,10 @@ fn tab_note_is_appended() {
         &segs(),
         Some(&n),
     );
-    assert!(t.contains("agent is now on tab T2"), "{t}");
-    assert!(t.contains("tab following is not implemented yet"), "{t}");
+    assert!(
+        t.contains(". Note: tab T1 gone at 4.2 s; following tab T2"),
+        "{t}"
+    );
 }
 
 #[test]
@@ -257,7 +259,13 @@ fn messages_are_clean_and_actionable() {
         a,
         msg::started("/abs/a.webm", "T1"),
         msg::not_finalized("/abs/a.webm"),
-        msg::tab_moved("T1", "T2"),
+        msg::tab_gone("T1", 4.2, "T2"),
+        msg::tab_reconnected("T1", 4.2),
+        msg::no_tab(9.0),
+        msg::browser_lost(9.0),
+        msg::rebind_failed("T2", 3.0, "cannot open the recorder's CDP connection"),
+        msg::zero_frames("T2", 6.0),
+        msg::follower_stuck(),
         msg::orphan_prefix().to_string(),
     ];
     for m in &all {

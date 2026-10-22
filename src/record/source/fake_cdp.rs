@@ -30,6 +30,9 @@ pub(crate) struct FakeOpts {
     pub frames_after_stop: usize,
     /// Every n-th frame carries undecodable base64.
     pub garbage_every: Option<usize>,
+    /// Epoch seconds of frame 0 (Chrome's clock is shared by all tabs, so two
+    /// fakes modelling two tabs get bases on one timeline).
+    pub ts_base: f64,
 }
 
 impl Default for FakeOpts {
@@ -43,6 +46,7 @@ impl Default for FakeOpts {
             max_in_flight: None,
             frames_after_stop: 0,
             garbage_every: None,
+            ts_base: 1.7e9,
         }
     }
 }
@@ -185,7 +189,11 @@ pub(crate) fn frame_event(data: &str, session: i64, ts: f64) -> String {
 
 /// Chrome's timestamp for frame `i` (tests recompute it with the same math).
 pub(crate) fn frame_ts(i: usize, interval: Duration) -> f64 {
-    1.7e9 + i as f64 * interval.as_secs_f64()
+    frame_ts_from(1.7e9, i, interval)
+}
+
+pub(crate) fn frame_ts_from(base: f64, i: usize, interval: Duration) -> f64 {
+    base + i as f64 * interval.as_secs_f64()
 }
 
 async fn emit(o: FakeOpts, st: Arc<FakeState>, tx: mpsc::UnboundedSender<Option<String>>) {
@@ -212,7 +220,7 @@ async fn emit(o: FakeOpts, st: Arc<FakeState>, tx: mpsc::UnboundedSender<Option<
         let _ = tx.send(Some(frame_event(
             data,
             o.screencast_session,
-            frame_ts(i, o.interval),
+            frame_ts_from(o.ts_base, i, o.interval),
         )));
         st.emitted.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(o.interval).await;

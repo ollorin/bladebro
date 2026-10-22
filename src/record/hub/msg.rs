@@ -84,11 +84,36 @@ pub fn not_finalized(path: &str) -> String {
     )
 }
 
-/// Phase 8 adds tab following; until then the video stays on the bound tab.
-pub fn tab_moved(bound: &str, now: &str) -> String {
-    format!(
-        "agent is now on tab {now}; the video shows only tab {bound} (tab following is not implemented yet)"
-    )
+/// The recorded tab went away and the agent's next tab took over.
+pub fn tab_gone(from: &str, at_s: f64, to: &str) -> String {
+    format!("tab {from} gone at {at_s:.1} s; following tab {to}")
+}
+
+/// The recorded tab is still listed but its recorder connection ended.
+pub fn tab_reconnected(tab: &str, at_s: f64) -> String {
+    format!("recorder connection to tab {tab} ended at {at_s:.1} s; reconnected")
+}
+
+pub fn no_tab(at_s: f64) -> String {
+    format!("no tab left at {at_s:.1} s")
+}
+
+pub fn browser_lost(at_s: f64) -> String {
+    format!("browser connection lost at {at_s:.1} s")
+}
+
+pub fn rebind_failed(tab: &str, at_s: f64, err: &str) -> String {
+    format!("tab {tab} not recorded from {at_s:.1} s: {err}")
+}
+
+pub fn zero_frames(tab: &str, for_s: f64) -> String {
+    format!("tab {tab}: no frames for {for_s:.1} s (hidden or background tab)")
+}
+
+/// The follower did not answer the stop in time.
+pub fn follower_stuck() -> String {
+    "the tab follower did not stop in time; the recording may be missing its last seconds"
+        .to_string()
 }
 
 pub fn orphan_prefix() -> &'static str {

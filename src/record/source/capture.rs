@@ -203,6 +203,12 @@ impl Source {
             .health(now, self.no_frames_after.as_millis() as u64)
     }
 
+    /// The capture loop ended (tab closed, browser gone or stopped). The tab
+    /// follower reads this to notice a recorded tab that went away.
+    pub fn is_finished(&self) -> bool {
+        self.task.as_ref().is_none_or(|t| t.is_finished())
+    }
+
     /// The recorder's own connection (tests prove it stays responsive).
     #[cfg(test)]
     pub(super) fn client_for_test(&self) -> CdpClient {

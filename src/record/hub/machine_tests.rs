@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::env::{Attach, HubEnv, Lane};
+use super::follow::{TabProbe, TabView};
 use super::machine::{take_encoder, Hub, HubError, Knobs};
 use crate::record::encoder::test_util::{cfg_for, fake_ffmpeg, pid_gone, start_retry, Scratch};
 use crate::record::source::fake_cdp::{FakeCdp, FakeOpts};
@@ -36,6 +37,7 @@ struct TestEnv {
     lane: Lane,
     tab: Mutex<String>,
     attach: Attach,
+    probe: Option<TabProbe>,
     config_calls: AtomicUsize,
     ffmpeg_calls: AtomicUsize,
 }
@@ -60,6 +62,31 @@ impl HubEnv for TestEnv {
     }
     fn attach(&self) -> Attach {
         self.attach.clone()
+    }
+    fn probe(&self) -> TabProbe {
+        match &self.probe {
+            Some(p) => p.clone(),
+            None => match self.attach() {
+                Attach::Port(base) => TabProbe::Http { base },
+                Attach::Ws(_) => TabProbe::Fixed,
+            },
+        }
+    }
+}
+
+impl TestEnv {
+    fn with_probe(mut self, p: TabProbe) -> Self {
+        self.probe = Some(p);
+        self
+    }
+}
+
+fn view(id: &str, ws: &str) -> TabView {
+    TabView {
+        id: id.into(),
+        url: format!("http://127.0.0.1/{id}"),
+        attached: false,
+        ws_url: ws.into(),
     }
 }
 
@@ -87,6 +114,7 @@ fn env(s: &Scratch, script: &Path, attach: Attach) -> TestEnv {
         lane: Lane::Ws,
         tab: Mutex::new("T1".into()),
         attach,
+        probe: None,
         config_calls: AtomicUsize::new(0),
         ffmpeg_calls: AtomicUsize::new(0),
     }
@@ -96,6 +124,7 @@ fn hub() -> Hub {
     Hub::with_knobs(Knobs {
         stop_grace: Some(Duration::from_millis(100)),
         finish_timeout: Some(Duration::from_secs(10)),
+        ..Default::default()
     })
 }
 
@@ -359,20 +388,39 @@ async fn j_take_encoder_fails_honestly_when_the_sink_is_still_held() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn k_tab_change_adds_a_note() {
+async fn k_stop_after_late_switch_shows_the_new_tab() {
     guard(async {
         let s = Scratch::new();
         let script = s.script("fake-enc-k", OK_SCRIPT);
-        let fake = FakeCdp::start(frames(10)).await;
-        let e = env(&s, &script, Attach::Ws(fake.url.clone()));
-        let mut h = hub();
+        let fake_a = FakeCdp::start(frames(30)).await;
+        // One Chrome clock: the second tab's frames come later on it.
+        let fake_b = FakeCdp::start(FakeOpts {
+            ts_base: 1.7e9 + 10.0,
+            ..frames(30)
+        })
+        .await;
+        let (probe, list) = TabProbe::scripted(vec![view("T1", &fake_a.url)]);
+        let e = env(&s, &script, Attach::Ws(fake_a.url.clone())).with_probe(probe);
+        let mut h = Hub::with_knobs(Knobs {
+            stop_grace: Some(Duration::from_millis(100)),
+            finish_timeout: Some(Duration::from_secs(10)),
+            // A poll that never fires inside this test: only the stop-time
+            // catch-up can notice the switch.
+            poll: Some(Duration::from_secs(60)),
+            ..Default::default()
+        });
         okay(h.start(&e, "tabs").await);
-        fake.wait_emitter_done().await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        list.lock().expect("list").tabs = vec![view("T2", &fake_b.url), view("T1", &fake_a.url)];
         *e.tab.lock().expect("tab") = "T2".into();
         let t = okay(h.stop(&e).await);
         assert!(t.starts_with("recording saved: "), "{t}");
-        assert!(t.contains("agent is now on tab T2"), "{t}");
-        assert!(t.contains("tab following is not implemented yet"), "{t}");
+        assert!(t.contains("tab T2]"), "last segment is the new tab: {t}");
+        assert!(t.contains("tab T1,"), "{t}");
+        assert!(
+            !t.contains("tab following is not implemented"),
+            "stale Phase 7 text: {t}"
+        );
     })
     .await;
 }

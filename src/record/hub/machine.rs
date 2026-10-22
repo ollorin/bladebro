@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::env::{Attach, HubEnv, Lane};
+use super::follow::{compose_follow, FollowShared, SpawnArgs, Tracker, CONFIRM, POLL};
 use super::msg::{self, scrub};
-use super::report::{compose, Segment};
 use crate::record::{
     create_recording_file, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource, SourceConfig,
 };
@@ -43,13 +43,17 @@ fn failed(s: impl AsRef<str>) -> HubError {
 pub struct Knobs {
     pub stop_grace: Option<Duration>,
     pub finish_timeout: Option<Duration>,
+    /// Tab-list poll interval and the gap between the two confirming samples.
+    pub poll: Option<Duration>,
+    pub confirm: Option<Duration>,
+    /// A zero-frame segment this long is a failure (default: the 5 s watchdog).
+    pub no_frames_after: Option<Duration>,
 }
 
 struct Active {
     path: PathBuf,
     enc: Arc<Encoder>,
-    src: FrameSource,
-    tab: String,
+    rec: Tracker,
     started: Instant,
     fps: u32,
 }
@@ -121,7 +125,7 @@ impl Hub {
             return Err(failed(msg::active(
                 &a.path.display().to_string(),
                 a.started.elapsed().as_millis() as u64,
-                &a.src.health(),
+                &a.rec.health(),
             )));
         }
         let cfg = env.config(name).map_err(failed)?;
@@ -149,12 +153,19 @@ impl Hub {
         if let Some(g) = self.knobs.stop_grace {
             scfg.stop_grace = g;
         }
-        let sink: Arc<dyn FrameSink> = enc.clone();
+        if let Some(n) = self.knobs.no_frames_after {
+            scfg.no_frames_after = n;
+        }
+        // Every source writes through a SegmentSink over the one encoder, so
+        // the follower can rebind to another tab without ending the video.
+        let shared = FollowShared::new();
+        let inner: Arc<dyn FrameSink> = enc.clone();
+        let sink: Arc<dyn FrameSink> = shared.sink(inner.clone(), 1);
         let started = match env.attach() {
             Attach::Port(base) => {
-                FrameSource::start(&Endpoint::Port { base }, &tab, scfg, sink).await
+                FrameSource::start(&Endpoint::Port { base }, &tab, scfg.clone(), sink).await
             }
-            Attach::Ws(url) => FrameSource::start_ws(&url, &tab, scfg, sink).await,
+            Attach::Ws(url) => FrameSource::start_ws(&url, &tab, scfg.clone(), sink).await,
         };
         let src = match started {
             Ok(s) => s,
@@ -163,6 +174,7 @@ impl Hub {
                 // sink handed to the source is gone with the failed start, so
                 // the encoder can be finished (it exits on EOF) BEFORE its
                 // empty file is removed, leaving no process and no stray file.
+                drop(inner);
                 if let Ok(enc) = take_encoder(enc, 20, Duration::from_millis(50)).await {
                     let _ = enc.finish().await;
                 }
@@ -172,11 +184,20 @@ impl Hub {
         };
         // Active only now: both the encoder and the source are running.
         let text = msg::started(&path.display().to_string(), &tab);
+        let rec = Tracker::spawn(SpawnArgs {
+            first: src,
+            tab,
+            shared,
+            inner,
+            probe: env.probe(),
+            scfg,
+            poll: self.knobs.poll.unwrap_or(POLL),
+            confirm: self.knobs.confirm.unwrap_or(CONFIRM),
+        });
         self.active = Some(Active {
             path,
             enc,
-            src,
-            tab,
+            rec,
             started: Instant::now(),
             fps: cfg.fps,
         });
@@ -202,12 +223,10 @@ impl Hub {
                 None => Err(failed(msg::none())),
             };
         };
-        // A failed lookup just means no note; it never blocks the stop.
-        let note = match env.current_tab().await {
-            Ok(now) if now != a.tab => Some(msg::tab_moved(&a.tab, &now)),
-            _ => None,
-        };
-        self.finish_active(a, note).await
+        // The agent's current tab, for the follower's catch-up of a switch
+        // younger than one poll. A failed lookup only skips the catch-up.
+        let hint = env.current_tab().await.ok();
+        self.finish_active(a, hint).await
     }
 
     /// The browser or surface is going away: stop like `stop` and keep the
@@ -222,20 +241,17 @@ impl Hub {
         });
     }
 
-    async fn finish_active(&self, a: Active, note: Option<String>) -> Result<String, HubError> {
-        let Active {
-            enc, src, tab, fps, ..
-        } = a;
-        // Source first: it marks the end of the video, drains acks and
-        // releases the sink so the encoder can be taken back.
-        let sr = src.stop().await;
+    async fn finish_active(&self, a: Active, hint: Option<String>) -> Result<String, HubError> {
+        let Active { enc, rec, fps, .. } = a;
+        // Follower first: it ends the video, drains every source's acks and
+        // releases every sink so the encoder can be taken back.
+        let fr = rec.stop(hint).await;
         let enc = match take_encoder(enc, 20, Duration::from_millis(50)).await {
             Ok(e) => e,
             Err(m) => return Err(failed(m)),
         };
         let er = enc.finish().await;
-        let segments = [Segment { at_s: 0.0, tab }];
-        let (ok, text) = compose(&sr, &er, fps, &segments, note.as_deref());
+        let (ok, text) = compose_follow(&fr, &er, fps);
         if ok {
             Ok(text)
         } else {

@@ -3,6 +3,7 @@
 //! no env reads, no global). The live implementation arrives with the state
 //! hook (07-02).
 
+use super::follow::TabProbe;
 use crate::record::{EncoderError, RecordConfig, ResolvedFfmpeg};
 
 /// Which surface/transport the hub runs under.
@@ -39,4 +40,13 @@ pub trait HubEnv {
     /// Target id of the tab the agent is on right now.
     async fn current_tab(&self) -> Result<String, String>;
     fn attach(&self) -> Attach;
+    /// How the follower reads Chrome's tab list. Default: the debugging port
+    /// over HTTP, or `Fixed` (no following, Phase 7 behavior) for an explicit
+    /// page WebSocket. Tests override it with a scripted list.
+    fn probe(&self) -> TabProbe {
+        match self.attach() {
+            Attach::Port(base) => TabProbe::Http { base },
+            Attach::Ws(_) => TabProbe::Fixed,
+        }
+    }
 }
