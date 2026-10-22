@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Recording Config and Safe Output Paths** - Config precedence, format/size/fps settings, sanitized names and a private, never-rotated recordings directory
 - [x] **Phase 4: ffmpeg Discovery and Doctor** - Find, probe and cache ffmpeg; `bladebro doctor` reports it
 - [x] **Phase 4.1: Headless/Headed Launch Switch and Layered Config (INSERTED)** - `BLADE_HEADLESS`, project/user config layers, honest stealth flag, mode shown in doctor, and the options reference page with a drift test
-- [ ] **Phase 5: Encoder Process Manager** - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
+- [~] **Phase 5: Encoder Process Manager** (3/3 plans executed, verified on macOS; SC4 windows-latest CI pending) - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
 - [ ] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [ ] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files

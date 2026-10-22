@@ -21,7 +21,8 @@ pending_ci:
     next: "Push the branch, get a green windows-latest job; until then LIFE-05 stays unticked."
 open_items:
   - "crf 40 (measured in Phase 2) vs the user's 36: user decision, not a gap. One constant (VP9_FLAGS) + exact-argv test + docs line."
-  - "Verdict grammar defect introduced by d8b1d72 (non-blocking): ExitFailed for a signal or exit 255 renders '{path} is may be incomplete and was not verified'. Fix: drop the 'is' for that branch."
+  - "RESOLVED in 07a6725: verdict grammar defect from d8b1d72 ('{path} is may be incomplete...'). The validity text now carries its own 'is'; re-checked at HEAD."
+rechecked: 2026-10-22T08:55:00Z (HEAD 07a6725, wording fix only; status unchanged: passed, SC4 still written-not-executed)
 ---
 
 # Phase 5: Encoder Process Manager, Verification Report
@@ -299,3 +300,12 @@ Everything else holds under adversarial probing on macOS with real ffmpeg n9.0.2
 ---
 _Verified: 2026-10-22T08:16:11Z_
 _Verifier: Claude (opus-adversarial, gsd-verifier)_
+
+## Re-check after wording fix (HEAD 07a6725, 2026-10-22T08:55:00Z, opus-adversarial)
+
+Scope: only the ExitFailed verdict wording in src/record/encoder/report.rs.
+- The `{validity}` format site is the only one (report.rs:168-174). Exit code 1 renders "{path} is not a valid recording". Exit 255 and signal exits render "{path} may be incomplete and was not verified". Neither branch can produce "is may be" any more.
+- The branch inputs match production: `ExitInfo::Code(c)` gives "exit code {c}" (report.rs:227), and signals pass through as "signal: N (NAME)".
+- The test now asserts "is not a valid recording" for exit 1. For "exit code 255" and "signal: 2 (SIGINT)" it asserts no " is may be", no "not a valid recording", and " may be incomplete and was not verified".
+- `cargo fmt --check` OK. `cargo clippy --release --all-targets -- -D warnings` clean. `cargo test --release`: 565 passed, 0 failed (the known flaky concurrent_cold_starts_have_one_owner passed this run). No leftover ffmpeg or bladebro processes. I did not repeat the optional real-ffmpeg probe f: the string is built purely from the status text, and the unit test covers both branches.
+- The open item is closed. Status stays `passed`. SC4/LIFE-05 is still written but not executed, pending windows-latest CI.

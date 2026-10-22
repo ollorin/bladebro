@@ -5,15 +5,15 @@
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** A QA run with recording enabled always leaves a playable video file at a predictable path that the tool result reports, without touching the stealth path or breaking Bladebro's five-tool contract.
-**Current focus:** Phase 5 - Encoder Process Manager
+**Current focus:** Phase 6 - Frame Source (Phase 5 executed and opus-verified on macOS; SC4/LIFE-05 Windows CI pending, nothing pushed)
 
-> **ON HOLD (user request, 2026-10-21):** Phases 1-4 and 4.1 are done and verified (macOS only, 515 tests, nothing pushed). Resume with `/gsd:execute-roadmap` (it reads EXECUTION_LOG.md, offers "resume", and starts at Phase 5). Before resuming: re-read the Phase 4.1 open items in `phases/04.1-headless-headed-launch-switch/04.1-VERIFICATION.md` and note that Phase 4.1 edited ~15 pre-existing upstream files (see HOOKS.md), a larger SYNC-01 merge surface than planned.
+> Roadmap execution resumed 2026-10-22 (was on hold after Phase 4.1). Phase 4.1 edited ~15 upstream files (HOOKS.md); Phase 5 edited none (SYNC-01 clean).
 
 ## Current Position
 
-Phase: 4.1 (INSERTED) complete, after Phase 4; next is Phase 5 (Encoder Process Manager)
+Phase: 5 complete on macOS (SC4 Windows written, not executed); next is Phase 6 (Frame Source)
 Plan: 3 of 3 in current phase (Phase 2 complete, gate PASS-WITH-CAVEATS; see tools/record_sidecar/RESULTS.md)
-Status: Phase 4.1 executed and verified on macOS only (515 tests; Windows/Linux not executed, no CI run, nothing pushed). BLADE_HEADLESS, .bladebro.json project layer, launch.json user layer, `bladebro headless`, docs/recording-and-launch-config.md with drift test. Ready to plan Phase 5.
+Status: Phase 5 executed (565 tests, opus final verdict passed, macOS only; open: crf 40 vs 36 user decision, Windows CI). Earlier: Phase 4.1 executed and verified on macOS only (515 tests; Windows/Linux not executed, no CI run, nothing pushed). BLADE_HEADLESS, .bladebro.json project layer, launch.json user layer, `bladebro headless`, docs/recording-and-launch-config.md with drift test. Ready to plan Phase 5.
 Last activity: 2026-10-21 - Phase 4.1 executed and verified
 
 Progress: [████░░░░░░] 33% (4/12 phases executed)
@@ -58,7 +58,7 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 2]: CDP screencast behavior on Chrome 151, `Page.enable` stealth impact, and occlusion/headless frame cadence are unmeasured
-- [Phase 5]: Windows process lifecycle (no SIGINT, stdin-EOF finalize, no console) needs research
+- [Phase 5]: Windows lifecycle code + tests written but NEVER compiled/run (no windows-latest CI yet); w4/.cmd fakes unverified
 
 ## Session Continuity
 
