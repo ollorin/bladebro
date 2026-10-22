@@ -30,7 +30,8 @@ pub use config::{
 };
 pub use dir::{create_recording_file, prepare_dir};
 pub use encoder::{
-    build_args, classify, EncodeSpec, EncoderError, EncoderReport, ExitInfo, Outcome,
+    build_args, classify, repeat_counts, EncodeSpec, EncoderError, EncoderReport, ExitInfo,
+    Outcome, Pacer,
 };
 pub use ffmpeg::{
     discover, discover_cached, doctor_check, doctor_line, find_ffmpeg, known_locations,
