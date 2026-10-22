@@ -1,0 +1,43 @@
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T09:28:31Z  headless=1  fixtures=http://127.0.0.1:8765
+=== trace: anim.html, 12s, REC_LIVE_MODE=trace (WS proxy between the Source and the page) ===
+[trace] REC_LIVE_REPORT {"encoder":{"bytes":140845,"finalize_ms":39,"frames_dropped":0,"frames_queued":120,"frames_written":124,"ok":true,"outcome":"Finalized","path":"/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.5q5EhC7258/trace.webm","verdict":"recording finalized: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.5q5EhC7258/trace.webm (140845 bytes; 124 frames written, 0 dropped at the queue)"},"frame_sizes":[{"count":120,"first_ms":19,"last_ms":12060,"size":"1280x628"}],"harness":[],"health_at_stop":"Receiving { last_age_ms: 7 }","mode":"trace","secs_requested":12,"source":{"ack_errors":0,"acks_ok":720,"acks_sent":720,"bad_frames":0,"capped":600,"elapsed_ms":12503,"first_frame_ms":16,"forwarded":120,"frames_received":720,"hidden":false,"last_frame_age_ms":508,"last_frame_ms":11995,"longest_gap_ms":31,"lost":0,"methods_sent":[["Page.enable",1],["Page.startScreencast",1],["Page.screencastFrameAck",720],["Page.stopScreencast",1]],"ok":true,"outcome":"Captured","queue_dropped":0,"quiet_tail_ms":null,"ts_fallback":0,"unacked":0,"verdict":"capture ok: 720 frames received, 720 acked, 120 to the encoder, 600 skipped by the fps cap, 0 dropped at the queue, 0 lost; last frame 0.5 s before stop"},"target":"BE86A8971DC7E6922529B31CED72507D","wall_ms":12002,"wire_first":["Page.enable","Page.startScreencast","Page.screencastFrameAck","Page.screencastFrameAck","Page.screencastFrameAck","Page.screencastFrameAck","Page.screencastFrameAck","Page.screencastFrameAck","Page.screencastFrameAck","Page.screencastFrameAck"],"wire_methods":{"Page.enable":1,"Page.screencastFrameAck":720,"Page.startScreencast":1,"Page.stopScreencast":1}}
+[trace] argv_before: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --disable-extensions --no-first-run --disable-dev-shm-usage --disable-background-networking --disable-sync --disable-popup-blocking --disable-features=PdfPlugin --force-webrtc-ip-handling-policy=disable_non_proxied_udp --headless=new --enable-unsafe-swiftshader --ignore-gpu-blocklist --remote-debugging-port=55448 --user-data-dir=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecscn.Hh74ydqsAe/profiles/sess-98284 --window-size=1880,1010 --screen-info={1920x1080}
+[trace] argv bytes before/during/after:      531/     531/     531
+[trace] diff before vs during: identical
+[trace] diff before vs after:  identical
+[trace] wire_methods: {"Page.enable": 1, "Page.screencastFrameAck": 720, "Page.startScreencast": 1, "Page.stopScreencast": 1}
+[trace] source methods_sent: {"Page.enable": 1, "Page.screencastFrameAck": 720, "Page.startScreencast": 1, "Page.stopScreencast": 1}
+[trace] wire_first: ['Page.enable', 'Page.startScreencast', 'Page.screencastFrameAck', 'Page.screencastFrameAck', 'Page.screencastFrameAck', 'Page.screencastFrameAck', 'Page.screencastFrameAck', 'Page.screencastFrameAck', 'Page.screencastFrameAck', 'Page.screencastFrameAck']
+[trace] PASS: wire methods subset of the 4 allowed: extra=[]
+[trace] PASS: Page.enable is the first wire method
+[trace] PASS: Page.startScreencast before the first ack
+[trace] PASS: wire acks (720) == source acks_sent (720)
+[trace] PASS: wire_methods == source methods_sent
+[trace] PASS: frames_received 720 == acks_sent 720, frames > 0
+[trace] frame_sizes: [{"count": 120, "first_ms": 19, "last_ms": 12060, "size": "1280x628"}]
+[trace] PASS: Chrome main argv identical before/during/after
+[trace] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"12.400000"}}
+[trace] decode: exit=0 warning_lines=0 nb_read_frames=124
+[trace] drift: ffprobe_duration_ms=12400 wall_ms=12002 drift_pct=+3.32
+[trace] leftover processes after stop: 0
+=== slow: tick.html then anim.html, 25s, REC_LIVE_MODE=slow; bladebro commands at ~5/10/15s ===
+[slow] cmd1 'see content' at +5149ms rc=0 elapsed_ms=50 out_bytes=     121 first_line: page has no text content (may be a SPA that hasn't rendered — try waiting, or use mode=model for interactive elements)
+[slow] cmd2 'state tabs' at +10131ms rc=0 elapsed_ms=47 out_bytes=     129 first_line: * BB592183B42E4A065AD75FB7E095078F  anim — http://127.0.0.1:8765/anim.html
+[slow] cmd3 'nav http://127.0.0.1:8765/a.html' at +15290ms rc=0 elapsed_ms=340 out_bytes=     173 first_line: outcome: navigated → http://127.0.0.1:8765/a.html
+[slow] REC_LIVE_REPORT {"encoder":{"bytes":146566,"finalize_ms":37,"frames_dropped":0,"frames_queued":99,"frames_written":249,"ok":true,"outcome":"Finalized","path":"/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.5q5EhC7258/slow.webm","verdict":"recording finalized: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.5q5EhC7258/slow.webm (146566 bytes; 249 frames written, 0 dropped at the queue)"},"frame_sizes":[{"count":246,"first_ms":9,"last_ms":24997,"size":"1280x628"}],"harness":[],"health_at_stop":"Receiving { last_age_ms: 10 }","mode":"slow","secs_requested":25,"slow_sink":{"accepted":99,"max_len":16,"refused":147},"source":{"ack_errors":0,"acks_ok":1484,"acks_sent":1484,"bad_frames":0,"capped":1238,"elapsed_ms":25503,"first_frame_ms":7,"forwarded":99,"frames_received":1484,"hidden":false,"last_frame_age_ms":511,"last_frame_ms":24992,"longest_gap_ms":266,"lost":0,"methods_sent":[["Page.enable",1],["Page.startScreencast",1],["Page.screencastFrameAck",1484],["Page.stopScreencast",1]],"ok":true,"outcome":"Captured","queue_dropped":147,"quiet_tail_ms":null,"ts_fallback":0,"unacked":0,"verdict":"capture ok: 1484 frames received, 1484 acked, 99 to the encoder, 1238 skipped by the fps cap, 147 dropped at the queue, 0 lost; last frame 0.5 s before stop"},"target":"BB592183B42E4A065AD75FB7E095078F","wall_ms":25002}
+[slow] slow_sink: {"accepted": 99, "max_len": 16, "refused": 147}  source queue_dropped=147 forwarded=99 capped=1238
+[slow] PASS: max_len 16 <= 16
+[slow] PASS: refused 147 >= 1 and == source queue_dropped 147
+[slow] PASS: accepted 99 == source forwarded 99
+[slow] PASS: frames_received 1484 == acks_sent 1484
+[slow] same-tab nav at ~+15290 ms (driver clock; source clock starts a few ms later); last_frame_ms=24992 last_frame_age_ms=511 longest_gap_ms=266
+[slow] frames after the nav: YES (last frame 9702 ms after nav)
+[slow] frame_sizes: [{"count": 246, "first_ms": 9, "last_ms": 24997, "size": "1280x628"}]
+[slow] PASS: all three bladebro commands rc 0
+[slow] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"24.900000"}}
+[slow] decode: exit=0 warning_lines=0 nb_read_frames=249
+[slow] drift: ffprobe_duration_ms=24900 wall_ms=25002 drift_pct=-0.41
+[slow] leftover processes after stop: 0
+# finished: 2026-10-22T09:29:21Z

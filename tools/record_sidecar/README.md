@@ -89,9 +89,10 @@ Each sources `env.sh`, uses fresh scratch homes and tears down its own browser. 
 | `bash tools/record_sidecar/scenarios/stall_probe.sh` | 2 min of capture | results/stall_probe.json |
 | `bash tools/record_sidecar/scenarios/stealth.sh` | 20 s to 2 min | results/stealth.json, audit_*.txt, diff_oracle_attempt.txt, stats/audit_*.stats.json |
 | `bash tools/record_sidecar/scenarios/source_live.sh [dur-idle dur-tick dur-anim resize bg]` | about 4 min (headless, local fixtures) | .planning/phases/06-frame-source/evidence/06-02-live.txt (REC_LIVE_REPORT, ffprobe, decode, drift) |
+| `bash tools/record_sidecar/scenarios/source_live.sh trace\|slow\|all` | about 1 min (headless, local fixtures) | .planning/phases/06-frame-source/evidence/06-03-trace.txt (wire method trace through a test-only WS proxy, Chrome argv before/during/after, slow-consumer counters, concurrent `see`/`state tabs`/`nav`, PASS/FAIL lines computed by script) |
 | `python3 tools/record_sidecar/scenarios/sample_ts.py` | seconds | results/sample_timestamps.json |
 
-`source_live.sh` drives the product `FrameSource` + `Encoder` (not the Node sidecar) through the `#[ignore]` test `tests/record_live.rs` (inputs `REC_LIVE_PORT/TARGET/OUT/SECS/MODE`, one `REC_LIVE_REPORT <json>` stdout line); it is test code, not a CLI command or tool. Always `BLADE_HEADLESS=1`.
+`source_live.sh` drives the product `FrameSource` + `Encoder` (not the Node sidecar) through the `#[ignore]` test `tests/record_live.rs` (inputs `REC_LIVE_PORT/TARGET/OUT/SECS/MODE`, one `REC_LIVE_REPORT <json>` stdout line); it is test code, not a CLI command or tool. Always `BLADE_HEADLESS=1`. Modes of `REC_LIVE_MODE`: `plain`, `resize`, `trace` (adds `wire_methods`/`wire_first` from the proxy), `slow` (300 ms/frame SlowSink, queue 16; adds `slow_sink {accepted, refused, max_len}`); every mode reports `frame_sizes` (distinct JPEG pixel sizes seen).
 
 Runtimes were not timed except the stealth scenario (20 s to 2 min across my runs). The stealth scenario retries the audit-attached sidecar
 up to 8 times per variant because the attach races the audit's own startup; the attempt count is recorded.
