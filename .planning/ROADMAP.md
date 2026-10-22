@@ -158,7 +158,7 @@ Plans:
 
 Plans:
 - [x] 07-01: `src/record/hub.rs` + `hub/` RecordHub state machine (process-global, injected env), bound by target id
-- [ ] 07-02: `state` op schema + dispatch hooks (`mcp/tools.rs`, `mcp/server/state.rs`, CLI parity), stop report
+- [x] 07-02: `state` op schema + dispatch hooks (`mcp/tools.rs`, `mcp/server/state.rs`, CLI parity), stop report
 - [ ] 07-03: Integration tests (start/stop, double-start, off-mode trace, missing ffmpeg) + qol_probe/lane_matrix run
 
 ### Phase 8: Tab Following
