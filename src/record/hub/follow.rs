@@ -11,7 +11,8 @@
 //!
 //! Rules: the follower reads only `GET /json` on the debugging port (live: the
 //! `attached` flag is absent, so the agent's tab is the first page in Chrome's
-//! order, confirmed on two samples ~50 ms apart); a popup that does not take
+//! order, confirmed on two samples ~50 ms apart, a brand-new tab only after it
+//! stayed in front for 1.5 s); a popup that does not take
 //! the front never becomes a segment; each switch starts a new `Source` on the
 //! new tab BEFORE the old one is retired in the background.
 
@@ -42,8 +43,11 @@ use crate::record::source::{
 pub const RULE: Rule = Rule::ListOrder;
 /// How often the tab list is read.
 pub const POLL: Duration = Duration::from_millis(200);
-/// Gap between the two samples that confirm a switch.
+/// Gap between the two samples that confirm a switch to a known tab.
 pub const CONFIRM: Duration = Duration::from_millis(50);
+/// A tab that just appeared in front must stay there this long (popups are
+/// re-fronted by their opener within about a second; see `run.rs`).
+pub const NEW_TAB_CONFIRM: Duration = Duration::from_millis(1500);
 
 /// Live view for `msg::active` and the hub.
 pub(super) struct Snap {
@@ -63,19 +67,30 @@ pub struct SpawnArgs {
     pub scfg: SourceConfig,
     pub poll: Duration,
     pub confirm: Duration,
-    /// `first_head` sampled before the first source started.
-    pub head: Option<String>,
+    /// `first_view` sampled before the first source started.
+    pub initial: Initial,
+    pub new_confirm: Duration,
 }
 
-/// The first real page of Chrome's list right now: the baseline for `Baseline`
-/// (None with `Fixed`, or when the list cannot be read).
-pub async fn first_head(probe: &TabProbe, tab: &str) -> Option<String> {
+/// Chrome's tab list at record-start.
+#[derive(Debug, Default)]
+pub struct Initial {
+    pub head: Option<String>,
+    pub known: Vec<String>,
+}
+
+/// Chrome's list right now: its first real page is the baseline for `Baseline`,
+/// every id in it counts as already open (empty with `Fixed` or on an error).
+pub async fn first_view(probe: &TabProbe, tab: &str) -> Initial {
     if probe.is_fixed() {
-        return None;
+        return Initial::default();
     }
     match tokio::time::timeout(Duration::from_secs(2), probe.list(tab)).await {
-        Ok(Ok(l)) => agent_tab(&l, &[], Rule::ListOrder),
-        _ => None,
+        Ok(Ok(l)) => Initial {
+            head: agent_tab(&l, &[], Rule::ListOrder),
+            known: l.into_iter().map(|v| v.id).collect(),
+        },
+        _ => Initial::default(),
     }
 }
 
@@ -105,7 +120,9 @@ impl Tracker {
             poll: a.poll,
             confirm: a.confirm,
             snap: snap.clone(),
-            head: a.head,
+            head: a.initial.head,
+            known: a.initial.known,
+            new_confirm: a.new_confirm,
         };
         let task = tokio::spawn(run::run(p, stop_rx));
         Tracker {

@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::env::{Attach, HubEnv, Lane};
-use super::follow::{compose_follow, first_head, FollowShared, SpawnArgs, Tracker, CONFIRM, POLL};
+use super::follow::{
+    compose_follow, first_view, FollowShared, SpawnArgs, Tracker, CONFIRM, NEW_TAB_CONFIRM, POLL,
+};
 use super::msg::{self, scrub};
 use crate::record::{
     create_recording_file, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource, SourceConfig,
@@ -46,6 +48,8 @@ pub struct Knobs {
     /// Tab-list poll interval and the gap between the two confirming samples.
     pub poll: Option<Duration>,
     pub confirm: Option<Duration>,
+    /// How long a brand-new tab must stay in front before it is followed.
+    pub new_confirm: Option<Duration>,
     /// A zero-frame segment this long is a failure (default: the 5 s watchdog).
     pub no_frames_after: Option<Duration>,
 }
@@ -159,7 +163,7 @@ impl Hub {
         // Every source writes through a SegmentSink over the one encoder, so
         // the follower can rebind to another tab without ending the video.
         let probe = env.probe();
-        let head = first_head(&probe, &tab).await;
+        let initial = first_view(&probe, &tab).await;
         let shared = FollowShared::new();
         let inner: Arc<dyn FrameSink> = enc.clone();
         let sink: Arc<dyn FrameSink> = shared.sink(inner.clone(), 1);
@@ -192,7 +196,8 @@ impl Hub {
             shared,
             inner,
             probe,
-            head,
+            initial,
+            new_confirm: self.knobs.new_confirm.unwrap_or(NEW_TAB_CONFIRM),
             scfg,
             poll: self.knobs.poll.unwrap_or(POLL),
             confirm: self.knobs.confirm.unwrap_or(CONFIRM),

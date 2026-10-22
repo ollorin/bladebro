@@ -120,6 +120,7 @@ impl Rig {
             finish_timeout: Some(Duration::from_secs(10)),
             poll: Some(Duration::from_millis(30)),
             confirm: Some(Duration::from_millis(10)),
+            new_confirm: Some(Duration::from_millis(150)),
             no_frames_after: Some(no_frames_after),
         });
         Rig {
@@ -281,6 +282,29 @@ async fn a_popup_behind_the_opener_is_not_a_segment_until_it_takes_the_front() {
         tokio::time::sleep(Duration::from_millis(400)).await;
         let t = okay(r.hub.stop(&r.env).await);
         assert_eq!(segments(&t), "0.0 s tab A, 3.0 s tab P", "{t}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_popup_that_the_opener_re_fronts_in_time_is_not_a_segment() {
+    guard(async {
+        let a = FakeCdp::start(fake(400, 0.0)).await;
+        let p = FakeCdp::start(fake(400, 3.0)).await;
+        let mut r = Rig::new("flash", &a, LONG).await;
+        r.start().await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        // The popup is first right after the click; the opener's re-activation
+        // (after the click verdict) puts it back, well inside new_confirm.
+        r.set(vec![view("P", &p.url), view("A", &a.url)]);
+        tokio::time::sleep(Duration::from_millis(70)).await;
+        r.set(vec![view("A", &a.url), view("P", &p.url)]);
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert!(!started(&p), "a re-fronted popup must not be recorded");
+        let t = okay(r.hub.stop(&r.env).await);
+        assert_eq!(segments(&t), "0.0 s tab A", "{t}");
+        // Once the popup is known, switching to it is followed after the short
+        // confirm only (the agent chose it).
     })
     .await;
 }

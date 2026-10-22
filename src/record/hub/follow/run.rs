@@ -47,8 +47,12 @@ pub(super) struct Params {
     pub confirm: Duration,
     pub no_frames_after: Duration,
     pub snap: Arc<Mutex<Snap>>,
-    /// First page of Chrome's list at record-start (see `Baseline`).
+    /// Chrome's list at record-start: its first page (see `Baseline`) and
+    /// every id already open (a tab not in it is "new", see `new_confirm`).
     pub head: Option<String>,
+    pub known: Vec<String>,
+    /// How long a tab that just appeared must stay in front before it is followed.
+    pub new_confirm: Duration,
 }
 
 struct Cur {
@@ -74,6 +78,11 @@ struct Run {
     failures: Vec<String>,
     confirm: Confirm,
     baseline: Baseline,
+    /// Every tab id seen in a previous sample.
+    known: HashSet<String>,
+    /// A brand-new tab in front and since when.
+    new_since: Option<(String, Instant)>,
+    new_confirm: Duration,
     misses: u32,
     fail_streak: u32,
     failed: HashSet<String>,
@@ -136,6 +145,9 @@ impl Run {
             failures: Vec::new(),
             confirm: Confirm::new(),
             baseline,
+            known: p.known.into_iter().collect(),
+            new_since: None,
+            new_confirm: p.new_confirm,
             misses: 0,
             fail_streak: 0,
             failed: HashSet::new(),
@@ -216,7 +228,9 @@ impl Run {
         match timeout(LIST_CAP, self.probe.list(&hint)).await {
             Ok(Ok(list)) => {
                 self.misses = 0;
+                let ids: Vec<String> = list.iter().map(|v| v.id.clone()).collect();
                 self.decide(list).await;
+                self.known.extend(ids);
             }
             _ => {
                 self.misses += 1;
@@ -273,8 +287,33 @@ impl Run {
         }
         if cand == cur {
             self.confirm.reset();
+            self.new_since = None;
             return;
         }
+        // A tab that just appeared in front is ambiguous: open-tab (the agent
+        // is on it) or a popup the opener re-fronts once its click verdict is
+        // done (live: ~0.6 s). It must stay in front for `new_confirm`.
+        let fresh = !self.known.contains(&cand)
+            || self.new_since.as_ref().is_some_and(|(id, _)| *id == cand);
+        if fresh {
+            match &self.new_since {
+                Some((id, since)) if *id == cand => {
+                    if since.elapsed() < self.new_confirm {
+                        return;
+                    }
+                }
+                _ => {
+                    self.new_since = Some((cand, Instant::now()));
+                    return;
+                }
+            }
+            self.new_since = None;
+            if let Some(v) = list.iter().find(|v| v.id == cand) {
+                self.rebind(v, None).await;
+            }
+            return;
+        }
+        self.new_since = None;
         let target = if self.confirm.feed(&cand, &cur) {
             Some((cand, list))
         } else {
