@@ -4,16 +4,71 @@
 //! Module map:
 //! - `msg`: message texts and `scrub` (no dead-tab substrings, ever).
 //! - `report`: pure (source report, encoder report) -> one honest stop line.
-//! - `report_tests` (tests only): outcome table.
+//! - `env`: `HubEnv` (config, ffmpeg, lane, current tab, attach) injected into the machine.
+//! - `machine`: `Hub` state machine (start/stop/finish_orphan, start-failure cleanup, encoder hand-back).
+//! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
+//!
+//! The process-global lives here and is a thin wrapper: all logic is on `Hub`
+//! instances so tests never share state through it.
 //!
 //! Fork-only module (SYNC-01): no upstream file is touched by it.
 
+pub mod env;
+pub mod machine;
+#[cfg(all(test, unix))]
+mod machine_tests;
 pub mod msg;
 pub mod report;
 #[cfg(test)]
 mod report_tests;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+
 use serde_json::Value;
+use tokio::sync::Mutex;
+
+pub use machine::{Hub, HubError};
+
+static HUB: OnceLock<Mutex<Hub>> = OnceLock::new();
+static EPHEMERAL: AtomicBool = AtomicBool::new(false);
+
+/// The one hub of this process (one browser, one recording).
+pub fn hub() -> &'static Mutex<Hub> {
+    HUB.get_or_init(|| Mutex::new(Hub::new()))
+}
+
+/// Mark this process as a one-shot CLI call: it exits after the command, so
+/// a recording could never be stopped.
+pub fn set_ephemeral() {
+    EPHEMERAL.store(true, Ordering::Relaxed);
+}
+
+pub fn is_ephemeral() -> bool {
+    EPHEMERAL.load(Ordering::Relaxed)
+}
+
+/// Surface exit / browser shutdown: finalize an active recording and keep its
+/// report for the next call. Never initializes the hub, so a session that
+/// never recorded pays nothing (CTRL-01).
+pub async fn finish_best_effort() {
+    let Some(m) = HUB.get() else {
+        return;
+    };
+    let mut h = m.lock().await;
+    if !h.is_active() {
+        return;
+    }
+    h.finish_orphan().await;
+    if let Some(t) = h.orphaned_text() {
+        tracing::warn!(target: "bladebro.record", "{t}");
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn initialized() -> bool {
+    HUB.get().is_some()
+}
 
 /// The two ops this hub owns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +118,8 @@ mod tests {
         ] {
             assert_eq!(record_op(&json!({ "op": op })), None, "{op}");
         }
+        // Claiming never touches the global (CTRL-01: zero cost when off).
+        assert!(!initialized());
     }
 
     #[test]

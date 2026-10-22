@@ -16,7 +16,7 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Clone)]
-pub(super) struct FakeOpts {
+pub(crate) struct FakeOpts {
     /// `(method, message)`: answer that method with a CDP error.
     pub fail: Option<(&'static str, &'static str)>,
     /// Frames emitted after `Page.startScreencast` (0 = none).
@@ -48,7 +48,7 @@ impl Default for FakeOpts {
 }
 
 #[derive(Default)]
-pub(super) struct FakeState {
+pub(crate) struct FakeState {
     /// `params.sessionId` of every `Page.screencastFrameAck`, in order.
     pub acks: Mutex<Vec<i64>>,
     pub stopped: AtomicBool,
@@ -56,7 +56,7 @@ pub(super) struct FakeState {
     pub done: AtomicBool,
 }
 
-pub(super) struct FakeCdp {
+pub(crate) struct FakeCdp {
     pub url: String,
     /// Every `(method, params)` the client sent, in order.
     pub log: Arc<Mutex<Vec<(String, Value)>>>,
@@ -174,7 +174,7 @@ impl FakeCdp {
 }
 
 /// One frame event as Chrome would send it. `ts` is epoch seconds.
-pub(super) fn frame_event(data: &str, session: i64, ts: f64) -> String {
+pub(crate) fn frame_event(data: &str, session: i64, ts: f64) -> String {
     json!({"method": "Page.screencastFrame", "params": {
         "data": data,
         "metadata": {"timestamp": ts, "deviceWidth": 1280, "deviceHeight": 720},
@@ -184,7 +184,7 @@ pub(super) fn frame_event(data: &str, session: i64, ts: f64) -> String {
 }
 
 /// Chrome's timestamp for frame `i` (tests recompute it with the same math).
-pub(super) fn frame_ts(i: usize, interval: Duration) -> f64 {
+pub(crate) fn frame_ts(i: usize, interval: Duration) -> f64 {
     1.7e9 + i as f64 * interval.as_secs_f64()
 }
 

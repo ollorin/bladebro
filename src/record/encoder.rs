@@ -27,7 +27,7 @@ mod real_tests;
 mod report;
 mod resolve;
 #[cfg(test)]
-mod test_util;
+pub(crate) mod test_util;
 #[cfg(all(test, windows))]
 mod windows_tests;
 mod writer;

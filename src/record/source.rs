@@ -24,7 +24,7 @@
 #[cfg(test)]
 mod capture_tests;
 #[cfg(test)]
-mod fake_cdp;
+pub(crate) mod fake_cdp;
 #[cfg(test)]
 mod hook_tests;
 #[cfg(test)]
