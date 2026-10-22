@@ -122,9 +122,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: `src/record/encoder.rs` argument builder (WebM VP9/VP8, MP4 libx264, even-dim scale, timestamps) + arg tests
-- [ ] 05-02: Process lifecycle: spawn, stdin writer task, stderr tail, bounded wait, kill fallback, Windows no-console flag
-- [ ] 05-03: `src/record/report.rs` verdict strings + cross-OS fake-encoder lifecycle tests (success, missing binary, non-zero exit, empty output)
+- [ ] 05-01: `src/record/encoder.rs` + `encoder/{report,args,pace}.rs`: verdict strings + classify, argv builder (WebM VP9 / MP4 libx264, even-dim scale, safe output path), timestamp pacing (duplicate-on-write, D5-1) + tests
+- [ ] 05-02: `encoder/{resolve,process}.rs`: async-safe ffmpeg resolve, spawn, stdin writer task with progressive hold, stderr tail, bounded finish, kill fallback, Windows no-console flag + unix lifecycle tests
+- [ ] 05-03: fake-encoder lifecycle matrix (unix run; Windows written, not executed), real ffmpeg end-to-end per format, encoding note in docs
 
 ### Phase 6: Frame Source
 **Goal**: Screencast frames flow from a real page into the encoder without ever stalling the CDP reader or changing what the page can see, and a blank capture is reported rather than passed off as success

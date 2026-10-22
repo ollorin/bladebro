@@ -12,9 +12,11 @@
 //! Fork-only module (SYNC-01): no upstream file is touched by it.
 
 mod args;
+mod pace;
 mod report;
 
 pub use args::{build_args, check_out_path, clamp_fps, even_size, EncodeSpec};
+pub use pace::{repeat_counts, Pacer, MAX_GAP_MS};
 pub use report::{
     classify, tail_for_verdict, EncoderError, EncoderReport, ExitInfo, Outcome, VERDICT_TAIL_CHARS,
 };
