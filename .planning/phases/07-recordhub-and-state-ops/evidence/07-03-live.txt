@@ -1,0 +1,211 @@
+# hub_live.sh 07-03  started 2026-10-22T12:46:57Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (843fc7f-dirty))  chrome: bladebro 4.6.5
+# git: 843fc7f
+== mcp: tests/record_hub.rs live tests (MCP stdio)
+[mcp] running 6 tests
+[mcp] test double_start_names_file ... RESULT double-start: ✗ error: recording already active: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-dbl-2446/recordings/a-20261022T124659Z-c0a1d8.webm (started 0.0 s ago, waiting for first frame). record-stop it first.
+[mcp] test missing_ffmpeg ... RESULT missing ffmpeg: ✗ error: recording unavailable: BLADE_FFMPEG=/nonexistent/ffmpeg is unusable (not found); PATH was not searched. Fix or unset BLADE_FFMPEG. Browsing is unaffected.
+[mcp] test off_mode_refuses_and_creates_nothing ... RESULT off record-start: ✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+[mcp] RESULT off record-stop: ✗ error: no active recording; record-start <name> first.
+[mcp] test pipe_refusal ... RESULT pipe refusal: ✗ error: recording unavailable: BLADE_TRANSPORT=pipe has no debugging port for the recorder's own connection. Unset BLADE_TRANSPORT (the default WebSocket transport records), then run bladebro stop so the next launch uses it. Browsing is unaffected.
+[mcp] test start_browse_stop ... RESULT record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-sbs-2446/recordings/t1-20261022T124706Z-5b93e8.webm (tab 321C587A4113F1B8AFBCD995AA3287E6); first frame not awaited. record-stop saves it.
+[mcp] RESULT record-stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-sbs-2446/recordings/t1-20261022T124706Z-5b93e8.webm (bytes 10390, duration 6.3 s, frames 63, dropped 0, segments [0.0 s tab 321C587A4113F1B8AFBCD995AA3287E6], captured 8)
+[mcp] RESULT ffprobe: vp9 1280x720 wall=6.89s duration=6.3s
+[mcp] test stdin_eof_finalizes ... RESULT eof finalize: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-eof-2446/recordings/eof-20261022T124714Z-02af90.webm vp9 1280x720
+[mcp] test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 21.38s
+PASS [mcp] six live tests pass (exit=0)
+PASS [mcp] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== daemon-rec: CLI daemon record-start, browse, record-stop
+[daemon-rec] record-start rc=0: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub.ldlHXW7IrM/recordings/d1-20261022T124720Z-cd5020.webm (tab 4BD6C30B99FD913DF107CE008D01E45E); first frame not awaited. record-stop saves it.
+[daemon-rec] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub.ldlHXW7IrM/recordings/d1-20261022T124720Z-cd5020.webm (bytes 12982, duration 6.3 s, frames 63, dropped 0, segments [0.0 s tab 4BD6C30B99FD913DF107CE008D01E45E], captured 2). Note: no new frames for 6.8 s (normal for a static page; a background or stalled tab looks the same, so the video holds the last frame). Note: agent is now on tab 75C30455B4174DA900FE906518A94D66; the video shows only tab 4BD6C30B99FD913DF107CE008D01E45E (tab following is not implemented yet)
+PASS [daemon-rec] start and stop exit 0
+PASS [daemon-rec] report says recording saved
+PASS [daemon-rec] tab note present (agent is now on tab)
+PASS [daemon-rec] absolute path exists
+[daemon-rec] file size 12982, reported bytes 12982
+PASS [daemon-rec] reported bytes equal file size
+[daemon-rec] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"6.300000"}}
+PASS [daemon-rec] full decode exit=0 stderr_lines=0
+PASS [daemon-rec] codec vp9 1280x720
+[daemon-rec] duration 6.3 s vs wall 6.85 s: drift 8.0% (5% bar: NOT met)
+PASS [daemon-rec] duration within 10% of wall clock (8.0%)
+PASS [daemon-rec] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== daemon-double: second record-start names the first file
+[daemon-double] second start rc=1: ✗ error: recording already active: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub.jdwnKJobTb/recordings/a-20261022T124729Z-e5db80.webm (started 0.0 s ago, waiting for first frame). record-stop it first.
+PASS [daemon-double] second start exits non-zero
+PASS [daemon-double] error names the active file
+PASS [daemon-double] exactly one file in recordings
+PASS [daemon-double] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== oneshot: --no-daemon record-start refuses
+[oneshot] rc=1: ✗ error: recording needs a long-lived session: use the MCP server or the daemon (bladebro without --no-daemon/--port); one-shot CLI exits after each command. Nothing was recorded.
+PASS [oneshot] non-zero exit
+PASS [oneshot] long-lived session text
+PASS [oneshot] no Chrome/ffmpeg left after the one-shot command (no ffmpeg spawned)
+PASS [oneshot] no recordings dir
+PASS [oneshot] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== daemon-off: BLADE_RECORD unset, nothing created, Chrome argv identical to the pre-phase binary
+[daemon-off] base binary: /private/tmp/claude-501/-Users-sokolov-st-brainrocket-com-claude-bladebro/692c5087-55f4-4f58-b674-e2a3d7ce3526/scratchpad/base-target/release/bladebro (80d0172)
+[daemon-off] record-start rc=1: ✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+PASS [daemon-off] nav/see/tabs exit 0 (0/0/0)
+PASS [daemon-off] record-start exits non-zero (1)
+PASS [daemon-off] record-start text names BLADE_RECORD and bladebro stop
+PASS [daemon-off] no recordings dir
+PASS [daemon-off] no ffmpeg process
+PASS [daemon-off-new] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [daemon-off-base] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[daemon-off] Chrome argv flags: new=15 base=15
+PASS [daemon-off] Chrome argv identical (base vs new, scratch path/port normalized)
+== cdp-trace: CDP methods the one-shot CLI sends, base vs new (BLADE_RECORD unset)
+PASS [cdp-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [cdp-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [cdp-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [cdp-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[cdp-trace] base run 1: 111 messages, 12 distinct
+[cdp-trace] base run 2: 107 messages, 12 distinct
+[cdp-trace] new run 1: 108 messages, 12 distinct
+[cdp-trace] new run 2: 108 messages, 12 distinct
+[cdp-trace] distinct methods BASE:
+    DOM.enable
+    Input.dispatchMouseEvent
+    Network.enable
+    Network.getCookies
+    Page.addScriptToEvaluateOnNewDocument
+    Page.bringToFront
+    Page.enable
+    Page.getFrameTree
+    Page.setDownloadBehavior
+    Runtime.evaluate
+    Target.getTargets
+    Target.setAutoAttach
+[cdp-trace] distinct methods NEW:
+    DOM.enable
+    Input.dispatchMouseEvent
+    Network.enable
+    Network.getCookies
+    Page.addScriptToEvaluateOnNewDocument
+    Page.bringToFront
+    Page.enable
+    Page.getFrameTree
+    Page.setDownloadBehavior
+    Runtime.evaluate
+    Target.getTargets
+    Target.setAutoAttach
+[cdp-trace] base run 1 multiset (count method):
+       6 DOM.enable
+      21 Input.dispatchMouseEvent
+       7 Network.enable
+       1 Network.getCookies
+       6 Page.addScriptToEvaluateOnNewDocument
+       2 Page.bringToFront
+       6 Page.enable
+       6 Page.getFrameTree
+       6 Page.setDownloadBehavior
+      43 Runtime.evaluate
+       1 Target.getTargets
+       6 Target.setAutoAttach
+[cdp-trace] base run 2 multiset (count method):
+       6 DOM.enable
+      17 Input.dispatchMouseEvent
+       7 Network.enable
+       1 Network.getCookies
+       6 Page.addScriptToEvaluateOnNewDocument
+       2 Page.bringToFront
+       6 Page.enable
+       6 Page.getFrameTree
+       6 Page.setDownloadBehavior
+      43 Runtime.evaluate
+       1 Target.getTargets
+       6 Target.setAutoAttach
+[cdp-trace] new run 1 multiset (count method):
+       6 DOM.enable
+      18 Input.dispatchMouseEvent
+       7 Network.enable
+       1 Network.getCookies
+       6 Page.addScriptToEvaluateOnNewDocument
+       2 Page.bringToFront
+       6 Page.enable
+       6 Page.getFrameTree
+       6 Page.setDownloadBehavior
+      43 Runtime.evaluate
+       1 Target.getTargets
+       6 Target.setAutoAttach
+[cdp-trace] new run 2 multiset (count method):
+       6 DOM.enable
+      18 Input.dispatchMouseEvent
+       7 Network.enable
+       1 Network.getCookies
+       6 Page.addScriptToEvaluateOnNewDocument
+       2 Page.bringToFront
+       6 Page.enable
+       6 Page.getFrameTree
+       6 Page.setDownloadBehavior
+      43 Runtime.evaluate
+       1 Target.getTargets
+       6 Target.setAutoAttach
+PASS [cdp-trace] traces are non-empty
+PASS [cdp-trace] distinct method sets identical (base vs new)
+PASS [cdp-trace] no method in new absent from base
+PASS [cdp-trace] no Page.startScreencast / screencastFrameAck in new
+[cdp-trace] Target.getTargetInfo max per run: base=0 new=0
+PASS [cdp-trace] Target.getTargetInfo not beyond base count
+== audit: bladebro audit (bar: 100/100 macOS baseline)
+[audit]   Bladebro Stealth Vector Suite SCORE: 100/100 pass PASS webdriver: false PASS ua-no-headless: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chr PASS ua-platform-coherent: ua=false platform=MacIntel INFO platform: MacIntel PASS plugins: 5 PASS mimeTypes: 2 PASS chrome-obj: object PASS no-cdc: 0 cdc props PASS outer-inner-width: diff=16 PASS outer-inner-height: diff=87 PASS screen-size: 1920x1080 PASS avail-less-than-screen: avail=1920x1080 INFO dpr: 1 PASS languages: en-US,en PASS hardwareConcurrency: 12 PASS deviceMemory: 16 PASS webgl: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS webgl2: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS webgl-not-swiftshader: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS perm-notifications: query=prompt perm=default PASS native-behavior.query.missing: native timing/shape PASS native-behavior.query.missing.microtask: native timing/shape PASS native-behavior.getUserMedia.missing: native timing/shape PASS native-behavior.getUserMedia.missing.microtask: native timing/shape PASS native-behavior.query.empty: native timing/shape PASS native-behavior.query.empty.microtask: native timing/shape PASS native-behavior.getUserMedia.empty: native timing/shape PASS native-behavior.getUserMedia.empty.microtask: native timing/shape PASS native-behavior.query.null: native timing/shape PASS native-behavior.query.null.microtask: native timing/shape PASS native-behavior.getUserMedia.null: native timing/shape PASS native-behavior.getUserMedia.null.microtask: native timing/shape PASS native-behavior.query.undefined: native timing/shape PASS native-behavior.query.undefined.microtask: native timing/shape PASS native-behavior.getUserMedia.undefined: native timing/shape PASS native-behavior.getUserMedia.undefined.microtask: native timing/shape PASS native-behavior.query.number: native timing/shape PASS native-behavior.query.number.microtask: native timing/shape PASS native-behavior.getUserMedia.number: native timing/shape PASS native-behavior.getUserMedia.number.microtask: native timing/shape PASS native-behavior.query.string: native timing/shape PASS native-behavior.query.string.microtask: native timing/shape PASS native-behavior.getUserMedia.string: native timing/shape PASS native-behavior.getUserMedia.string.microtask: native timing/shape PASS native-behavior.query.receiver: native timing/shape PASS native-behavior.query.receiver.microtask: native timing/shape PASS native-behavior.getUserMedia.receiver: native timing/shape PASS native-behavior.getUserMedia.receiver.microtask: native timing/shape PASS native-behavior.enumerateDevices.receiver: native timing/shape PASS native-behavior.enumerateDevices.receiver.microtask: native timing/shape PASS native-behavior.getSupportedConstraints.receiver: native timing/shape PASS native-behavior.getDisplayMedia.receiver: native timing/shape PASS native-behavior.getDisplayMedia.receiver.microtask: native timing/shape PASS native-behavior.control.querySelector: native timing/shape PASS native-behavior.control.matchMedia: native timing/shape PASS native-behavior.control.sendBeacon: native timing/shape PASS native-behavior.control.geolocation: native timing/shape PASS native-behavior.control.setItem: native timing/shape PASS native-behavior.control.createElement: native timing/shape PASS native-behavior.getter.geolocation: native timing/shape PASS native-behavior.proxy.geolocation: native timing/shape PASS native-behavior.statusOwn.geolocation: native timing/shape PASS native-behavior.getter.notifications: native timing/shape PASS native-behavior.proxy.notifications: native timing/shape PASS native-behavior.statusOwn.notifications: native timing/shape PASS native-behavior.getterThrows: native timing/shape PASS native-behavior.permissionState.receiver: native timing/shape PASS native-behavior.stateShape: native timing/shape PASS tostring-permissions-query: function query() { [native code] } PASS tostring-Worker: function Worker() { [native code] } PASS tostring-toDataURL: function toDataURL() { [native code] } PASS tostring-gl2-getParameter: checked PASS shell-torture: 12 functions native-shaped PASS console-trap: clean PASS mediadevices: 3 devices [audioinput,audiooutput,videoinput] INFO voices: 0 voices PASS storage-quota: 10240 MB quota PASS canvas-stable: 53eb351b vs 53eb351b PASS audio-stable: 195.413978 vs 195.413978 PASS connection-api: 4g rtt=100 downlink=1.45 PASS uad-platform: macOS expected=macOS brands=Chromium/154,Google Chrome/154,Not A(Brand/99 PASS uad-mobile-false: false INFO bg-color: rgba(0, 0, 0, 0) PASS worker-ua: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like INFO worker-gl: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS webrtc-exists: function INFO webrtc-ice: dd6aabf9ff0d.local,165.85.15.241 PASS error-stack-clean: 2 frames clean PASS perm-zero-arg-msg: Failed to execute 'query' on 'Permissions': 1 argument required, but only 0 present. PASS perm-nonobject-msg: Failed to execute 'query' on 'Permissions': parameter 1 is not of type 'object'. PASS perm-receiver: Failed to execute 'query' on 'Permissions': Illegal invocation PASS perm-proto-owned: prototype-owned PASS perm-descriptor: w:true e:true c:true PASS perm-status-shape: own=[] PASS gl-never-null: webgl=true webgl2=true PASS gl-renderer-not-software: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS gl-ext-fresh-array: fresh=true PASS gl-max-combined: 32 INFO gl-mask-checks: generic profile shape (ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecifie) — capture-specific checks skipped PASS gl2-max-samples: 4 PASS worker-gl-renderer-match: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS worker-tostring-mask: true PASS iframe-gl-renderer-match: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS outerwidth-plausible: diff=16 PASS inner-within-screen: 1880x923 in 1920x1080 PASS uad-full-version-coherent: ua=154 hv=154 PASS webgpu-api-shape: gpu=true
+[audit] 
+[audit]   Self-check:
+[audit]     navigator.webdriver: OK (false)
+[audit]     window.cdc_:         OK (undefined)
+[audit]     navigator.plugins:   OK (5 plugins)
+[audit]     toString integrity:  OK (native)
+[audit] 
+[audit]   Consistency (vs previous audit run):
+[audit]     first run — baseline recorded
+[audit] ====================================================
+[audit]   VERDICT: PASS
+[audit] exit=0
+PASS [audit] 100/100 vectors
+PASS [audit] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== qol: tools/qol_probe/run.py (baseline 120/122 with 2 known failures)
+[qol] FAIL  chord cleared the live editor  'via wrappe'
+[qol] FAIL  nested scroller movement is reported as such  outcome: scrolled page delta+1629 (y 0 -> 1629)
+[qol] 120 passed, 2 failed
+[qol] exit=1
+PASS [qol] only the two known failures (chord cleared the live editor; nested scroller movement)
+PASS [qol] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== lanes: lane_matrix daemon oneshot mcp mcp-pipe, 5 rounds each (real lane skipped: drives the user's own browser)
+[lanes] via lib/lane_matrix_local.py: tools/lane_matrix.py needs /proc (Linux) and navigates example.com; the wrapper swaps in a ps sweep and the local idle.html fixture
+[lanes:daemon] bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+[lanes:daemon] == daemon lane
+[lanes:daemon]   #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.0s]
+[lanes:daemon]   #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.1s]
+[lanes:daemon]   #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.3s]
+[lanes:daemon]   #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.3s]
+[lanes:daemon]   #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.3s]
+PASS [lanes:daemon] 5 rounds clean (exit=0)
+[lanes:oneshot] bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+[lanes:oneshot] == one-shot lane
+[lanes:oneshot]   #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.6s]
+[lanes:oneshot]   #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.6s]
+[lanes:oneshot]   #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.6s]
+[lanes:oneshot]   #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.6s]
+[lanes:oneshot]   #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.6s]
+PASS [lanes:oneshot] 5 rounds clean (exit=0)
+[lanes:mcp] bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+[lanes:mcp] == mcp (stdio, default WS) lane
+[lanes:mcp]   #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp]   #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp]   #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp]   #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp]   #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+PASS [lanes:mcp] 5 rounds clean (exit=0)
+[lanes:mcp-pipe] bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+[lanes:mcp-pipe] == mcp (pipe opt-in) lane
+[lanes:mcp-pipe]   #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp-pipe]   #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp-pipe]   #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp-pipe]   #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+[lanes:mcp-pipe]   #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+PASS [lanes:mcp-pipe] 5 rounds clean (exit=0)
+[lanes] real lane: skipped: drives the user's own browser
+PASS [lanes] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T12:49:04Z failures=0
