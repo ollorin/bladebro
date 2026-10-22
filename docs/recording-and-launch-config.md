@@ -46,11 +46,11 @@ Notes:
 
 ## Recording settings
 
-> **Not functional yet.** The config and output-path layer exists; the recorder itself is not wired in. Setting these variables records nothing today.
+Recording is controlled by the `state` ops [below](#recording-with-the-state-tool) and is off unless the operator enables it.
 
 **Recordings contain whatever was on screen**: passwords as typed into visible fields, session tokens, personal data, private pages. Treat every recording as sensitive. Do not enable recording for sessions that use real credentials. bladebro never prunes recordings; delete them in your harness.
 
-Config file: `<data root>/record.json` (data root: `~/.blade`, or `BLADE_HOME` when set; on Windows `%USERPROFILE%\.blade`). Fields are listed in [Config keys](#config-keys); `quality` is JPEG 1-100 (default `70`, file only) and `dir` must be absolute in this file. Unknown fields are an error. Precedence: per-call > env > project file > `record.json` > default (see [Configuration layers and precedence](#configuration-layers-and-precedence)). Per-call input covers `format`, `fps`, `size` and `name` only; `enabled`, `dir` and `quality` have no per-call layer. A bad value in any layer is an error, even when a higher layer overrides it. Invalid values are rejected, never clamped. Errors name their source (`BLADE_RECORD_FPS:`, `record.json fps:`, `per-call fps:`).
+Config file: `<data root>/record.json` (data root: `~/.blade`, or `BLADE_HOME` when set; on Windows `%USERPROFILE%\.blade`). Fields are listed in [Config keys](#config-keys); `quality` is JPEG 1-100 (default `70`, file only) and `dir` must be absolute in this file. Unknown fields are an error. Precedence: per-call > env > project file > `record.json` > default (see [Configuration layers and precedence](#configuration-layers-and-precedence)). Through the `state` tool the only per-call input is the recording `name`; `format`, `fps` and `size` come from env, the project file, `record.json` or the defaults (the library API keeps a per-call layer for them). `enabled`, `dir` and `quality` have no per-call layer. A bad value in any layer is an error, even when a higher layer overrides it. Invalid values are rejected, never clamped. Errors name their source (`BLADE_RECORD_FPS:`, `record.json fps:`, `per-call fps:`).
 
 Where files go:
 - Default dir: `<data root>/recordings/`. A dir inside `<data root>/artifacts/` is refused (artifacts rotate at 300 files). Nothing in bladebro rotates, prunes or deletes recordings.
@@ -75,6 +75,91 @@ Where files go:
 - Limits: a background tab, a minimized window (about 0.3 frames/s) or a covered window delivers no new frames. A static page sends about one frame and then nothing (a 20 s recording of a still page received 1 frame), which looks the same as a stalled capture, so after the first frame silence is reported (time since the last frame, longest gap), not treated as failure, and the video holds the last frame. A one-off 37 s silence was once seen in testing (cause unknown). The video used to come out about 0.4 to 0.5 s longer than the recording time (the last frame was held through the 0.5 s stop grace); it now ends at the stop request. Measured on 8 s recordings (8 runs, including stops off a whole second) the video length differed from the recording time by -0.74 % to +0.16 % (about 60 ms at most on that slow-ticking page, since the video is built from whole frame slots at the chosen fps). On animated pages the video ran about 100 ms long (+0.6 % to +1.2 % on 8 to 12 s recordings): frames that arrive during the stop grace are still added, and the last frame is always written at least once. The theoretical worst case is about 0.5 s plus one frame slot. Recording needs the default WebSocket transport: with `BLADE_TRANSPORT=pipe` it reports that it cannot record (unset it and run `bladebro stop`).
 - These limits are fixed; there is no setting for them.
 
+## Recording with the state tool
+
+Two ops on the existing `state` tool (there is no sixth tool):
+
+- `record-start` with `name` (required): starts a video of the tab that is active at that moment. The file is `<sanitized name>-<UTC>-<id>.<ext>` in the recordings dir.
+- `record-stop`: finalizes the file and reports it.
+
+```json
+{"op": "record-start", "name": "login-flow"}
+{"op": "record-stop"}
+```
+
+CLI: `bladebro state record-start login-flow` and `bladebro state record-stop`. In a `batch` or `run` step: `{"action": "state", "op": "record-start", "name": "x"}`. Recording is off unless enabled (for example `BLADE_RECORD=1`), and it needs ffmpeg (`bladebro doctor` shows what was found).
+
+Start result (the first frame is not awaited):
+
+```
+recording started: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (tab A89A...); first frame not awaited. record-stop saves it.
+```
+
+Stop result, from a real run:
+
+```
+recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, duration 4.1 s, frames 41, dropped 0, segments [0.0 s tab A89A...])
+```
+
+| Field | Meaning |
+|---|---|
+| path | absolute path of the file |
+| bytes | file size |
+| duration | frames written / fps (not re-measured from the file) |
+| frames | frames written to the video |
+| captured | frames received from the browser; shown only when different from `frames` |
+| dropped | frames dropped by the encoder queue plus frames lost on the CDP connection |
+| segments | `[<offset> s tab <id>]`; one segment, because the video stays on the tab that was active at `record-start` |
+| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); a tab note when the agent moved to another tab |
+
+The stop is `ok` only when capture and encoder both finished cleanly. Otherwise it is an error (MCP `isError`, CLI exit 1; in `batch`/`run` an error step stops the batch) whose text starts with `recording not clean:` and still carries the path and numbers.
+
+A stop can take up to about 18 s in the worst case (500 ms capture grace, up to 10 s encoder drain, then the trailer). Set your client's tool timeout above that.
+
+Refusals (nothing is recorded, an error is returned):
+
+| Case | Text starts with |
+|---|---|
+| recording off | `recording is off: the operator has not enabled it. Set BLADE_RECORD=1 ...` |
+| already active | `recording already active: <path> (started N s ago, ...). record-stop it first.` |
+| none active (stop) | `no active recording; record-start <name> first.` |
+| pipe transport | `recording unavailable: BLADE_TRANSPORT=pipe has no debugging port ...` |
+| one-shot CLI (`--no-daemon`, `--host/--port`; every CLI call on Windows, so record through MCP there) | `recording needs a long-lived session: use the MCP server or the daemon ...` |
+| real-browser lane | `recording is not available in the real-browser lane ...` |
+| ffmpeg missing or unusable | the ffmpeg error (see [How recording is encoded](#how-recording-is-encoded)) |
+
+The video shows the tab that was active at `record-start`. Switching tabs does not move it; a note at stop says so.
+
+The environment is read by the long-lived process. A daemon or MCP server started without `BLADE_RECORD` keeps answering "recording is off" until `bladebro stop` (or an MCP restart). The project file `.bladebro.json` is found from that process's working directory.
+
+Browser shutdown (idle timeout, MCP exit, daemon exit) finalizes an active recording on a best-effort basis; the next record op returns that report prefixed `previous recording ended with the browser: `. A daemon relaunch after a crash does not: the next `record-stop` reports the lost connection. A killed process (SIGKILL) can leave an unfinalized file.
+
+### Example: Claude Code (.mcp.json)
+
+```json
+{
+  "mcpServers": {
+    "bladebro": {
+      "command": "bladebro",
+      "args": ["mcp"],
+      "env": { "BLADE_RECORD": "1" }
+    }
+  }
+}
+```
+
+`record-stop` can take about 18 s, so your client's MCP tool timeout must be longer than that.
+
+### Example: DSH plugin
+
+The plugin (`npm/bladebro/dsh-plugin.mjs`) runs `bladebro mcp` over stdio and accepts the options `binaryPath`, `env`, `cwd`, `toolCallTimeoutMs` (default 180000 ms, which covers the stop) and `reconnect`:
+
+```js
+{ env: { BLADE_RECORD: "1" }, cwd: "/path/to/project" }
+```
+
+`cwd` decides which `.bladebro.json` applies.
+
 ## Configuration layers and precedence
 
 Highest layer first. A layer that does not set a value falls through to the next one.
@@ -84,10 +169,10 @@ Highest layer first. A layer that does not set a value falls through to the next
 | headless | none (suite-level by design) | `BLADE_HEADLESS` | `headless` | `<data root>/launch.json` | platform default |
 | recording on/off | none | `BLADE_RECORD` | `record.enabled` | `record.json` `enabled` | off |
 | recording dir | none | `BLADE_RECORD` (absolute path) | `record.dir` (vetted, see below) | `record.json` `dir` | `<data root>/recordings` |
-| format, fps, size | yes | `BLADE_RECORD_FORMAT`, `BLADE_RECORD_FPS`, `BLADE_RECORD_SIZE` | `record.format`, `record.fps`, `record.size` | `record.json` | `webm`, 10, 1280x720 |
+| format, fps, size | none via the `state` tool (library API only) | `BLADE_RECORD_FORMAT`, `BLADE_RECORD_FPS`, `BLADE_RECORD_SIZE` | `record.format`, `record.fps`, `record.size` | `record.json` | `webm`, 10, 1280x720 |
 | quality | none | none | `record.quality` | `record.json` `quality` | 70 |
 
-Per-call input exists only for recording `format`, `fps`, `size` and `name`. Headless has no per-call layer: it is a property of the whole browser launch, not of a call.
+Through the `state` tool the only per-call recording input is `name`. Headless has no per-call layer: it is a property of the whole browser launch, not of a call.
 
 ## Config keys
 
