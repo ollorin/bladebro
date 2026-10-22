@@ -276,3 +276,25 @@ async fn mark_end_stops_the_final_hold_before_finish() {
         "without a mark the hold runs to finish: {unmarked}"
     );
 }
+
+/// A hold-flush tick that fires between `mark_end` and `finish` must not write
+/// past the marked end (06-05 gap 2: the 1 s tick ignored `end_at`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hold_tick_after_mark_end_does_not_write_past_it() {
+    let s = Scratch::new();
+    let script = s.script("fake-enc-tick", r#"for a; do out="$a"; done; cat > "$out""#);
+    let out = s.0.join("t.webm");
+    let enc = start_retry(&webm_cfg(&script, 8, Duration::from_secs(15)), &out).unwrap();
+    assert!(enc.send_frame(FRAME.to_vec(), 0));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    enc.mark_end();
+    // Crosses the 1 s tick (counted from the frame's arrival) with the end
+    // already marked at ~0.3 s.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let written = enc.finish().await.frames_written;
+    // 0.3 s at 10 fps = 3 slots; the unclamped tick wrote ~10.
+    assert!(
+        (2..=4).contains(&written),
+        "hold must end at the mark: {written}"
+    );
+}

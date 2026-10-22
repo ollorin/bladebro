@@ -12,6 +12,7 @@
 //!   REC_LIVE_TARGET     target id (default: first real page target, 15 s retry)
 //!   REC_LIVE_OUT        absolute .webm/.mp4 path
 //!   REC_LIVE_SECS       recording length, default 20
+//!   REC_LIVE_EXTRA_MS   added to the length, so the stop is not on a whole second
 //!   REC_LIVE_MODE       plain | resize | trace | slow
 //!                       trace: a test-only WS proxy between the Source and the page logs every
 //!                              client->Chrome method (report: wire_methods, wire_first)
@@ -391,6 +392,9 @@ async fn record_live() {
     let secs: u64 = env("REC_LIVE_SECS")
         .and_then(|v| v.parse().ok())
         .unwrap_or(20);
+    let extra_ms: u64 = env("REC_LIVE_EXTRA_MS")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
     let mode = env("REC_LIVE_MODE").unwrap_or_else(|| "plain".into());
     let target = match env("REC_LIVE_TARGET") {
         Some(t) => t,
@@ -461,7 +465,7 @@ async fn record_live() {
         .then(|| tokio::spawn(resize_script(base.clone(), target.clone(), harness.clone())));
 
     tokio::select! {
-        _ = tokio::time::sleep(Duration::from_secs(secs)) => {}
+        _ = tokio::time::sleep(Duration::from_secs(secs) + Duration::from_millis(extra_ms)) => {}
         _ = tokio::signal::ctrl_c() => eprintln!("record_live: SIGINT, stopping"),
     }
     let health_at_stop = format!("{:?}", src.health());

@@ -85,7 +85,7 @@ end_home() { leftovers "$1"; rm -rf "$SCN_HOME"; SCN_HOME=""; }
 # record ID PORT TARGET SECS MODE OUT  -> prints wall_ms via global LAST_WALL; appends REPORT
 record() {
   local id="$1" port="$2" tgt="$3" secs="$4" mode="$5" out="$6" line
-  line=$(REC_LIVE_PORT="$port" REC_LIVE_TARGET="$tgt" REC_LIVE_OUT="$out" REC_LIVE_SECS="$secs" \
+  line=$(REC_LIVE_PORT="$port" REC_LIVE_TARGET="$tgt" REC_LIVE_OUT="$out" REC_LIVE_SECS="$secs" REC_LIVE_EXTRA_MS="${REC_LIVE_EXTRA_MS:-0}" \
     REC_LIVE_MODE="$mode" "$BIN" --ignored --exact record_live --nocapture 2>"$SCRATCH/$id.stderr" | grep '^REC_LIVE_REPORT ')
   if [ -z "$line" ]; then say "[$id] REC_LIVE_REPORT missing; stderr tail:"; tail -5 "$SCRATCH/$id.stderr" | tee -a "$EVIDENCE"; LAST_WALL=0; return 1; fi
   say "[$id] $line"

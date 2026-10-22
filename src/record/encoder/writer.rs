@@ -89,7 +89,13 @@ pub(super) async fn run(
             },
             _ = tick.tick(), if pending.is_some() && rx.is_empty() => {
                 if let Some(p) = pending.as_ref() {
-                    let est = p.ts_ms.saturating_add(ms(p.arrived.elapsed()));
+                    // Once finish/mark_end fixed the end, a tick in the stop
+                    // grace must not hold the frame past it (live +5 % on 8 s).
+                    let mut held = p.arrived.elapsed();
+                    if let Some(e) = shared.end_at.get() {
+                        held = held.min(e.saturating_duration_since(p.arrived));
+                    }
+                    let est = p.ts_ms.saturating_add(ms(held));
                     let n = pacer.advance_to(est);
                     if write_n(&mut stdin, &p.jpeg, n, &shared).await.is_err() {
                         return;

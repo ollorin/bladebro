@@ -163,7 +163,7 @@ async fn stripped_frame_reuses_the_cached_ack_id() {
 
 /// 06-04 gap 4: frames the bus overwrote were never acked, and Chrome stops
 /// after 2 unacked. A Lagged event must ack (bounded) with the cached id.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn lagged_bus_still_acks_and_the_wire_stays_allowlisted() {
     guard(async {
         struct BlockOnce(std::sync::Once, Arc<std::sync::atomic::AtomicBool>);
@@ -173,9 +173,15 @@ async fn lagged_bus_still_acks_and_the_wire_stays_allowlisted() {
                 // released, so the bus (16384) overflows behind it.
                 self.0.call_once(|| {
                     let until = std::time::Instant::now() + Duration::from_secs(15);
-                    while !self.1.load(Ordering::SeqCst) && std::time::Instant::now() < until {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
+                    // block_in_place hands this worker's queued tasks (CDP
+                    // reader, fake server) to other workers; a bare
+                    // thread::sleep could strand them and the bus would
+                    // never overflow.
+                    tokio::task::block_in_place(|| {
+                        while !self.1.load(Ordering::SeqCst) && std::time::Instant::now() < until {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                    });
                 });
                 true
             }
@@ -200,15 +206,19 @@ async fn lagged_bus_still_acks_and_the_wire_stays_allowlisted() {
         }
         // A second, prompt subscriber counts what the reader has put on the
         // bus; release the stalled loop once that is past the capacity.
-        let mut seen = 0u32;
+        let mut seen = 0u64;
         let _ = tokio::time::timeout(Duration::from_secs(12), async {
             while seen < 18_000 {
-                if probe.recv().await.is_ok() {
-                    seen += 1;
+                match probe.recv().await {
+                    Ok(_) => seen += 1,
+                    // The probe itself overflowed: those events were on the bus.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => seen += n,
+                    Err(_) => break,
                 }
             }
         })
         .await;
+        assert!(seen >= 18_000, "bus saw only {seen} of 19000 events");
         release.store(true, Ordering::SeqCst);
         let t0 = std::time::Instant::now();
         loop {
@@ -235,6 +245,65 @@ async fn lagged_bus_still_acks_and_the_wire_stays_allowlisted() {
             "Page.stopScreencast",
         ];
         assert!(fake.methods().iter().all(|m| allowed.contains(&m.as_str())));
+    })
+    .await;
+}
+
+/// 06-05 gap 3: the ack must be on its way BEFORE decode/sink run (D6-4). The
+/// sink waits (bounded, on a blocking section so other workers keep running)
+/// for the frame's own ack to reach the fake wire; an ack spawned after the
+/// sink returns can never arrive in that window, so the sink reports a miss.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ack_reaches_the_wire_before_the_sink_runs() {
+    guard(async {
+        struct Probe {
+            state: Arc<super::super::fake_cdp::FakeState>,
+            calls: std::sync::atomic::AtomicUsize,
+            acked_first: std::sync::atomic::AtomicUsize,
+        }
+        impl FrameSink for Probe {
+            fn send_frame(&self, _: Vec<u8>, _: u64) -> bool {
+                let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+                let st = self.state.clone();
+                let ok = tokio::task::block_in_place(|| {
+                    let until = std::time::Instant::now() + Duration::from_secs(2);
+                    while std::time::Instant::now() < until {
+                        if st.acks.lock().expect("acks").len() >= n {
+                            return true;
+                        }
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    false
+                });
+                if ok {
+                    self.acked_first.fetch_add(1, Ordering::SeqCst);
+                }
+                true
+            }
+        }
+        let fake = fake_with(FakeOpts {
+            frames: 4,
+            interval: Duration::from_millis(80),
+            screencast_session: 5,
+            ..Default::default()
+        })
+        .await;
+        let probe = Arc::new(Probe {
+            state: fake.state.clone(),
+            calls: Default::default(),
+            acked_first: Default::default(),
+        });
+        let src = start(&fake, 15, probe.clone()).await;
+        fake.wait_emitter_done().await;
+        let rep = src.stop().await;
+        let calls = probe.calls.load(Ordering::SeqCst);
+        assert!(calls >= 3, "sink was reached: {calls}");
+        assert_eq!(
+            probe.acked_first.load(Ordering::SeqCst),
+            calls,
+            "every frame's ack hit the wire before its sink call"
+        );
+        assert_eq!(rep.stats.acks_sent, rep.stats.frames_received);
     })
     .await;
 }
