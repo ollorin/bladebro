@@ -661,6 +661,12 @@ impl Page {
         &self.cdp
     }
 
+    /// Debugging endpoint this page attached through (`host:port` or `pipe`).
+    // fork hook (record): see .planning/HOOKS.md
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+
     /// Has the browser connection been closed (Chrome died)?
     /// The MCP server checks this before tool calls to self-heal.
     pub fn is_closed(&self) -> bool {

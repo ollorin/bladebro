@@ -449,6 +449,7 @@ pub async fn run_daemon() -> Result<()> {
             }
         }
     }
+    crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
     if let Some(b) = browser {
         let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
     }

@@ -181,6 +181,8 @@ pub(super) async fn launch_browser(
 /// synchronously — on the executor thread that stalls every
 /// other task. Offload to a blocking thread.
 pub(super) async fn shutdown_browser(b: crate::browser::Browser) {
+    // fork hook (record): see .planning/HOOKS.md
+    crate::record::hub::finish_best_effort().await;
     let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
 }
 

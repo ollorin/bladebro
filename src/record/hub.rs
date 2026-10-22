@@ -13,7 +13,10 @@
 //!
 //! Fork-only module (SYNC-01): no upstream file is touched by it.
 
+#[cfg(test)]
+mod adapter_tests;
 pub mod env;
+pub mod live_env;
 pub mod machine;
 #[cfg(all(test, unix))]
 mod machine_tests;
@@ -27,6 +30,9 @@ use std::sync::OnceLock;
 
 use serde_json::Value;
 use tokio::sync::Mutex;
+
+use crate::error::BladeError;
+use crate::page::Page;
 
 pub use machine::{Hub, HubError};
 
@@ -86,6 +92,60 @@ pub fn record_op(args: &Value) -> Option<RecordOp> {
         "record-stop" => Some(RecordOp::Stop),
         _ => None,
     }
+}
+
+/// HubError -> BladeError: never `Closed`/`Transport`, so a refused or unclean
+/// recording is not mistaken for a dead browser by the self-heal paths.
+pub(crate) fn map_err(e: HubError) -> BladeError {
+    match e {
+        HubError::Usage(t) => BladeError::Usage(t),
+        HubError::Failed(t) => BladeError::Other(t),
+    }
+}
+
+/// `record-start` needs a string name; checked before the lock so a bad call
+/// never initializes the hub.
+pub(crate) fn check_name(args: &Value) -> Result<&str, BladeError> {
+    args.get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| BladeError::Usage(msg::usage()))
+}
+
+/// CLI `record-start` name: `--name x` or exactly one positional.
+pub fn cli_name(flag: Option<&str>, pos: &[String]) -> crate::error::Result<String> {
+    let extra = pos.get(usize::from(flag.is_none()));
+    if let Some(x) = extra {
+        return Err(BladeError::Usage(format!(
+            "unexpected extra argument '{x}' for record-start"
+        )));
+    }
+    flag.map(String::from)
+        .or_else(|| pos.first().cloned())
+        .ok_or_else(|| {
+            BladeError::Usage(
+                "record-start needs a name, e.g. bladebro state record-start login-flow".into(),
+            )
+        })
+}
+
+/// The `state` hook: None for every op the hub does not own (nothing read,
+/// locked or sent), Some(result) for record-start / record-stop.
+pub async fn try_handle(args: &Value, page: &Page) -> Option<crate::error::Result<String>> {
+    let op = record_op(args)?;
+    let env = live_env::PageEnv { page };
+    let name = match op {
+        RecordOp::Start => match check_name(args) {
+            Ok(n) => Some(n),
+            Err(e) => return Some(Err(e)),
+        },
+        RecordOp::Stop => None,
+    };
+    let mut h = hub().lock().await;
+    let r = match name {
+        Some(n) => h.start(&env, n).await,
+        None => h.stop(&env).await,
+    };
+    Some(r.map_err(map_err))
 }
 
 #[cfg(test)]

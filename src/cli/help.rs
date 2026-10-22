@@ -48,7 +48,8 @@ COMMANDS
                                   open-tab, close-tab, switch-tab
   state <op> [args]               cookies, set-cookie, del-cookie, ls, ss, set-ls, set-ss,
                                   rm-ls, rm-ss, clear-ls, clear-ss, tabs, open-tab,
-                                  close-tab, switch-tab, save, load, compress, block
+                                  close-tab, switch-tab, save, load, compress, block,
+                                  record-start <name>, record-stop
   run '<json-steps>'              batch with if/while branching + inline see reads
   vision [--marks]                screenshot (saved to a file; path printed)
   daemon | stop                   manage the persistent Chrome session
@@ -276,7 +277,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
         "state" => json!({
             "usage": "bladebro state <op> [args] [flags]",
             "tool": "state",
-            "ops": ["cookies","set-cookie","del-cookie","ls","ss","set-ls","set-ss","rm-ls","rm-ss","clear-ls","clear-ss","tabs","open-tab","close-tab","switch-tab","save","load","compress","block"],
+            "ops": ["cookies","set-cookie","del-cookie","ls","ss","set-ls","set-ss","rm-ls","rm-ss","clear-ls","clear-ss","tabs","open-tab","close-tab","switch-tab","save","load","compress","block","record-start","record-stop"],
             "flags": {
                 "--url": "cookie scope / cookies filter / open-tab url",
                 "--domain": "cookie domain",
@@ -661,6 +662,10 @@ SESSIONS / CONTROL
   save <name> · load <name>            persist/restore cookies+storage
   block [classes] · block clear        image/font/media/tracker blocking
   compress on|off|status               context pruning
+
+RECORDING (needs ffmpeg + BLADE_RECORD; daemon or MCP only)
+  record-start <name>                  video of the active tab
+  record-stop                          path, bytes, duration, frames, drops
 
 EXAMPLES
   bladebro state cookies

@@ -10,6 +10,10 @@ use crate::page::Page;
 use crate::state::StateOp;
 
 pub async fn handle_state(args: &Value, page: &mut Page) -> Result<String> {
+    // fork hook (record): see .planning/HOOKS.md
+    if let Some(r) = crate::record::hub::try_handle(args, page).await {
+        return r;
+    }
     if args.get("slim").is_some_and(|v| !v.is_boolean()) {
         return Err(BladeError::Usage("state slim must be a boolean".into()));
     }

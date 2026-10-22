@@ -669,6 +669,7 @@ async fn run_tool(
 /// Chrome down. `external=false` owns the browser, so it restores logins,
 /// warms on first run, and the caller owns shutdown.
 async fn run_connected(tool: &str, args: &Value, base: &str, external: bool) -> Result<ToolResult> {
+    crate::record::hub::set_ephemeral(); // fork hook (record): see .planning/HOOKS.md
     let target = crate::cdp::first_page_target(base).await?;
     let client = crate::cdp::CdpClient::connect(target.ws_url()?).await?;
     let mut page = Page::attach(crate::cdp::CdpSession::root(client), base, None).await?;
