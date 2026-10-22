@@ -173,8 +173,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 08-01: Rebind on switch/open/popup in default mode + segment markers + fixtures/tests
-- [ ] 08-02: Per-tab-files mode + tests
+- [x] 08-01: Rebind on switch/open/popup in default mode + segment markers + fixtures/tests
+- [x] 08-02: Per-tab-files mode + tests
 
 ### Phase 9: Finalization on Every Exit Path
 **Goal**: However a session ends, the recording is finalized or honestly reported as interrupted, and no ffmpeg process is left behind
