@@ -1,0 +1,24 @@
+== BEFORE (Phase 1 script, unchanged, run on pre-change tools.rs)
+state ToolDef: raw_chars=2038 collapsed_chars=1681 est_tokens(collapsed/4)=420
+all_tools(): raw_chars=18963 collapsed_chars=15581 est_tokens(collapsed/4)=3895
+enum: chars=31 est_tokens=7.8
+desc line: chars=182 est_tokens=45.5
+name desc: chars=19 est_tokens=4.8
+addition total chars=232 est_tokens=58
+
+== AFTER (same script, post-change tools.rs; the ADD_* lines are Phase 1's constants and are not the measurement)
+state ToolDef: raw_chars=2271 collapsed_chars=1914 est_tokens(collapsed/4)=478
+all_tools(): raw_chars=19196 collapsed_chars=15814 est_tokens(collapsed/4)=3954
+
+== DELTA
+state ToolDef collapsed: 1681 -> 1914 = +233 chars (+13.9 %)
+all_tools() collapsed:   15581 -> 15814 = +233 chars (+1.5 %)
+est tokens (chars/4):    +58 (233/4 = 58.25)
+in-test measure (schema_tests.rs, added text only): enum 31 + line 183 + name delta 16 = 230 chars (~57 tokens), budget 240
+
+== vs Phase 1 D-01
+              D-01 plan   built
+chars         232         233   (the one-char drift: "at start" claim instead of "follows tab switches", and "off unless BLADE_RECORD is set")
+~tokens       58          58
+% of state    13.8 %      13.9 %
+% of all      1.5 %       1.5 %

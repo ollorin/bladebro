@@ -24,6 +24,8 @@ pub mod msg;
 pub mod report;
 #[cfg(test)]
 mod report_tests;
+#[cfg(test)]
+mod schema_tests;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;

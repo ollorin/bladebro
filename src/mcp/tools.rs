@@ -156,6 +156,7 @@ LOGIN PERSISTENCE: save <name> after login → navigate to the saved origin → 
 TABS: tabs (list), open-tab <url> (returns tab ID — save it for switch-tab), switch-tab <id>, close-tab <id>.\n\
 COOKIES/STORAGE: cookies, set-cookie, ls/ss, set-ls/set-ss, rm-ls/rm-ss, clear-ls/clear-ss.\n\
 BLOCKING: op=block classes=\"images,fonts,media,trackers\" (inert assets only, never first-party scripts).\n\
+RECORDING: record-start <name> (video of the active tab at start), record-stop (returns path, bytes, duration, frames, drops, segments). Needs ffmpeg; off unless BLADE_RECORD is set.\n\
 State ops (open-tab, save, load, etc.) also work as steps in batch and run.",
             input_schema: json!({
                 "type": "object",
@@ -163,9 +164,9 @@ State ops (open-tab, save, load, etc.) also work as steps in batch and run.",
                 "properties": {
                     "op": {
                         "type": "string",
-                        "enum": ["cookies", "set-cookie", "del-cookie", "ls", "ss", "set-ls", "set-ss", "rm-ls", "rm-ss", "clear-ls", "clear-ss", "tabs", "open-tab", "close-tab", "switch-tab", "save", "load", "block"]
+                        "enum": ["cookies", "set-cookie", "del-cookie", "ls", "ss", "set-ls", "set-ss", "rm-ls", "rm-ss", "clear-ls", "clear-ss", "tabs", "open-tab", "close-tab", "switch-tab", "save", "load", "block", "record-start", "record-stop"]
                     },
-                    "name": {"type": "string", "description": "Cookie name, storage key, or session name."},
+                    "name": {"type": "string", "description": "Cookie name, storage key, session name, or recording name."},
                     "value": {"type": "string", "description": "Cookie or storage value."},
                     "url": {"type": "string", "description": "URL for open-tab, cookie scope (set-cookie/del-cookie), or domain filter (cookies)."},
                     "domain": {"type": "string", "description": "Domain for del-cookie (alternative to url)."},
