@@ -42,5 +42,10 @@ pub use ffmpeg::{
 };
 pub use layered::{resolve_layered, ProjectRecord};
 pub use names::{file_name, sanitize_stem};
-pub use source::{SourceError, SourceReport, SourceStats};
+// `Source` is already taken here (ffmpeg::Source), so the frame source is
+// re-exported as `FrameSource`.
+pub use source::{
+    Endpoint, FrameSink, Source as FrameSource, SourceConfig, SourceError, SourceReport,
+    SourceStats,
+};
 pub use values::{Format, FrameSize};

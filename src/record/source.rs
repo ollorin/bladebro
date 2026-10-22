@@ -7,7 +7,9 @@
 //! screencast methods is ever sent.
 //!
 //! Module map:
-//! - `capture`: public API, connection, start/stop, closed method allowlist.
+//! - `capture`: public API (Source, SourceConfig, Endpoint), connection, ack-first loop, start/stop.
+//! - `wire`: RecMethod closed method set + the single send path (SAFE-01).
+//! - `sink`: FrameSink bounded hand-off, impl for Encoder.
 //! - `handler`: per-event logic and counters (sync, unit-testable).
 //! - `frame`: event parsing, base64, timestamps.
 //! - `gate`: fps cap (newest wins, trailing flush).
@@ -20,14 +22,23 @@
 //! exemption in `cdp::client::route_cdp_text` (see .planning/HOOKS.md).
 
 #[cfg(test)]
+mod capture_tests;
+#[cfg(test)]
 mod fake_cdp;
 #[cfg(test)]
 mod hook_tests;
 
+mod capture;
 mod frame;
 mod gate;
+mod handler;
 mod report;
+mod sink;
+mod wire;
 
+pub use capture::{Endpoint, Source, SourceConfig, ACK_TIMEOUT, STOP_GRACE};
 pub use frame::{decode_jpeg, parse_frame, parse_frame_owned, ts_ms_from_metadata, FrameEvent};
 pub use gate::{FpsGate, GateStep};
 pub use report::{SourceError, SourceOutcome, SourceReport, SourceStats};
+pub use sink::FrameSink;
+pub use wire::RecMethod;
