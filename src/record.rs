@@ -12,12 +12,14 @@
 //! - `ffmpeg`: ffmpeg lookup (BLADE_FFMPEG > PATH > known dirs), bounded
 //!   -version/-encoders probe cached once per process, pure output parsers,
 //!   doctor report (DoctorLine).
+//! - `encoder`: ffmpeg encoder: argv builder, timestamp pacing, process lifecycle, honest verdicts (SAFE-04, LIFE-05).
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
 
 pub mod config;
 pub mod dir;
+pub mod encoder;
 pub mod ffmpeg;
 pub mod layered;
 pub mod names;
@@ -27,6 +29,7 @@ pub use config::{
     load_file_config, resolve, resolve_from_env, FileConfig, RecordConfig, RecordOverrides,
 };
 pub use dir::{create_recording_file, prepare_dir};
+pub use encoder::{classify, EncoderError, EncoderReport, ExitInfo, Outcome};
 pub use ffmpeg::{
     discover, discover_cached, doctor_check, doctor_line, find_ffmpeg, known_locations,
     parse_encoders, parse_version, probe, Discovery, DoctorLine, EncoderSet, FfmpegVersion, Found,
