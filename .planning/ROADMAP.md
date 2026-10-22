@@ -137,6 +137,7 @@ Plans:
   3. A loaded page that yields no frames for the configured period produces a "no frames" result instead of success; a 2 MB `Page.screencastFrame` passes through `shrink_oversized_event` unchanged
   4. On an idle page, video duration is within 5% of wall-clock time, and odd or changing frame sizes (e.g. 1001x641, mid-recording resize) still yield a playable file
   5. Only `Page` screencast methods are sent (CDP trace shows no `Runtime.enable`, `Emulation.*`, DOM overlay or new launch flag); `bladebro audit` 111/111, `diff_oracle` divergent 0, `qol_probe` 122/122 still pass
+  - SC5 note (06-03, macOS headless): audit 100/100 without and with the recorder (111 is the Linux figure); wire trace = Page.enable, startScreencast, screencastFrameAck, stopScreencast only; Chrome argv identical; battery divergent 0; qol_probe 120/122 (the 2 known failures); diff_oracle NOT RUN (python websockets missing)
 **Plans**: 3 plans
 
 Plans:
@@ -250,7 +251,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 4. ffmpeg Discovery and Doctor | 2/2 | Complete (macOS only; CI not run; 442 tests) | 2026-10-21 |
 | 4.1 Launch Mode and Layered Config (INSERTED) | 6/6 | Complete (macOS only; CI not run) | - |
 | 5. Encoder Process Manager | 3/3 | 3/3 plans executed; SC4 (windows-latest CI) pending: written, not executed (macOS only) | - |
-| 6. Frame Source | 0/3 | Not started | - |
+| 6. Frame Source | 3/3 | Complete on macOS (headless; Linux/Windows not executed; diff_oracle not run) | 2026-10-22 |
 | 7. RecordHub and state Ops | 0/3 | Not started | - |
 | 8. Tab Following | 0/2 | Not started | - |
 | 9. Finalization on Every Exit Path | 0/3 | Not started | - |
