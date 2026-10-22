@@ -16,15 +16,14 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
 
-use super::merge::{merge, MergeIn, Merged, SegIn};
+use super::files::{Policy, Skip};
+use super::merge::{merge, MergeIn, SegIn};
 use super::pick::{agent_tab, Baseline, Confirm};
 use super::probe::{TabProbe, TabView};
 use super::sink::FollowShared;
-use super::{Snap, RULE};
+use super::{Outcome, Snap, RULE};
 use crate::record::hub::msg;
-use crate::record::source::{
-    FrameSink, Source, SourceConfig, SourceOutcome, SourceReport, SourceStats,
-};
+use crate::record::source::{Source, SourceConfig, SourceOutcome, SourceReport, SourceStats};
 
 /// A rebind that cannot finish within this is a failure, never a hang.
 const REBIND_CAP: Duration = Duration::from_secs(4);
@@ -39,8 +38,7 @@ const CATCHUP_WAIT: Duration = Duration::from_millis(400);
 pub(super) struct Params {
     pub first: Source,
     pub tab: String,
-    pub shared: Arc<FollowShared>,
-    pub inner: Arc<dyn FrameSink>,
+    pub policy: Policy,
     pub probe: TabProbe,
     pub scfg: SourceConfig,
     pub poll: Duration,
@@ -61,13 +59,30 @@ struct Cur {
     seg: usize,
 }
 
-struct SegRec {
-    tab: String,
-    gen: u64,
+/// One visit to a tab (a capture generation).
+pub struct SegRec {
+    pub tab: String,
+    pub gen: u64,
     start: Instant,
     end: Option<Instant>,
     report: Option<SourceReport>,
     rebound: bool,
+}
+
+/// The merge input for one finished visit.
+pub fn seg_in(s: &SegRec, shared: &FollowShared, t0: Instant, now: Instant) -> SegIn {
+    SegIn {
+        tab: s.tab.clone(),
+        first_ts_ms: shared.first_ts(s.gen),
+        wall_ms: s.start.saturating_duration_since(t0).as_millis() as u64,
+        dur_ms: s
+            .end
+            .unwrap_or(now)
+            .saturating_duration_since(s.start)
+            .as_millis() as u64,
+        report: s.report.clone().unwrap_or_else(|| lost_report(&s.tab)),
+        rebound: s.rebound,
+    }
 }
 
 struct Run {
@@ -83,14 +98,17 @@ struct Run {
     /// A brand-new tab in front and since when.
     new_since: Option<(String, Instant)>,
     new_confirm: Duration,
+    /// Per-tab mode: the tab the agent is on while it has no source (cap
+    /// reached or its file could not be created); nothing is retried until
+    /// the agent moves.
+    parked: Option<String>,
     misses: u32,
     fail_streak: u32,
     failed: HashSet<String>,
     lost: bool,
     next_gen: u64,
     start: Instant,
-    shared: Arc<FollowShared>,
-    inner: Arc<dyn FrameSink>,
+    policy: Policy,
     probe: TabProbe,
     scfg: SourceConfig,
     poll: Duration,
@@ -99,7 +117,7 @@ struct Run {
     snap: Arc<Mutex<Snap>>,
 }
 
-pub(super) async fn run(p: Params, mut stop_rx: oneshot::Receiver<Option<String>>) -> Merged {
+pub(super) async fn run(p: Params, mut stop_rx: oneshot::Receiver<Option<String>>) -> Outcome {
     let mut r = Run::new(p);
     loop {
         tokio::select! {
@@ -148,14 +166,14 @@ impl Run {
             known: p.known.into_iter().collect(),
             new_since: None,
             new_confirm: p.new_confirm,
+            parked: None,
             misses: 0,
             fail_streak: 0,
             failed: HashSet::new(),
             lost: false,
             next_gen: 2,
             start: now,
-            shared: p.shared,
-            inner: p.inner,
+            policy: p.policy,
             probe: p.probe,
             scfg: p.scfg,
             poll: p.poll,
@@ -167,8 +185,8 @@ impl Run {
 
     /// Seconds on the video clock (it starts at the first frame).
     fn at_s(&self) -> f64 {
-        self.shared
-            .t0_at()
+        self.policy
+            .clock()
             .unwrap_or(self.start)
             .elapsed()
             .as_secs_f64()
@@ -216,6 +234,7 @@ impl Run {
             s.tab = c.tab.clone();
             s.health = c.src.health();
         }
+        s.files = self.policy.files();
     }
 
     async fn tick(&mut self) {
@@ -230,6 +249,9 @@ impl Run {
                 self.misses = 0;
                 let ids: Vec<String> = list.iter().map(|v| v.id.clone()).collect();
                 self.decide(list).await;
+                let keep = self.cur.as_ref().map(|c| c.tab.clone());
+                let at = self.at_s();
+                self.policy.close_missing(&ids, keep.as_deref(), at);
                 self.known.extend(ids);
             }
             _ => {
@@ -246,7 +268,8 @@ impl Run {
     }
 
     async fn decide(&mut self, list: Vec<TabView>) {
-        let cur_tab = self.cur.as_ref().map(|c| c.tab.clone());
+        let parked = self.cur.is_none().then(|| self.parked.clone()).flatten();
+        let cur_tab = self.cur.as_ref().map(|c| c.tab.clone()).or(parked);
         let present = cur_tab
             .as_ref()
             .is_some_and(|t| list.iter().any(|v| &v.id == t));
@@ -277,12 +300,14 @@ impl Run {
                 return;
             };
             let at = self.at_s();
-            let note = if cand == cur {
-                msg::tab_reconnected(&cand, at)
+            let note = if self.cur.is_none() {
+                None // parked: the tab had no source to lose
+            } else if cand == cur {
+                Some(msg::tab_reconnected(&cand, at))
             } else {
-                msg::tab_gone(&cur, at, &cand)
+                Some(msg::tab_gone(&cur, at, &cand))
             };
-            self.rebind(v, Some(note)).await;
+            self.rebind(v, note).await;
             return;
         }
         if cand == cur {
@@ -345,12 +370,17 @@ impl Run {
     async fn rebind(&mut self, v: &TabView, note: Option<String>) -> bool {
         let gen = self.next_gen;
         self.next_gen += 1;
-        let prev = self.shared.current_gen();
-        self.shared.set_gen(gen);
-        let sink = self.shared.sink(self.inner.clone(), gen);
+        let at = self.at_s();
+        let entered = match self.policy.enter(v, gen, at) {
+            Ok(e) => e,
+            Err(skip) => {
+                self.skipped(v, skip);
+                return false;
+            }
+        };
         let started = timeout(
             REBIND_CAP,
-            Source::start_ws(&v.ws_url, &v.id, self.scfg.clone(), sink),
+            Source::start_ws(&v.ws_url, &v.id, self.scfg.clone(), entered.sink),
         )
         .await;
         match started {
@@ -369,6 +399,7 @@ impl Run {
                     tab: v.id.clone(),
                     seg: self.segs.len() - 1,
                 });
+                self.parked = None;
                 self.fail_streak = 0;
                 self.confirm.reset();
                 if let Some(n) = note {
@@ -377,7 +408,7 @@ impl Run {
                 true
             }
             other => {
-                self.shared.set_gen(prev);
+                entered.shared.set_gen(entered.prev);
                 let err = match other {
                     Ok(Err(e)) => e.to_string(),
                     _ => "timed out connecting".to_string(),
@@ -392,7 +423,26 @@ impl Run {
         }
     }
 
-    async fn finish(mut self, hint: Option<String>) -> Merged {
+    /// The agent is on a tab that gets no source (per-tab cap, file could not
+    /// be created): the previous tab's source retires, the tab is named once
+    /// and nothing is retried until the agent moves.
+    fn skipped(&mut self, v: &TabView, skip: Skip) {
+        match skip {
+            Skip::Failed(t) => {
+                if self.failed.insert(v.id.clone()) {
+                    self.failures.push(t);
+                }
+            }
+            Skip::Capped(t) => self.notes.push(t),
+            Skip::Silent => {}
+        }
+        self.retire(true);
+        self.parked = Some(v.id.clone());
+        self.confirm.reset();
+        self.new_since = None;
+    }
+
+    async fn finish(mut self, hint: Option<String>) -> Outcome {
         // Catch up a switch made less than one poll before the stop.
         if !self.lost && !self.probe.is_fixed() {
             if let Some(h) = hint {
@@ -408,44 +458,48 @@ impl Run {
                 }
             }
         }
-        // The video ends at the stop request (once, for the whole recording).
-        self.inner.mark_end();
+        // The video ends at the stop request (once per file).
+        self.policy.mark_end();
         self.retire(false);
         for (idx, h) in std::mem::take(&mut self.pending) {
             self.segs[idx].report = h.await.ok();
         }
-        let now = Instant::now();
-        let t0 = self.shared.t0_at().unwrap_or(self.start);
-        let segs = self
-            .segs
-            .iter()
-            .map(|s| SegIn {
-                tab: s.tab.clone(),
-                first_ts_ms: self.shared.first_ts(s.gen),
-                wall_ms: s.start.saturating_duration_since(t0).as_millis() as u64,
-                dur_ms: s
-                    .end
-                    .unwrap_or(now)
-                    .saturating_duration_since(s.start)
-                    .as_millis() as u64,
-                report: s.report.clone().unwrap_or_else(|| lost_report(&s.tab)),
-                rebound: s.rebound,
-            })
-            .collect();
-        merge(MergeIn {
-            segs,
-            t0_ts_ms: self.shared.t0_ts(),
-            failures: self.failures,
-            notes: self.notes,
-            no_frames_after_ms: self.no_frames_after.as_millis() as u64,
-        })
+        let no_frames_after = self.no_frames_after;
+        match &mut self.policy {
+            Policy::PerTab(files) => Outcome::PerTab(
+                files
+                    .finish(
+                        &self.segs,
+                        no_frames_after,
+                        std::mem::take(&mut self.failures),
+                        std::mem::take(&mut self.notes),
+                    )
+                    .await,
+            ),
+            Policy::One { shared, .. } => {
+                let now = Instant::now();
+                let t0 = shared.t0_at().unwrap_or(self.start);
+                let segs = self
+                    .segs
+                    .iter()
+                    .map(|s| seg_in(s, shared, t0, now))
+                    .collect();
+                Outcome::One(Box::new(merge(MergeIn {
+                    segs,
+                    t0_ts_ms: shared.t0_ts(),
+                    failures: self.failures,
+                    notes: self.notes,
+                    no_frames_after_ms: no_frames_after.as_millis() as u64,
+                })))
+            }
+        }
     }
 
     async fn wait_first_frame(&self) {
         let Some(c) = &self.cur else { return };
         let gen = self.segs[c.seg].gen;
         let end = Instant::now() + CATCHUP_WAIT;
-        while self.shared.first_ts(gen).is_none() && Instant::now() < end {
+        while self.policy.first_ts(&c.tab, gen).is_none() && Instant::now() < end {
             sleep(Duration::from_millis(10)).await;
         }
     }

@@ -6,6 +6,7 @@
 //! - `pick`: pure `agent_tab` rules, `Confirm` debounce, `Baseline` (lingering popup at start).
 //! - `sink`: `FollowShared` + `SegmentSink` (generation and monotonic filters, no-op mark_end).
 //! - `merge`: pure merge of per-segment reports and `compose_follow`.
+//! - `files`: sink policy (one encoder, or one file per tab with a cap of 8) and the per-tab lifecycle.
 //! - `run`: the follower task (poll, rebind, gone/lost handling, catch-up stop).
 //! - `unit_tests` (tests only): tables for pick, sink, merge, msg.
 //!
@@ -16,6 +17,7 @@
 //! the front never becomes a segment; each switch starts a new `Source` on the
 //! new tab BEFORE the old one is retired in the background.
 
+mod files;
 mod merge;
 mod pick;
 mod probe;
@@ -30,14 +32,23 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
+pub use files::{Entered, Files, Policy, Skip, MAX_TAB_FILES};
 pub use merge::{compose_follow, merge, MergeIn, Merged as FollowResult, SegIn};
 pub use pick::{agent_tab, Baseline, Confirm, Rule};
 pub use probe::{Scripted, TabProbe, TabView};
 pub use sink::{FollowShared, SegmentSink};
 
+use super::follow_report::PerTabResult;
+
 use crate::record::source::{
-    FrameSink, Health, Source, SourceConfig, SourceOutcome, SourceReport, SourceStats,
+    Health, Source, SourceConfig, SourceOutcome, SourceReport, SourceStats,
 };
+
+/// What a stopped follower hands back: one merged capture, or one result per file.
+pub enum Outcome {
+    One(Box<FollowResult>),
+    PerTab(PerTabResult),
+}
 
 /// The rule in force; 08-01-discovery.txt explains why not `Attached`.
 pub const RULE: Rule = Rule::ListOrder;
@@ -53,16 +64,18 @@ pub const NEW_TAB_CONFIRM: Duration = Duration::from_millis(1500);
 pub(super) struct Snap {
     pub tab: String,
     pub health: Health,
+    /// Per-tab mode: every file so far, in tab order.
+    pub files: Vec<std::path::PathBuf>,
 }
 
 pub struct SpawnArgs {
     /// The source already started on `tab` (generation 1 of `shared`).
     pub first: Source,
     pub tab: String,
-    pub shared: Arc<FollowShared>,
-    /// The encoder as a sink: the follower's only handle to it, dropped before
-    /// the result is returned so the hub can take the encoder back.
-    pub inner: Arc<dyn FrameSink>,
+    /// Where frames go: the one encoder (its only handle in the follower is
+    /// dropped before the result is returned so the hub can take it back), or
+    /// the per-tab files.
+    pub policy: Policy,
     pub probe: TabProbe,
     pub scfg: SourceConfig,
     pub poll: Duration,
@@ -96,9 +109,10 @@ pub async fn first_view(probe: &TabProbe, tab: &str) -> Initial {
 
 pub struct Tracker {
     stop_tx: Option<oneshot::Sender<Option<String>>>,
-    task: Option<JoinHandle<FollowResult>>,
+    task: Option<JoinHandle<Outcome>>,
     snap: Arc<Mutex<Snap>>,
     cap: Duration,
+    per_tab: bool,
 }
 
 impl Tracker {
@@ -106,15 +120,20 @@ impl Tracker {
         let snap = Arc::new(Mutex::new(Snap {
             tab: a.tab.clone(),
             health: a.first.health(),
+            files: a.policy.files(),
         }));
-        let cap = a.scfg.stop_grace * 2 + Duration::from_secs(14);
+        let per_tab = matches!(a.policy, Policy::PerTab(_));
+        let extra = match &a.policy {
+            Policy::PerTab(f) => f.cap(),
+            Policy::One { .. } => Duration::ZERO,
+        };
+        let cap = a.scfg.stop_grace * 2 + Duration::from_secs(14) + extra;
         let (stop_tx, stop_rx) = oneshot::channel();
         let p = run::Params {
             no_frames_after: a.scfg.no_frames_after,
             first: a.first,
             tab: a.tab,
-            shared: a.shared,
-            inner: a.inner,
+            policy: a.policy,
             probe: a.probe,
             scfg: a.scfg,
             poll: a.poll,
@@ -130,6 +149,7 @@ impl Tracker {
             task: Some(task),
             snap,
             cap,
+            per_tab,
         }
     }
 
@@ -139,6 +159,15 @@ impl Tracker {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .health
+            .clone()
+    }
+
+    /// Per-tab mode: the files so far (empty in follow mode).
+    pub fn files(&self) -> Vec<std::path::PathBuf> {
+        self.snap
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .files
             .clone()
     }
 
@@ -154,24 +183,39 @@ impl Tracker {
     /// End the recording: `hint` is the tab the agent is on now (catch-up when
     /// the last switch is younger than one poll). Bounded; a follower that does
     /// not answer is aborted and reported honestly.
-    pub async fn stop(mut self, hint: Option<String>) -> FollowResult {
+    pub async fn stop(mut self, hint: Option<String>) -> Outcome {
         if let Some(tx) = self.stop_tx.take() {
             let _ = tx.send(hint);
         }
         // No facts about the frames: not clean, named, never "saved".
-        let stuck = || FollowResult {
-            report: SourceReport {
-                outcome: SourceOutcome::Captured,
-                stats: SourceStats::default(),
-                target_id: String::new(),
-                elapsed_ms: 0,
-                last_frame_age_ms: None,
-                quiet_tail_ms: None,
-                hidden: false,
-            },
-            segments: Vec::new(),
-            notes: Vec::new(),
-            failures: vec![super::msg::follower_stuck()],
+        let paths = self.files();
+        let stuck = || {
+            let mut text = super::msg::follower_stuck();
+            if !paths.is_empty() {
+                let l: Vec<_> = paths.iter().map(|p| p.display().to_string()).collect();
+                text.push_str(&format!(" (files: {})", l.join(", ")));
+            }
+            if self.per_tab {
+                return Outcome::PerTab(PerTabResult {
+                    failures: vec![text],
+                    ..Default::default()
+                });
+            }
+            let one = FollowResult {
+                report: SourceReport {
+                    outcome: SourceOutcome::Captured,
+                    stats: SourceStats::default(),
+                    target_id: String::new(),
+                    elapsed_ms: 0,
+                    last_frame_age_ms: None,
+                    quiet_tail_ms: None,
+                    hidden: false,
+                },
+                segments: Vec::new(),
+                notes: Vec::new(),
+                failures: vec![text],
+            };
+            Outcome::One(Box::new(one))
         };
         let Some(mut task) = self.task.take() else {
             return stuck();

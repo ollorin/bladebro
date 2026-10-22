@@ -78,6 +78,37 @@ pub fn started(path: &str, tab: &str) -> String {
     format!("recording started: {path} (tab {tab}); first frame not awaited. record-stop saves it.")
 }
 
+/// Per-tab mode: the first file is the start tab's; more appear as the agent
+/// visits tabs.
+pub fn started_per_tab(path: &str, tab: &str) -> String {
+    format!("recording started (per-tab files): {path} (tab {tab}); first frame not awaited. record-stop saves every tab's file.")
+}
+
+/// CTRL-05 in per-tab mode: the second start names the first file and the count.
+pub fn active_per_tab(path: &str, files: usize, age_ms: u64, h: &Health) -> String {
+    format!(
+        "recording already active: {path} (per-tab, {files} file{}, started {:.1} s ago, {}). record-stop it first.",
+        if files == 1 { "" } else { "s" },
+        age_ms as f64 / 1000.0,
+        health_label(h)
+    )
+}
+
+/// The 9th open tab: an operator limit, named with the time it went unrecorded.
+pub fn tab_capped(tab: &str, at_s: f64, cap: usize) -> String {
+    format!("tab {tab} not recorded from {at_s:.1} s: per-tab cap of {cap} open files reached (close a tab to free one)")
+}
+
+/// A tab's file was finished because the tab closed.
+pub fn tab_closed(tab: &str, at_s: f64) -> String {
+    format!("tab {tab} closed at {at_s:.1} s")
+}
+
+/// A tab whose file was already finished is in front again.
+pub fn tab_file_done(tab: &str, at_s: f64) -> String {
+    format!("tab {tab} not recorded from {at_s:.1} s: its file was already finished")
+}
+
 pub fn not_finalized(path: &str) -> String {
     format!(
         "recording not finalized: the frame source did not release the encoder within 1 s; the file {path} may be incomplete. Browsing is unaffected."

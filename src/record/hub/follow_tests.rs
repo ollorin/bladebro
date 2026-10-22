@@ -15,11 +15,12 @@ use super::machine::{Hub, HubError, Knobs};
 use crate::record::encoder::test_util::{fake_ffmpeg, Scratch};
 use crate::record::source::fake_cdp::{FakeCdp, FakeOpts};
 use crate::record::values::{Format, FrameSize};
+use crate::record::Tabs;
 use crate::record::{EncoderError, RecordConfig, ResolvedFfmpeg};
 
-const T0: f64 = 1.7e9;
-const OK_SCRIPT: &str = r#"for a; do out="$a"; done; cat > "$out""#;
-const FRAME_BYTES: u64 = 30_000;
+pub(super) const T0: f64 = 1.7e9;
+pub(super) const OK_SCRIPT: &str = r#"for a; do out="$a"; done; cat > "$out""#;
+pub(super) const FRAME_BYTES: u64 = 30_000;
 const DEAD: [&str; 4] = [
     "Target closed",
     "No target with given id",
@@ -27,16 +28,16 @@ const DEAD: [&str; 4] = [
     "Target.detachedFromTarget",
 ];
 
-async fn guard<F: Future>(f: F) -> F::Output {
+pub(super) async fn guard<F: Future>(f: F) -> F::Output {
     tokio::time::timeout(Duration::from_secs(40), f)
         .await
         .expect("scenario timed out")
 }
 
-struct Env {
-    cfg: RecordConfig,
+pub(super) struct Env {
+    pub cfg: RecordConfig,
     ffmpeg: ResolvedFfmpeg,
-    tab: Mutex<String>,
+    pub tab: Mutex<String>,
     first_ws: String,
     probe: TabProbe,
 }
@@ -64,7 +65,7 @@ impl HubEnv for Env {
     }
 }
 
-fn view(id: &str, ws: &str) -> TabView {
+pub(super) fn view(id: &str, ws: &str) -> TabView {
     TabView {
         id: id.into(),
         url: format!("http://127.0.0.1/{id}"),
@@ -73,7 +74,7 @@ fn view(id: &str, ws: &str) -> TabView {
     }
 }
 
-fn fake(frames: usize, base_off: f64) -> FakeOpts {
+pub(super) fn fake(frames: usize, base_off: f64) -> FakeOpts {
     FakeOpts {
         frames,
         interval: Duration::from_millis(120),
@@ -82,18 +83,29 @@ fn fake(frames: usize, base_off: f64) -> FakeOpts {
     }
 }
 
-struct Rig {
-    _s: Scratch,
-    script: PathBuf,
-    hub: Hub,
-    env: Env,
+pub(super) struct Rig {
+    pub s: Scratch,
+    pub script: PathBuf,
+    pub hub: Hub,
+    pub env: Env,
     list: Arc<Mutex<Scripted>>,
 }
 
 impl Rig {
     async fn new(name: &str, first: &FakeCdp, no_frames_after: Duration) -> Rig {
+        Rig::with(name, first, OK_SCRIPT, Tabs::Follow, no_frames_after).await
+    }
+
+    /// A rig with its own fake ffmpeg `body` and tab mode.
+    pub(super) async fn with(
+        name: &str,
+        first: &FakeCdp,
+        body: &str,
+        tabs: Tabs,
+        no_frames_after: Duration,
+    ) -> Rig {
         let s = Scratch::new();
-        let script = s.script(&format!("fake-enc-{name}"), OK_SCRIPT);
+        let script = s.script(&format!("fake-enc-{name}"), body);
         let (probe, list) = TabProbe::scripted(vec![view("A", &first.url)]);
         let env = Env {
             cfg: RecordConfig {
@@ -106,7 +118,7 @@ impl Rig {
                     height: 720,
                 },
                 quality: 70,
-                tabs: crate::record::Tabs::Follow,
+                tabs,
                 queue_len: 16,
                 name: None,
                 artifacts_dir: s.0.join("artifacts"),
@@ -125,7 +137,7 @@ impl Rig {
             no_frames_after: Some(no_frames_after),
         });
         Rig {
-            _s: s,
+            s,
             script,
             hub,
             env,
@@ -133,18 +145,24 @@ impl Rig {
         }
     }
 
-    fn set(&self, tabs: Vec<TabView>) {
+    pub(super) fn set(&self, tabs: Vec<TabView>) {
         self.list.lock().expect("list").tabs = tabs;
     }
 
-    async fn start(&mut self) -> PathBuf {
+    pub(super) async fn start(&mut self) -> PathBuf {
         let t = okay(self.hub.start(&self.env, "follow").await);
-        let rest = t.split("recording started: ").nth(1).expect("started");
+        // "recording started: <path>" or "recording started (per-tab files): <path>".
+        let rest = t
+            .split("recording started")
+            .nth(1)
+            .and_then(|r| r.split_once(": "))
+            .map(|(_, p)| p)
+            .expect("started");
         PathBuf::from(rest.split(" (tab ").next().expect("path"))
     }
 
     /// ffmpeg processes of THIS rig's fake script.
-    fn encoders_alive(&self) -> usize {
+    pub(super) fn encoders_alive(&self) -> usize {
         let o = Command::new("pgrep")
             .args(["-f", &self.script.display().to_string()])
             .output()
@@ -153,28 +171,28 @@ impl Rig {
     }
 }
 
-fn clean(s: &str) -> &str {
+pub(super) fn clean(s: &str) -> &str {
     for d in DEAD {
         assert!(!s.contains(d), "{d} in {s}");
     }
     s
 }
 
-fn okay(r: Result<String, HubError>) -> String {
+pub(super) fn okay(r: Result<String, HubError>) -> String {
     match r {
         Ok(t) => clean(&t).to_string(),
         Err(e) => panic!("expected Ok, got Err: {e}"),
     }
 }
 
-fn err(r: Result<String, HubError>) -> String {
+pub(super) fn err(r: Result<String, HubError>) -> String {
     match r {
         Err(e) => clean(&e.to_string()).to_string(),
         Ok(t) => panic!("expected Err, got Ok: {t}"),
     }
 }
 
-fn num_after(t: &str, key: &str) -> f64 {
+pub(super) fn num_after(t: &str, key: &str) -> f64 {
     let rest = t
         .split(key)
         .nth(1)
@@ -188,7 +206,7 @@ fn num_after(t: &str, key: &str) -> f64 {
 }
 
 /// The inside of `segments [...]`.
-fn segments(t: &str) -> String {
+pub(super) fn segments(t: &str) -> String {
     let rest = t
         .split("segments [")
         .nth(1)
@@ -196,7 +214,7 @@ fn segments(t: &str) -> String {
     rest.split(']').next().expect("close").to_string()
 }
 
-async fn until(what: &str, mut f: impl FnMut() -> bool) {
+pub(super) async fn until(what: &str, mut f: impl FnMut() -> bool) {
     for _ in 0..1500 {
         if f() {
             return;
@@ -206,11 +224,11 @@ async fn until(what: &str, mut f: impl FnMut() -> bool) {
     panic!("timed out waiting for {what}");
 }
 
-fn started(f: &FakeCdp) -> bool {
+pub(super) fn started(f: &FakeCdp) -> bool {
     f.methods().iter().any(|m| m == "Page.startScreencast")
 }
 
-const LONG: Duration = Duration::from_secs(5);
+pub(super) const LONG: Duration = Duration::from_secs(5);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn switch_a_b_a_makes_three_segments_in_one_file_and_one_encoder() {

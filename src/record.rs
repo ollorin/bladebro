@@ -43,7 +43,7 @@ pub use ffmpeg::{
     Level, Lookup, ProbeInfo, Source, TargetOs, PROBE_TIMEOUT,
 };
 pub use layered::{resolve_layered, ProjectRecord};
-pub use names::{file_name, sanitize_stem};
+pub use names::{file_name, sanitize_stem, tab_stem};
 // `Source` is already taken here (ffmpeg::Source), so the frame source is
 // re-exported as `FrameSource`.
 pub use source::{

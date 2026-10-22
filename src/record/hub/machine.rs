@@ -10,11 +10,14 @@ use std::time::{Duration, Instant};
 
 use super::env::{Attach, HubEnv, Lane};
 use super::follow::{
-    compose_follow, first_view, FollowShared, SpawnArgs, Tracker, CONFIRM, NEW_TAB_CONFIRM, POLL,
+    compose_follow, first_view, Files, FollowShared, Outcome, Policy, SpawnArgs, Tracker, CONFIRM,
+    NEW_TAB_CONFIRM, POLL,
 };
+use super::follow_report::compose_per_tab;
 use super::msg::{self, scrub};
 use crate::record::{
-    create_recording_file, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource, SourceConfig,
+    create_recording_file, tab_stem, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource,
+    SourceConfig, Tabs,
 };
 
 /// How the hub reports a failure. Both map to an MCP/CLI error.
@@ -56,7 +59,8 @@ pub struct Knobs {
 
 struct Active {
     path: PathBuf,
-    enc: Arc<Encoder>,
+    /// The one encoder (follow mode); per-tab files are owned by the follower.
+    enc: Option<Arc<Encoder>>,
     rec: Tracker,
     started: Instant,
     fps: u32,
@@ -126,11 +130,15 @@ impl Hub {
             Lane::Ws => {}
         }
         if let Some(a) = &self.active {
-            return Err(failed(msg::active(
-                &a.path.display().to_string(),
+            let (p, age, h) = (
+                a.path.display().to_string(),
                 a.started.elapsed().as_millis() as u64,
-                &a.rec.health(),
-            )));
+                a.rec.health(),
+            );
+            return Err(failed(match a.enc {
+                Some(_) => msg::active(&p, age, &h),
+                None => msg::active_per_tab(&p, a.rec.files().len(), age, &h),
+            }));
         }
         let cfg = env.config(name).map_err(failed)?;
         if !cfg.enabled {
@@ -139,7 +147,13 @@ impl Hub {
         let ffmpeg = env.ffmpeg().await.map_err(|e| failed(e.to_string()))?;
         let tab = env.current_tab().await.map_err(failed)?;
 
-        let (file, path) = create_recording_file(&cfg).map_err(failed)?;
+        // Per-tab mode names every file `<stem>-tab<N>-...`; the start tab is tab 1.
+        let per_tab = cfg.tabs == Tabs::PerTab;
+        let mut first_cfg = cfg.clone();
+        if per_tab {
+            first_cfg.name = Some(tab_stem(cfg.name.as_deref().unwrap_or(""), 1));
+        }
+        let (file, path) = create_recording_file(&first_cfg).map_err(failed)?;
         // ffmpeg opens the path itself (`-y`); only the creation was needed.
         drop(file);
         let mut ecfg = EncoderConfig::new(ffmpeg, &cfg);
@@ -189,12 +203,28 @@ impl Hub {
             }
         };
         // Active only now: both the encoder and the source are running.
-        let text = msg::started(&path.display().to_string(), &tab);
+        let p = path.display().to_string();
+        let text = if per_tab {
+            msg::started_per_tab(&p, &tab)
+        } else {
+            msg::started(&p, &tab)
+        };
+        let (policy, enc) = if per_tab {
+            let files = Files::new(
+                cfg.clone(),
+                ecfg,
+                scfg.stop_grace,
+                (tab.clone(), path.clone(), enc, shared),
+            );
+            drop(inner);
+            (Policy::PerTab(Box::new(files)), None)
+        } else {
+            (Policy::One { shared, inner }, Some(enc))
+        };
         let rec = Tracker::spawn(SpawnArgs {
             first: src,
             tab,
-            shared,
-            inner,
+            policy,
             probe,
             initial,
             new_confirm: self.knobs.new_confirm.unwrap_or(NEW_TAB_CONFIRM),
@@ -253,13 +283,20 @@ impl Hub {
         let Active { enc, rec, fps, .. } = a;
         // Follower first: it ends the video, drains every source's acks and
         // releases every sink so the encoder can be taken back.
-        let fr = rec.stop(hint).await;
-        let enc = match take_encoder(enc, 20, Duration::from_millis(50)).await {
-            Ok(e) => e,
-            Err(m) => return Err(failed(m)),
+        let (ok, text) = match rec.stop(hint).await {
+            Outcome::PerTab(r) => compose_per_tab(&r, fps),
+            Outcome::One(fr) => {
+                let Some(enc) = enc else {
+                    return Err(failed(msg::follower_stuck()));
+                };
+                let enc = match take_encoder(enc, 20, Duration::from_millis(50)).await {
+                    Ok(e) => e,
+                    Err(m) => return Err(failed(m)),
+                };
+                let er = enc.finish().await;
+                compose_follow(&fr, &er, fps)
+            }
         };
-        let er = enc.finish().await;
-        let (ok, text) = compose_follow(&fr, &er, fps);
         if ok {
             Ok(text)
         } else {

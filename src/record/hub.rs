@@ -6,6 +6,7 @@
 //! - `report`: pure (source report, encoder report) -> one honest stop line.
 //! - `env`: `HubEnv` (config, ffmpeg, lane, current tab, attach) injected into the machine.
 //! - `follow`: tab following (CAPT-03): follower task, agent-tab rule, segment sink, merge.
+//! - `follow_report`: pure per-tab stop result (CAPT-04), one compact line for every file.
 //! - `machine`: `Hub` state machine (start/stop/finish_orphan, start-failure cleanup, encoder hand-back).
 //! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
 //!
@@ -18,6 +19,9 @@
 mod adapter_tests;
 pub mod env;
 pub mod follow;
+pub mod follow_report;
+#[cfg(test)]
+mod follow_report_tests;
 #[cfg(all(test, unix))]
 mod follow_tests;
 pub mod live_env;
@@ -25,6 +29,8 @@ pub mod machine;
 #[cfg(all(test, unix))]
 mod machine_tests;
 pub mod msg;
+#[cfg(all(test, unix))]
+mod per_tab_tests;
 pub mod report;
 #[cfg(test)]
 mod report_tests;

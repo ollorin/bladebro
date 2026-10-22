@@ -76,6 +76,17 @@ pub fn sanitize_stem(raw: &str) -> String {
     s
 }
 
+/// Stem of the per-tab file for the `n`-th tab seen (first-visit order from 1):
+/// the sanitized stem cut so `-tab<n>` still fits inside [`MAX_STEM`]. The
+/// sanitized stem is ASCII, so the cut is always on a char boundary.
+pub fn tab_stem(stem: &str, n: u32) -> String {
+    let suffix = format!("-tab{n}");
+    let mut s = sanitize_stem(stem);
+    s.truncate(MAX_STEM.saturating_sub(suffix.len()));
+    let s = s.trim_end_matches(is_trim);
+    format!("{s}{suffix}")
+}
+
 /// `YYYYMMDDTHHMMSSZ` for a Unix time. Integer math only; valid for any
 /// value reachable from `SystemTime::now()` (years up to 9999).
 /// Civil-from-days after Howard Hinnant (public domain).
@@ -120,6 +131,32 @@ pub fn file_name(stem: &str, format: Format, unix_secs: u64, id: &str) -> String
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tab_stem_table() {
+        use super::{sanitize_stem, tab_stem, MAX_STEM};
+        assert_eq!(
+            tab_stem("login flow", 2),
+            format!("{}-tab2", sanitize_stem("login flow"))
+        );
+        assert_eq!(tab_stem("a", 1), "a-tab1");
+        let long = "x".repeat(80);
+        let t = tab_stem(&long, 3);
+        assert!(t.len() <= MAX_STEM && t.ends_with("-tab3"), "{t}");
+        assert_eq!(t.len(), MAX_STEM);
+        // A cut that would expose a trailing separator is trimmed.
+        let sep = format!("{}-{}", "y".repeat(74), "z".repeat(20));
+        let t = tab_stem(&sep, 1);
+        assert!(!t.contains("--") && t.ends_with("y-tab1"), "{t}");
+        // Multibyte input is sanitized to ASCII before the cut (never splits a char).
+        let mb = "é".repeat(60) + &"a".repeat(60);
+        let t = tab_stem(&mb, 12);
+        assert!(
+            t.is_ascii() && t.len() <= MAX_STEM && t.ends_with("-tab12"),
+            "{t}"
+        );
+        assert_eq!(tab_stem("", 1), "recording-tab1");
+    }
+
     use super::*;
     use std::collections::HashSet;
     use std::path::Path;
