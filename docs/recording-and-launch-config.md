@@ -67,6 +67,14 @@ Where files go:
 - Errors name the cause and the fix: ffmpeg missing, `BLADE_FFMPEG` unusable, encoder missing for the format (switch with `BLADE_RECORD_FORMAT`), or the ffmpeg exit code with its last error lines. Browsing continues either way.
 - Requires ffmpeg 4.3 or newer (`bladebro doctor` shows the version and encoders); this is not checked in code, so an older ffmpeg fails when encoding starts and the result carries its exit error. These limits are fixed; there is no setting for them.
 
+### How frames are captured
+
+- The recorder opens its own connection to the recorded tab and sends only `Page.enable`, `Page.startScreencast` (JPEG, quality 70, at most the configured size), `Page.screencastFrameAck` and `Page.stopScreencast`. It injects no script, changes no viewport or emulation, draws no overlay and adds no launch flag.
+- Every frame is acknowledged as soon as it arrives. Headless Chrome sent about 60 frames/s on an animated page in testing (1200 frames in 20 s) and about 100 headed; the recorder keeps at most the configured fps (newest frame wins, the last one is never lost; 200 frames reached the encoder in those 20 s at 10 fps) and hands frames to the encoder through a queue of 16. When the encoder falls behind, the newest frame is dropped and counted. The report gives frames received, acknowledged, sent to the encoder, skipped by the fps cap, dropped and lost.
+- No frames: if not a single frame arrives, the result is "no frames for N s since recording start", never a finished video, however short the recording. After 5 s without a first frame a warning is logged and recording continues. A background tab behaved this way in testing: 0 frames in 8 s, and Chrome reported the tab hidden.
+- Limits: a background tab, a minimized window (about 0.3 frames/s) or a covered window delivers no new frames. A static page sends about one frame and then nothing (a 20 s recording of a still page received 1 frame), which looks the same as a stalled capture, so after the first frame silence is reported (time since the last frame, longest gap), not treated as failure, and the video holds the last frame. A one-off 37 s silence was once seen in testing (cause unknown). The video came out about 0.4 to 0.5 s longer than the recording time in testing (20.5 s for a 20.0 s recording). Recording needs the default WebSocket transport: with `BLADE_TRANSPORT=pipe` it reports that it cannot record (unset it and run `bladebro stop`).
+- These limits are fixed; there is no setting for them.
+
 ## Configuration layers and precedence
 
 Highest layer first. A layer that does not set a value falls through to the next one.
