@@ -29,7 +29,9 @@ pub use config::{
     load_file_config, resolve, resolve_from_env, FileConfig, RecordConfig, RecordOverrides,
 };
 pub use dir::{create_recording_file, prepare_dir};
-pub use encoder::{classify, EncoderError, EncoderReport, ExitInfo, Outcome};
+pub use encoder::{
+    build_args, classify, EncodeSpec, EncoderError, EncoderReport, ExitInfo, Outcome,
+};
 pub use ffmpeg::{
     discover, discover_cached, doctor_check, doctor_line, find_ffmpeg, known_locations,
     parse_encoders, parse_version, probe, Discovery, DoctorLine, EncoderSet, FfmpegVersion, Found,
