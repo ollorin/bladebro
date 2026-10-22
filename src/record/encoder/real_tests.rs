@@ -1,0 +1,156 @@
+//! Real ffmpeg end-to-end per format (05-03): ~3 s of JPEG frames in, then
+//! ffprobe checks codec, dimensions and duration. Skips cleanly (with an
+//! eprintln) when no ffmpeg is found, so CI without one stays green.
+
+use std::path::PathBuf;
+use std::process::Command;
+
+use super::test_util::Scratch;
+use super::{Encoder, EncoderConfig, ResolvedFfmpeg, FINISH_TIMEOUT};
+use crate::record::ffmpeg::{probe, ENV_FFMPEG, PROBE_TIMEOUT};
+use crate::record::values::{Format, FrameSize};
+
+use super::EncodeSpec;
+
+fn exe(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
+}
+
+/// The override when it is a real absolute file, else the local install dir.
+fn real_ffmpeg() -> Option<PathBuf> {
+    if let Some(v) = std::env::var_os(ENV_FFMPEG) {
+        let p = PathBuf::from(v);
+        if p.is_absolute() && p.is_file() {
+            return Some(p);
+        }
+    }
+    let p = crate::platform::home_dir()
+        .join(".local/ffmpeg/bin")
+        .join(exe("ffmpeg"));
+    p.is_file().then_some(p)
+}
+
+async fn run_real(format: Format, codec: &str) {
+    let Some(ff) = real_ffmpeg() else {
+        eprintln!("skip: no real ffmpeg (set {ENV_FFMPEG} or install to ~/.local/ffmpeg/bin)");
+        return;
+    };
+    let info = match probe(&ff, PROBE_TIMEOUT) {
+        Ok(i) => i,
+        Err(e) => panic!("ffmpeg at {} is present but unusable: {e}", ff.display()),
+    };
+    if !info.encoders.has(format.encoder()) {
+        eprintln!("skip: this ffmpeg has no {} encoder", format.encoder());
+        return;
+    }
+    let s = Scratch::new();
+    let jpg = s.0.join("f.jpg");
+    let gen = Command::new(&ff)
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=1001x641:rate=1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "mjpeg",
+            "-pix_fmt",
+            "yuvj420p",
+            "-y",
+        ])
+        .arg(&jpg)
+        .output();
+    if !matches!(&gen, Ok(o) if o.status.success()) {
+        eprintln!("skip: this ffmpeg cannot generate the test frame (no lavfi?)");
+        return;
+    }
+    let bytes = std::fs::read(&jpg).unwrap();
+    assert!(!bytes.is_empty());
+
+    let cfg = EncoderConfig {
+        ffmpeg: ResolvedFfmpeg {
+            path: ff.clone(),
+            version: info.version,
+            encoders: info.encoders,
+        },
+        spec: EncodeSpec {
+            format,
+            fps: 10,
+            size: FrameSize::default(),
+        },
+        queue_len: 64,
+        finish_timeout: FINISH_TIMEOUT,
+    };
+    let out = s.0.join(format!("rec e2e.{}", format.ext()));
+    let enc = Encoder::start(&cfg, &out).unwrap();
+    #[cfg(unix)]
+    let pid = enc.pid().unwrap();
+    for i in 0..=30u64 {
+        assert!(enc.send_frame(bytes.clone(), i * 100), "frame {i} dropped");
+    }
+    let r = enc.finish().await;
+    assert!(r.ok(), "{}", r.verdict());
+    assert_eq!(r.frames_dropped, 0);
+    assert!(
+        (31..=33).contains(&r.frames_written),
+        "{}",
+        r.frames_written
+    );
+    assert!(r.bytes > 0);
+    #[cfg(unix)]
+    assert!(super::test_util::pid_gone(pid));
+
+    let probe_bin = ff.with_file_name(exe("ffprobe"));
+    if !probe_bin.is_file() {
+        eprintln!("skip probe asserts: no ffprobe next to ffmpeg");
+        return;
+    }
+    let o = Command::new(&probe_bin)
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_name,width,height:format=duration",
+            "-of",
+            "json",
+        ])
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let j: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    let st = &j["streams"][0];
+    let dur: f64 = j["format"]["duration"].as_str().unwrap().parse().unwrap();
+    eprintln!(
+        "real {} codec={} {}x{} duration={dur:.3}s bytes={} frames_written={} finalize_ms={}",
+        format.ext(),
+        st["codec_name"],
+        st["width"],
+        st["height"],
+        r.bytes,
+        r.frames_written,
+        r.finalize_ms
+    );
+    assert_eq!(st["codec_name"], codec);
+    assert_eq!(st["width"], 1280);
+    assert_eq!(st["height"], 720);
+    assert!((2.7..=3.3).contains(&dur), "duration {dur}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn real_webm_end_to_end() {
+    run_real(Format::WebM, "vp9").await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn real_mp4_end_to_end() {
+    run_real(Format::Mp4, "h264").await;
+}
