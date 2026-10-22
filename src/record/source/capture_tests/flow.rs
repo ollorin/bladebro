@@ -160,3 +160,81 @@ async fn stripped_frame_reuses_the_cached_ack_id() {
     })
     .await;
 }
+
+/// 06-04 gap 4: frames the bus overwrote were never acked, and Chrome stops
+/// after 2 unacked. A Lagged event must ack (bounded) with the cached id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lagged_bus_still_acks_and_the_wire_stays_allowlisted() {
+    guard(async {
+        struct BlockOnce(std::sync::Once, Arc<std::sync::atomic::AtomicBool>);
+        impl FrameSink for BlockOnce {
+            fn send_frame(&self, _: Vec<u8>, _: u64) -> bool {
+                // Stall the recorder's loop (not the CDP reader) once, until
+                // released, so the bus (16384) overflows behind it.
+                self.0.call_once(|| {
+                    let until = std::time::Instant::now() + Duration::from_secs(15);
+                    while !self.1.load(Ordering::SeqCst) && std::time::Instant::now() < until {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                });
+                true
+            }
+        }
+        let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let fake = fake_with(FakeOpts {
+            frames: 1,
+            screencast_session: 7,
+            ..Default::default()
+        })
+        .await;
+        let src = start(
+            &fake,
+            15,
+            Arc::new(BlockOnce(std::sync::Once::new(), release.clone())),
+        )
+        .await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut probe = crate::cdp::CdpSession::root(src.client_for_test()).subscribe();
+        for i in 0..19_000 {
+            fake.push_raw(frame_event("!!!", 7, 1.7e9 + 1.0 + i as f64 * 0.001));
+        }
+        // A second, prompt subscriber counts what the reader has put on the
+        // bus; release the stalled loop once that is past the capacity.
+        let mut seen = 0u32;
+        let _ = tokio::time::timeout(Duration::from_secs(12), async {
+            while seen < 18_000 {
+                if probe.recv().await.is_ok() {
+                    seen += 1;
+                }
+            }
+        })
+        .await;
+        release.store(true, Ordering::SeqCst);
+        let t0 = std::time::Instant::now();
+        loop {
+            let s = src.stats();
+            if s.lag_acks > 0 && fake.ack_ids().len() as u64 == s.acks_sent + s.lag_acks {
+                break;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(14), "{s:?}");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let rep = src.stop().await;
+        let s = &rep.stats;
+        assert!(s.lost > 0, "the bus really lagged: {s:?}");
+        assert!(s.lag_acks >= 2 && s.lag_acks <= 2 * s.lost);
+        // Seen frames keep the strict identity; lag acks are separate.
+        assert_eq!(s.frames_received, s.acks_sent);
+        let acks = fake.ack_ids();
+        assert_eq!(acks.len() as u64, s.acks_sent + s.lag_acks);
+        assert!(acks.iter().all(|&a| a == 7), "cached id used");
+        let allowed = [
+            "Page.enable",
+            "Page.startScreencast",
+            "Page.screencastFrameAck",
+            "Page.stopScreencast",
+        ];
+        assert!(fake.methods().iter().all(|m| allowed.contains(&m.as_str())));
+    })
+    .await;
+}

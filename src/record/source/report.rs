@@ -14,6 +14,8 @@ pub struct SourceStats {
     pub queue_dropped: u64,
     pub capped: u64,
     pub lost: u64,
+    /// Extra acks sent for frames lost to a Lagged bus (not in `acks_sent`).
+    pub lag_acks: u64,
     pub bad_frames: u64,
     pub ts_fallback: u64,
     /// ms since start.

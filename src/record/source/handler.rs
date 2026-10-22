@@ -26,7 +26,13 @@ pub(super) struct Step {
     pub forward: Option<Held>,
     /// The bus is closed: end the loop.
     pub end: bool,
+    /// `(session id, count)`: acks owed for frames the bus overwrote (Lagged).
+    pub lag_acks: Option<(i64, u32)>,
 }
+
+/// Chrome keeps at most 2 screencast frames in flight, so 2 acks per Lagged
+/// event are enough to unstick it.
+pub(super) const MAX_LAG_ACKS: u32 = 2;
 
 pub(super) type SharedStats = Arc<Mutex<SourceStats>>;
 pub(super) type SharedLive = Arc<Mutex<Liveness>>;
@@ -56,9 +62,26 @@ impl Handler {
         let ev = match r {
             Ok(ev) => ev,
             Err(RecvError::Lagged(n)) => {
-                // Counted, not hidden: these frames were never acked either.
-                lock(&self.stats).lost += n;
-                return Step::default();
+                // Counted, not hidden. Their own ack ids are gone, but Chrome
+                // stops sending after 2 unacked frames, so unacked lost frames
+                // would stall the screencast for good. The session id is
+                // stable: ack with the cached one, at most MAX_LAG_ACKS per
+                // event (only frames still in flight can be outstanding).
+                // These are counted in `lag_acks`, NOT `acks_sent`, so
+                // `frames_received == acks_sent` still holds for seen frames.
+                let mut st = lock(&self.stats);
+                st.lost += n;
+                let k = u32::try_from(n).unwrap_or(u32::MAX).min(MAX_LAG_ACKS);
+                return match self.last_ack_id {
+                    Some(id) if k > 0 => {
+                        st.lag_acks += u64::from(k);
+                        Step {
+                            lag_acks: Some((id, k)),
+                            ..Step::default()
+                        }
+                    }
+                    _ => Step::default(),
+                };
             }
             Err(RecvError::Closed) => {
                 return Step {
@@ -136,6 +159,7 @@ impl Handler {
             ack,
             forward,
             end: false,
+            lag_acks: None,
         }
     }
 
@@ -219,11 +243,29 @@ mod tests {
     #[test]
     fn lagged_adds_to_lost_without_ack_or_forward() {
         let (mut h, s) = handler(10);
+        // No session id known yet: nothing to ack with.
         let step = h.on_recv(Err(RecvError::Lagged(7)), 0);
         assert!(step.ack.is_none() && step.forward.is_none() && !step.end);
+        assert!(step.lag_acks.is_none());
         assert_eq!(lock(&s).lost, 7);
         h.on_recv(Err(RecvError::Lagged(3)), 1);
         assert_eq!(lock(&s).lost, 10);
+        assert_eq!(lock(&s).lag_acks, 0);
+    }
+
+    #[test]
+    fn lagged_acks_with_the_cached_id_bounded() {
+        let (mut h, s) = handler(10);
+        h.on_recv(frame(Some(9), 1.0), 0);
+        let step = h.on_recv(Err(RecvError::Lagged(500)), 1);
+        assert_eq!(step.lag_acks, Some((9, 2)));
+        assert!(step.ack.is_none() && step.forward.is_none());
+        let step = h.on_recv(Err(RecvError::Lagged(1)), 2);
+        assert_eq!(step.lag_acks, Some((9, 1)));
+        let st = lock(&s);
+        assert_eq!((st.lost, st.lag_acks), (501, 3));
+        // The seen-frame identity is untouched by lag acks.
+        assert_eq!(st.frames_received, st.acks_sent);
     }
 
     #[test]

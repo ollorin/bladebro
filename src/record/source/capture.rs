@@ -368,6 +368,11 @@ impl Loop {
                     if let Some(id) = step.ack {
                         self.spawn_ack(&mut acks, id);
                     }
+                    if let Some((id, k)) = step.lag_acks {
+                        for _ in 0..k {
+                            self.spawn_ack(&mut acks, id);
+                        }
+                    }
                     if let Some(h) = step.forward {
                         self.handler.forward(h, self.sink.as_ref());
                     }
