@@ -124,7 +124,8 @@ Plans:
 Plans:
 - [x] 05-01: `src/record/encoder.rs` + `encoder/{report,args,pace}.rs`: verdict strings + classify, argv builder (WebM VP9 / MP4 libx264, even-dim scale, safe output path), timestamp pacing (duplicate-on-write, D5-1) + tests
 - [x] 05-02: `encoder/{resolve,process}.rs`: async-safe ffmpeg resolve, spawn, stdin writer task with progressive hold, stderr tail, bounded finish, kill fallback, Windows no-console flag + unix lifecycle tests
-- [ ] 05-03: fake-encoder lifecycle matrix (unix run; Windows written, not executed), real ffmpeg end-to-end per format, encoding note in docs
+- [x] 05-03: fake-encoder lifecycle matrix (unix run; Windows written, not executed), real ffmpeg end-to-end per format, encoding note in docs
+- SC4 status: Windows fake-encoder tests written (`src/record/encoder/windows_tests.rs`, cfg(windows)), not compiled or executed (macOS only, no CI run).
 
 ### Phase 6: Frame Source
 **Goal**: Screencast frames flow from a real page into the encoder without ever stalling the CDP reader or changing what the page can see, and a blank capture is reported rather than passed off as success
@@ -248,7 +249,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 3. Recording Config and Safe Output Paths | 3/3 (+03-04 gap closure) | Complete (macOS only; CI not run) | 2026-10-21 |
 | 4. ffmpeg Discovery and Doctor | 2/2 | Complete (macOS only; CI not run; 442 tests) | 2026-10-21 |
 | 4.1 Launch Mode and Layered Config (INSERTED) | 6/6 | Complete (macOS only; CI not run) | - |
-| 5. Encoder Process Manager | 0/3 | Not started | - |
+| 5. Encoder Process Manager | 3/3 | 3/3 plans executed; SC4 (windows-latest CI) pending: written, not executed (macOS only) | - |
 | 6. Frame Source | 0/3 | Not started | - |
 | 7. RecordHub and state Ops | 0/3 | Not started | - |
 | 8. Tab Following | 0/2 | Not started | - |
