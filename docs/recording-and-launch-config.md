@@ -63,9 +63,9 @@ Where files go:
 - ffmpeg is run directly with an argument list (no shell); JPEG frames go to its stdin, its stdout is discarded and the last 4 KiB of its error output is kept for the result.
 - WebM uses VP9 (`libvpx-vp9`, realtime, crf 40); MP4 uses H.264 (`libx264`, veryfast, crf 28, faststart). Output is always the configured size (default 1280x720), letterboxed, with even dimensions.
 - Timing: frames are written at a constant rate equal to the configured fps; a frame is repeated for as long as it stayed on screen (from the capture timestamps), and the last frame is held until the stop, so video length matches the recording time.
-- Stop: bladebro closes ffmpeg's input and waits up to 10 s. Success is reported only when ffmpeg exits 0 and the file is non-empty. If ffmpeg does not finish in time it is killed, the result says "unfinalized", and the partial file is kept.
+- Stop: bladebro closes ffmpeg's input and waits for it to finish: normally well under 10 s, at most about 18 s in the worst case (10 s drain, 2 s minimum wait for ffmpeg, 5 s to reap after a kill, 1 s for its error output). Success is reported only when ffmpeg exits 0, the file is non-empty and every accepted frame was written. If ffmpeg does not finish in time it is killed, the result says "unfinalized", and the partial file is kept. If frames were still unwritten at the 10 s deadline, the result says "truncated" with the number of frames not written.
 - Errors name the cause and the fix: ffmpeg missing, `BLADE_FFMPEG` unusable, encoder missing for the format (switch with `BLADE_RECORD_FORMAT`), or the ffmpeg exit code with its last error lines. Browsing continues either way.
-- Requires ffmpeg 4.3 or newer (`bladebro doctor` shows the version and encoders). These limits are fixed; there is no setting for them.
+- Requires ffmpeg 4.3 or newer (`bladebro doctor` shows the version and encoders); this is not checked in code, so an older ffmpeg fails when encoding starts and the result carries its exit error. These limits are fixed; there is no setting for them.
 
 ## Configuration layers and precedence
 

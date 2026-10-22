@@ -241,12 +241,24 @@ impl Encoder {
 
         let _ = shared.end_at.set(std::time::Instant::now());
         drop(tx);
+        let mut writer_aborted = false;
         if timeout_at(deadline, &mut writer).await.is_err() {
-            // Aborting drops ChildStdin, so EOF is delivered even when
-            // ffmpeg stopped reading and the writer was stuck in a write.
+            // Aborting drops ChildStdin. On unix that delivers EOF even when
+            // the writer was stuck in a write; on Windows a blocked write may
+            // keep the pipe open, and the kill fallback below bounds finish.
+            writer_aborted = true;
             writer.abort();
             let _ = (&mut writer).await;
         }
+        // Honesty: an abort discards the channel backlog and the rest of the
+        // held frame's repeats; ffmpeg still sees a clean EOF and exits 0.
+        let frames_unwritten = if writer_aborted {
+            queued
+                .load(Ordering::Relaxed)
+                .saturating_sub(shared.frames_done.load(Ordering::Relaxed))
+        } else {
+            0
+        };
 
         // Floor: a slow writer must not leave ffmpeg no time for its trailer.
         let wait_deadline = deadline.max(Instant::now() + CHILD_WAIT_FLOOR);
@@ -284,6 +296,7 @@ impl Encoder {
             shared.write_error.get().map(String::as_str),
             bytes,
             waited_ms,
+            frames_unwritten,
         );
         EncoderReport {
             outcome,
@@ -292,6 +305,7 @@ impl Encoder {
             frames_queued: queued.load(Ordering::Relaxed),
             frames_dropped: dropped.load(Ordering::Relaxed),
             frames_written,
+            frames_unwritten,
             gaps_clamped: shared.gaps_clamped.load(Ordering::Relaxed),
             pid,
             finalize_ms: elapsed_ms(started),

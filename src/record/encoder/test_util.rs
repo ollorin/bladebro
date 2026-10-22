@@ -107,6 +107,22 @@ pub fn start_retry(
     last
 }
 
+/// Bounded poll until `path` exists. Fake scripts can take seconds to start
+/// under load (fresh-script exec latency), so tests wait for a sign of life
+/// instead of assuming a fixed delay.
+#[cfg(unix)]
+pub async fn wait_for_file(path: &Path) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while !path.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{} never appeared",
+            path.display()
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 /// True when `pid` no longer exists. A zombie still answers `kill(pid, 0)`,
 /// so ESRCH proves the child was reaped.
 #[cfg(unix)]

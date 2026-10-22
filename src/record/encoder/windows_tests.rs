@@ -10,11 +10,12 @@
 //! hang via a child exe (`timeout.exe`, `ping.exe`), and killing cmd.exe would
 //! orphan that child and leak a process.
 //!
-//! Remaining uncertainty (05-RESEARCH.md): Rust (>= 1.77.2) refuses
-//! batch-file arguments it cannot escape safely, so the vf argument's
-//! `(ow-iw)/2` may make spawn fail on Windows. If so, CI shows it as a Spawn
-//! error and the fix is a non-batch fake (e.g. a compiled test helper), not a
-//! weaker assertion.
+//! Remaining uncertainty (uncertain, not run): Rust (>= 1.77.2) escapes
+//! batch-file arguments and errors only on ones it cannot represent (NUL,
+//! newlines), so the vf argument `(ow-iw)/2` is probably quoted, not refused;
+//! this has never been compiled or executed. If CI shows a Spawn error, the
+//! fix is a non-batch fake (e.g. a compiled test helper), not a weaker
+//! assertion.
 
 use std::time::Duration;
 
@@ -89,7 +90,9 @@ async fn w3_exit_zero_with_empty_output() {
 async fn w4_missing_binary_is_a_spawn_error() {
     let s = Scratch::new();
     let out = s.0.join("rec.webm");
-    let script = s.0.join("no-such-ffmpeg.cmd");
+    // Not a batch path: Rust does not check that a .cmd/.bat exists (cmd.exe
+    // runs it and fails later), while CreateProcessW rejects a missing .exe.
+    let script = s.0.join("no-such-ffmpeg.exe");
     let e = Encoder::start(&cfg(&script), &out).err().unwrap();
     assert!(matches!(e, EncoderError::Spawn { .. }), "{e}");
 }

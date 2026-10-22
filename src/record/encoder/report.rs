@@ -105,10 +105,23 @@ pub enum ExitInfo {
 pub enum Outcome {
     Finalized,
     NoFrames,
-    ExitFailed { status: String },
-    StoppedReading { error: String },
+    ExitFailed {
+        status: String,
+    },
+    StoppedReading {
+        error: String,
+    },
     EmptyOutput,
-    Unfinalized { waited_ms: u64, reaped: bool },
+    Unfinalized {
+        waited_ms: u64,
+        reaped: bool,
+    },
+    /// ffmpeg exited 0, but the writer was aborted at the stop deadline with
+    /// `unwritten` accepted frames never written: the video is shorter than
+    /// the capture.
+    Truncated {
+        unwritten: u64,
+    },
 }
 
 /// Everything known about a finished encode.
@@ -120,6 +133,9 @@ pub struct EncoderReport {
     pub frames_queued: u64,
     pub frames_dropped: u64,
     pub frames_written: u64,
+    /// Accepted frames never written because the writer was aborted at the
+    /// stop deadline (not part of `frames_dropped`, which is queue-full drops).
+    pub frames_unwritten: u64,
     pub gaps_clamped: u64,
     pub pid: Option<u32>,
     pub finalize_ms: u64,
@@ -145,8 +161,22 @@ impl EncoderReport {
             Outcome::NoFrames => format!(
                 "recording failed: no frames reached the encoder, so there is no video; {path} left in place"
             ),
-            Outcome::ExitFailed { status } => format!(
-                "recording failed: ffmpeg exited with {status} after {written} frames; {path} is not a valid recording. ffmpeg said: {tail}"
+            Outcome::ExitFailed { status } => {
+                // A plain exit code is a definite failure; a signal exit (and
+                // ffmpeg's 255 for SIGINT) may still leave a playable file,
+                // which we cannot prove either way.
+                let validity = if status.starts_with("exit code") && status != "exit code 255" {
+                    "not a valid recording"
+                } else {
+                    "may be incomplete and was not verified"
+                };
+                format!(
+                "recording failed: ffmpeg exited with {status} after {written} frames; {path} is {validity}. ffmpeg said: {tail}"
+                )
+            }
+            Outcome::Truncated { unwritten } => format!(
+                "recording truncated: the stop deadline passed while frames were still being written, so {unwritten} queued frames were not written (video is shorter than the capture); {path} ({} bytes) kept, finalized by ffmpeg but incomplete",
+                self.bytes
             ),
             Outcome::StoppedReading { error } => format!(
                 "recording failed: ffmpeg stopped reading frames early ({error}) after {written} frames; {path} may be incomplete. ffmpeg said: {tail}"
@@ -180,6 +210,7 @@ pub fn classify(
     write_error: Option<&str>,
     bytes: Option<u64>,
     waited_ms: u64,
+    unwritten: u64,
 ) -> Outcome {
     if let ExitInfo::Killed { reaped } = exit {
         return Outcome::Unfinalized {
@@ -207,6 +238,7 @@ pub fn classify(
     }
     match bytes {
         None | Some(0) => Outcome::EmptyOutput,
+        Some(_) if unwritten > 0 => Outcome::Truncated { unwritten },
         Some(_) => Outcome::Finalized,
     }
 }
@@ -244,6 +276,7 @@ mod tests {
             frames_queued: 50,
             frames_dropped: 3,
             frames_written: 47,
+            frames_unwritten: 0,
             gaps_clamped: 0,
             pid: Some(4242),
             finalize_ms: 10,
@@ -345,12 +378,28 @@ mod tests {
                 waited_ms: 10_000,
                 reaped: true,
             },
+            Outcome::Truncated { unwritten: 9 },
         ];
         for o in failures {
             let r = report(o, "boom");
             let v = r.verdict();
             assert!(!v.starts_with("recording finalized"), "{v}");
             assert!(!r.ok(), "{v}");
+        }
+        let v = report(Outcome::Truncated { unwritten: 9 }, "").verdict();
+        assert!(
+            v.starts_with("recording truncated") && v.contains("9 queued frames were not written"),
+            "{v}"
+        );
+        // Exit 1 is definitely bad; a signal or 255 (SIGINT) is unverified.
+        let bad = |st: &str| report(Outcome::ExitFailed { status: st.into() }, "").verdict();
+        assert!(bad("exit code 1").contains("not a valid recording"));
+        for st in ["exit code 255", "signal: 2 (SIGINT)"] {
+            let v = bad(st);
+            assert!(
+                !v.contains("not a valid recording") && v.contains("may be incomplete"),
+                "{v}"
+            );
         }
         let r = report(Outcome::Finalized, "");
         let v = r.verdict();
@@ -435,6 +484,7 @@ mod tests {
         };
         let bp = Some("Broken pipe");
         type Row<'a> = (ExitInfo, u64, Option<&'a str>, Option<u64>, Outcome);
+        let tr = |n| Outcome::Truncated { unwritten: n };
         let rows: Vec<Row> = vec![
             (Killed { reaped: true }, 10, None, Some(5), un(true)),
             (Killed { reaped: false }, 0, None, None, un(false)),
@@ -464,10 +514,22 @@ mod tests {
         ];
         for (exit, w, we, b, want) in rows {
             assert_eq!(
-                classify(&exit, w, we, b, 7),
+                classify(&exit, w, we, b, 7, 0),
                 want,
                 "{exit:?} {w} {we:?} {b:?}"
             );
+        }
+        // Writer aborted at the stop deadline (unwritten frames): never plain
+        // success, but real failures keep their own, more specific outcome.
+        let rows: Vec<Row> = vec![
+            (Code(0), 5, None, Some(9), tr(4)),
+            (Code(0), 5, None, Some(0), Outcome::EmptyOutput),
+            (Code(1), 5, None, Some(9), ff("exit code 1")),
+            (Code(0), 5, bp, Some(9), sr()),
+            (Killed { reaped: true }, 5, None, Some(9), un(true)),
+        ];
+        for (exit, w, we, b, want) in rows {
+            assert_eq!(classify(&exit, w, we, b, 7, 4), want, "{exit:?} {w} {we:?}");
         }
     }
 }

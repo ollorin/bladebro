@@ -32,6 +32,9 @@ pub(super) struct Frame {
 pub(super) struct Shared {
     pub frames_written: AtomicU64,
     pub gaps_clamped: AtomicU64,
+    /// Source frames whose every repeat was written. `queued - frames_done`
+    /// is what an aborted writer never delivered.
+    pub frames_done: AtomicU64,
     pub write_error: OnceLock<String>,
     /// When `finish` was called; the pending frame is held until then.
     pub end_at: OnceLock<Instant>,
@@ -79,6 +82,7 @@ pub(super) async fn run(
                         if write_n(&mut stdin, &prev.jpeg, n, &shared).await.is_err() {
                             return;
                         }
+                        shared.frames_done.fetch_add(1, Ordering::Relaxed);
                     }
                 }
                 None => break,
@@ -107,6 +111,7 @@ pub(super) async fn run(
         if write_n(&mut stdin, &p.jpeg, n, &shared).await.is_err() {
             return;
         }
+        shared.frames_done.fetch_add(1, Ordering::Relaxed);
     }
     if let Err(e) = stdin.flush().await {
         let _ = shared.write_error.set(e.to_string());
