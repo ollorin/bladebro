@@ -42,4 +42,5 @@ pub use ffmpeg::{
 };
 pub use layered::{resolve_layered, ProjectRecord};
 pub use names::{file_name, sanitize_stem};
+pub use source::{SourceError, SourceReport, SourceStats};
 pub use values::{Format, FrameSize};

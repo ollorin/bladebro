@@ -23,3 +23,11 @@
 mod fake_cdp;
 #[cfg(test)]
 mod hook_tests;
+
+mod frame;
+mod gate;
+mod report;
+
+pub use frame::{decode_jpeg, parse_frame, parse_frame_owned, ts_ms_from_metadata, FrameEvent};
+pub use gate::{FpsGate, GateStep};
+pub use report::{SourceError, SourceOutcome, SourceReport, SourceStats};
