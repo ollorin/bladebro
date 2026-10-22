@@ -256,9 +256,16 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
             if tabs.is_empty() {
                 return Ok("(no tabs)".into());
             }
+            let own = crate::record::hub::own_target(cdp).await;
             let mut out = String::new();
             for tab in &tabs {
-                let marker = if tab.attached { "*" } else { " " };
+                let marker =
+                    if crate::record::hub::is_current(tab.attached, &tab.target_id, own.as_deref())
+                    {
+                        "*"
+                    } else {
+                        " "
+                    };
                 out.push_str(&format!(
                     "{} {}  {}\n",
                     marker,

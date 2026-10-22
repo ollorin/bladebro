@@ -111,7 +111,7 @@ recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, dura
 | bytes | file size |
 | duration | frames written / fps (not re-measured from the file) |
 | frames | frames written to the video |
-| captured | frames received from the browser; shown only when different from `frames` |
+| captured | frames passed to the encoder after the fps cap (Chrome may send many more); shown only when different from `frames`. It can exceed `frames`, because a frame on screen for less than one 1/fps slot gets no video slot, and it can be lower, because a held frame is repeated to fill its time |
 | dropped | frames dropped by the encoder queue plus frames lost on the CDP connection |
 | segments | `[<offset> s tab <id>]`; one segment, because the video stays on the tab that was active at `record-start` |
 | notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); a tab note when the agent moved to another tab |

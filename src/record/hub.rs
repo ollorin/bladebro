@@ -73,6 +73,24 @@ pub async fn finish_best_effort() {
     }
 }
 
+/// `state tabs` hook, part 1: while a recording is active the recorder's own
+/// CDP connection makes its tab report `attached`, so the agent's tab is read
+/// from its own session instead. None (and no CDP call) when nothing records.
+pub async fn own_target(cdp: &crate::cdp::CdpSession) -> Option<String> {
+    let m = HUB.get()?;
+    if !m.lock().await.is_active() {
+        return None;
+    }
+    let info = cdp.send("Target.getTargetInfo", None).await.ok()?;
+    info["targetInfo"]["targetId"].as_str().map(String::from)
+}
+
+/// `state tabs` hook, part 2: is this tab the agent's current one? Without a
+/// recording (`own` None) this is exactly Chrome's `attached` flag.
+pub fn is_current(attached: bool, target_id: &str, own: Option<&str>) -> bool {
+    own.map_or(attached, |o| o == target_id)
+}
+
 #[cfg(test)]
 pub(crate) fn initialized() -> bool {
     HUB.get().is_some()
@@ -204,5 +222,30 @@ mod tests {
             record_op(&json!({ "op": "record-stop" })),
             Some(RecordOp::Stop)
         );
+    }
+}
+
+#[cfg(test)]
+mod tabs_marker_tests {
+    use super::is_current;
+
+    #[test]
+    fn off_mode_follows_attached() {
+        assert!(is_current(true, "A", None));
+        assert!(!is_current(false, "A", None));
+    }
+
+    #[test]
+    fn recorded_tab_is_not_current_when_agent_is_elsewhere() {
+        // Recording on A (attached by the recorder), agent on B (attached).
+        let own = Some("B");
+        assert!(!is_current(true, "A", own));
+        assert!(is_current(true, "B", own));
+        assert!(!is_current(false, "C", own));
+    }
+
+    #[test]
+    fn agent_on_recorded_tab_marks_it() {
+        assert!(is_current(true, "A", Some("A")));
     }
 }
