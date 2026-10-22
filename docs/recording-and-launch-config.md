@@ -60,7 +60,7 @@ Where files go:
 
 ### Recording time
 
-The video clock starts at the first frame, not at the `record-start` call, and ends when the stop request reaches the capture loop. Video duration is frames divided by fps. `record-stop` then takes about 0.5 s (a fixed 500 ms stop grace) before it returns, so the wall-clock time from the `record-start` call to the `record-stop` return is about 0.55 s longer than the video duration. A late first frame (for example a hidden tab that starts painting later) makes the video shorter by that delay.
+The video clock starts at the first frame, not at the `record-start` call, and ends when the stop request reaches the capture loop. Video duration is frames divided by fps. `record-stop` then takes about 0.5 s (a fixed 500 ms stop grace) before it returns, so the wall-clock time from the `record-start` call to the `record-stop` return is about 0.55 s longer than the video duration. A late first frame (for example a hidden tab that starts painting later) makes the video shorter by that delay. Segment offsets are accurate to about one tab-list check (about 0.25 s).
 
 ### How recording is encoded
 
@@ -83,7 +83,7 @@ The video clock starts at the first frame, not at the `record-start` call, and e
 
 Two ops on the existing `state` tool (there is no sixth tool):
 
-- `record-start` with `name` (required): starts a video of the tab that is active at that moment. The file is `<sanitized name>-<UTC>-<id>.<ext>` in the recordings dir.
+- `record-start` with `name` (required): starts a video of the tab the agent is on; the video follows the agent's tab (see [Tab following](#tab-following)). The file is `<sanitized name>-<UTC>-<id>.<ext>` in the recordings dir.
 - `record-stop`: finalizes the file and reports it.
 
 ```json
@@ -113,8 +113,8 @@ recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, dura
 | frames | frames written to the video |
 | captured | frames passed to the encoder after the fps cap (Chrome may send many more); shown only when different from `frames`. It can exceed `frames`, because a frame on screen for less than one 1/fps slot gets no video slot, and it can be lower, because a held frame is repeated to fill its time |
 | dropped | frames dropped by the encoder queue plus frames lost on the CDP connection |
-| segments | `[<offset> s tab <id>]`; one segment, because the video stays on the tab that was active at `record-start` |
-| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); a tab note when the agent moved to another tab |
+| segments | one entry per tab the video shows, `[<offset> s tab <id>]`; the offset is the time of that tab's first frame on the video clock (first frame of the video = 0.0), and the id is the full target id that `state tabs` prints. A tab with no frames is labelled `<id> (no frames)` |
+| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced (see [Tab following](#tab-following)) |
 
 The stop is `ok` only when capture and encoder both finished cleanly. Otherwise it is an error (MCP `isError`, CLI exit 1; in `batch`/`run` an error step stops the batch) whose text starts with `recording not clean:` and still carries the path and numbers.
 
@@ -132,7 +132,27 @@ Refusals (nothing is recorded, an error is returned):
 | real-browser lane | `recording is not available in the real-browser lane ...` |
 | ffmpeg missing or unusable | the ffmpeg error (see [How recording is encoded](#how-recording-is-encoded)) |
 
-The video shows the tab that was active at `record-start`. Switching tabs does not move it; a note at stop says so.
+### Tab following
+
+One recording is one file and one ffmpeg process for the whole session; the video follows the tab the agent is on and each tab it shows is a segment in the stop result. Real results (headless Chrome, local fixtures; ids shortened):
+
+```
+recording saved: /abs/path/f-20261022T140820Z-527648.webm (bytes 30013, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab F249..., 3.9 s tab 746A..., 6.2 s tab F249...], captured 63)
+recording saved: /abs/path/c-20261022T141401Z-e248c8.webm (bytes 27994, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab B59C..., 3.3 s tab 3AA1..., 5.3 s tab B59C...], captured 59). Note: tab 3AA1... gone at 5.3 s; following tab B59C...
+```
+
+How it works:
+
+- The recorder reads Chrome's tab list over HTTP (`/json` on the debugging port) every 200 ms. It sends no CDP command for this and nothing is visible to the page. The agent is on the first page of that list (Chrome orders it most recently activated first; Chrome did not report an `attached` flag, so that flag is not used). A switch is made when the same tab is first on two samples about 50 ms apart.
+- `switch-tab` to an open tab is followed within about 0.25 s (allow up to about 0.7 s on a busy machine or when the agent goes back and forth right away): the recorder connects to the new tab first, then releases the old one. `open-tab` is followed after the new tab has stayed in front for 1.5 s (about 1.7 s in total), so the segment offset is that much later than the call; this delay is what keeps a popup that is put back behind its opener from becoming a segment.
+- Popups: a click that opens a tab keeps the opener as the agent's page (the opener is re-activated after the click), so such a popup is not in the video until the agent runs `switch-tab` to it; `window.open` called through `eval` was not tested. A popup that opens as its own window with window features (`window.open(url, '', 'width=500,height=400')`) stays first in Chrome's list even after the click, so it is followed as soon as it has been in front for 1.5 s and the video should go back to the opener at the agent's next input action (click, type, press), which brings the opener forward again (read from the code, not measured live). A popup that was already first when `record-start` ran is ignored until the front tab changes once.
+- Several switches inside one check are not all recorded: only the last tab is followed and the tabs in between get no segment. A switch made less than one check before `record-stop` is caught up at the stop, so the last tab is in the video.
+- The recorder opens its own connection for every tab it records, with the same four methods as above.
+- Tabs of a different size are letterboxed into the configured size (the file keeps one width and height; tested with 1280x720 and 500x400 frames into one WebM and one MP4).
+- Closing the recorded tab, or a tab replaced by a new target id, continues on the agent's next tab with the note `tab <A> gone at <T> s; following tab <B>` and the result stays "recording saved". Cross-site navigation of the recorded tab kept the same tab id and frames in testing (127.0.0.1 to localhost).
+- Not clean (`recording not clean: ...`, the file is kept): no tab left (`no tab left at <T> s`), the browser stopped answering the tab list three times in a row (`browser connection lost at <T> s`), or a tab that could not be recorded (`tab <B> not recorded from <T> s: ...`). Never `recording saved` when the agent's tab went unrecorded.
+- A segment with no frames for at least 5 s is not clean (`tab <B>: no frames for N s (hidden or background tab)`); a shorter one is shown as `<B> (no frames)` and stays clean. A video with no frame at all keeps the "no frames" failure.
+- Only one recording runs at a time; a second `record-start` is refused while the first is following.
 
 The environment is read by the long-lived process. A daemon or MCP server started without `BLADE_RECORD` keeps answering "recording is off" until `bladebro stop` (or an MCP restart). The project file `.bladebro.json` is found from that process's working directory.
 
