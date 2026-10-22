@@ -58,6 +58,10 @@ Where files go:
 - Unix: a new or empty dir is set to `0700`; files are `0600`. A non-empty dir that is group- or other-accessible is refused (run `chmod 700` on it, or use a dedicated dir). A symlinked dir and a dir owned by another user are refused.
 - Windows: files inherit the directory's permissions. The default under your profile is private to your account; keep `BLADE_RECORD` inside your profile. bladebro sets no Windows ACLs.
 
+### Recording time
+
+The video clock starts at the first frame, not at the `record-start` call, and ends when the stop request reaches the capture loop. Video duration is frames divided by fps. `record-stop` then takes about 0.5 s (a fixed 500 ms stop grace) before it returns, so the wall-clock time from the `record-start` call to the `record-stop` return is about 0.55 s longer than the video duration. A late first frame (for example a hidden tab that starts painting later) makes the video shorter by that delay.
+
 ### How recording is encoded
 
 - ffmpeg is run directly with an argument list (no shell); JPEG frames go to its stdin, its stdout is discarded and the last 4 KiB of its error output is kept for the result.
@@ -132,7 +136,7 @@ The video shows the tab that was active at `record-start`. Switching tabs does n
 
 The environment is read by the long-lived process. A daemon or MCP server started without `BLADE_RECORD` keeps answering "recording is off" until `bladebro stop` (or an MCP restart). The project file `.bladebro.json` is found from that process's working directory.
 
-Browser shutdown (idle timeout, MCP exit, daemon exit) finalizes an active recording on a best-effort basis; the next record op returns that report prefixed `previous recording ended with the browser: `. A daemon relaunch after a crash does not: the next `record-stop` reports the lost connection. A killed process (SIGKILL) can leave an unfinalized file.
+Browser shutdown finalizes an active recording on a best-effort basis when it comes from MCP shutdown (stdin EOF, signal, idle) or the daemon's normal exit; the next record op returns that report prefixed `previous recording ended with the browser: `. Not covered yet (owned by Phase 9): daemon idle-timeout shutdown, the daemon drift relaunch and Closed-relaunch paths, and a daemon relaunch after a crash. On those the hub may still look active, and the next `record-stop` reports a lost connection. A killed process (SIGKILL) can leave an unfinalized file.
 
 ### Example: Claude Code (.mcp.json)
 
