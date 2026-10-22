@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4.1: Headless/Headed Launch Switch and Layered Config (INSERTED)** - `BLADE_HEADLESS`, project/user config layers, honest stealth flag, mode shown in doctor, and the options reference page with a drift test
 - [~] **Phase 5: Encoder Process Manager** (3/3 plans executed, verified on macOS; SC4 windows-latest CI pending) - Spawn, feed, finalize and honestly report an ffmpeg encoder on all three OSes
 - [x] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
-- [ ] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
+- [x] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
 - [ ] **Phase 9: Finalization on Every Exit Path** - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
@@ -252,7 +252,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 4.1 Launch Mode and Layered Config (INSERTED) | 6/6 | Complete (macOS only; CI not run) | - |
 | 5. Encoder Process Manager | 3/3 | 3/3 plans executed; SC4 (windows-latest CI) pending: written, not executed (macOS only) | - |
 | 6. Frame Source | 3/3 | Complete on macOS (headless; Linux/Windows not executed; diff_oracle not run) | 2026-10-22 |
-| 7. RecordHub and state Ops | 0/3 | Not started | - |
+| 7. RecordHub and state Ops | 3/3 | Complete (macOS headless; opus verified, +07-04 gap fix) | 2026-10-22 |
 | 8. Tab Following | 0/2 | Not started | - |
 | 9. Finalization on Every Exit Path | 0/3 | Not started | - |
 | 10. Evidence Extras | 0/2 | Not started | - |
