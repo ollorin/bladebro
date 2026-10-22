@@ -1,54 +1,141 @@
 ---
 phase: 05-encoder-process-manager
-verified: 2026-10-22T08:16:11Z
+verified: 2026-10-22T08:39:54Z
 verifier: opus-adversarial
-status: gaps_found
-score: 3/5 must-haves verified (SC1, SC2, SC3 verified on macOS; SC4 written-not-executed; derived truth T5 failed)
+status: passed
+score: 5/6 truths verified on executed evidence (SC1, SC2, SC3, T5, T6); SC4 (Windows) written, not executed, pending a windows-latest CI run
 re_verification:
   previous_status: gaps_found
-  previous_score: 3/4 (sonnet first pass)
-  gaps_closed: []
+  previous_score: 3/5
+  gaps_closed:
+    - "T5: a writer abort at the stop deadline is now reported as Outcome::Truncated with frames_unwritten (real ffmpeg repro: Truncated, not Finalized)"
+    - "T6: matrix test j (and the 5 s-timeout fakes) no longer flake under load: 57/57 loaded runs green"
+    - "w4 now uses a missing .exe (CreateProcessW rejects it), fixing the predicted Windows failure by reasoning"
   gaps_remaining:
-    - "SC4 / LIFE-05 Windows CI run"
+    - "SC4 / LIFE-05: windows_tests.rs never compiled or run; pending a windows-latest CI run (needs a push, owner decision)"
   regressions: []
-gaps:
-  - truth: "SC4 / LIFE-05: on Windows the stdin-EOF finalize path works with no console window, verified by a fake-encoder lifecycle test running in the windows-latest CI job"
-    status: failed
-    failure_type: missing_test
-    reason: "src/record/encoder/windows_tests.rs is cfg(windows): never compiled or run (macOS only, nothing pushed). SC4 stays 'written, not executed'. By reasoning, w4 will probably FAIL: Rust std does not check that a .cmd/.bat program exists. It runs cmd.exe /c <path> instead, so Encoder::start returns Ok, cmd.exe then prints 'not recognized' and exits 1, and `.err().unwrap()` panics."
-    artifacts:
-      - path: "src/record/encoder/windows_tests.rs"
-        issue: "never compiled or executed; w4_missing_binary_is_a_spawn_error likely panics on Windows (Ok instead of Spawn error)"
-    missing:
-      - "Push the branch and get a green windows-latest job (ci.yml already has windows-latest and runs `cargo test --release`)"
-      - "w4: either point it at a non-batch missing path (e.g. no-such-ffmpeg.exe, which CreateProcessW rejects), or accept Ok + an ExitFailed outcome after finish"
-  - truth: "T5 (derived from the goal 'reports success only when proven'): a Finalized verdict never hides frames that were accepted but not written"
-    status: failed
-    failure_type: semantic_stub
-    reason: "When the writer still has more than FINISH_TIMEOUT (10 s) of writes pending at stop, finish() aborts it. ffmpeg then gets EOF and exits 0, so the outcome is Finalized. The frames still in the channel, and the rest of the pending repeat count, are silently discarded: they are counted in frames_queued but never as written or dropped. The verdict says '... N frames written, 0 dropped at the queue'. Reproduced with real ffmpeg: 64 frames 60 s apart (intended 63 min of video) gave a Finalized webm of 1787 s and an mp4 of 2092 s, with the verdict reporting 0 dropped. It is hard to trigger in normal use, because the hold flush keeps the backlog to about 1 s. Triggers are clock jumps (each gap is clamped to 10 min, not less) or a host where ffmpeg runs well below real time."
-    artifacts:
-      - path: "src/record/encoder/process.rs"
-        issue: "finish(): the writer-timeout branch (abort) is not recorded anywhere in the report or the outcome"
-    missing:
-      - "Record the writer abort (e.g. a Shared flag or the remaining rx.len() + 1) and either classify it as a distinct non-Finalized outcome or make the Finalized verdict say 'last K accepted frames discarded at the 10 s stop deadline'. Add the frames that were never written to the dropped count, so queued == written-source + dropped holds."
-      - "Regression test: fake `cat > $out` encoder + frames spaced 600 s apart + finish_timeout 500 ms -> verdict must not claim 0 dropped / complete"
-  - truth: "The unix matrix is reliable under CI-like load (the suite is the evidence for SC2)"
-    status: failed
-    failure_type: missing_test
-    reason: "matrix_tests::j_idle_hold_flushes_before_finish flakes under load: 'file only 0 bytes before finish' (matrix_tests.rs:239). It failed in 7/18 runs (3 parallel cargo test, 24 busy loops, 12 cores) and 15/15 runs (5 parallel, 48 busy loops). Root cause, measured with 36 concurrent encoders using new fake scripts: macOS takes up to 3.3 s to exec a freshly written #!/bin/sh script under concurrency, so `cat > $out` has not even created the file 2.5 s in, while the writer had already written to the pipe. It is a test-timing assumption, not an encoder bug. In the first loaded run, success_finalizes_and_reaps, non_zero_exit_reports_stderr, a_empty_precreated_output, b_missing_output and c_no_frames also failed once, at their outcome asserts (messages not captured). The likely cause is the same: the script did not start within finish_timeout + 2 s, so the encoder was killed and reported Unfinalized. 45 later loaded runs did not reproduce those. macos-latest CI runners are slow, so expect j to flake there."
-    artifacts:
-      - path: "src/record/encoder/matrix_tests.rs"
-        issue: "j asserts on the fake script's output file after a fixed 2.5 s sleep, which depends on shell exec latency"
-    missing:
-      - "j: first wait (bounded poll) until the fake has created its output file, then sleep 2.5 s and assert; or assert on a writer-side counter"
-      - "Optionally give the 5 s-timeout fake tests a larger finish_timeout (e.g. 15 s). They only wait that long when something is wrong."
+pending_ci:
+  - truth: "SC4 / LIFE-05: Windows stdin-EOF finalize with no console window, verified by the fake-encoder tests in the windows-latest CI job"
+    status: written_not_executed
+    reason: "cfg(windows) code and windows_tests.rs w1-w4 have not been compiled or run anywhere. Nothing pushed; ci.yml already runs cargo test --release on windows-latest."
+    next: "Push the branch, get a green windows-latest job; until then LIFE-05 stays unticked."
+open_items:
+  - "crf 40 (measured in Phase 2) vs the user's 36: user decision, not a gap. One constant (VP9_FLAGS) + exact-argv test + docs line."
+  - "Verdict grammar defect introduced by d8b1d72 (non-blocking): ExitFailed for a signal or exit 255 renders '{path} is may be incomplete and was not verified'. Fix: drop the 'is' for that branch."
 ---
 
-# Phase 5: Encoder Process Manager, Verification Report (adversarial final)
+# Phase 5: Encoder Process Manager, Verification Report
+
+## Re-verification after d8b1d72 (2026-10-22T08:39:54Z, opus-adversarial)
+
+**Verdict for the coordinator:** passed for everything that can run on this machine. The Windows criterion SC4 is still written, not executed, and is pending a windows-latest CI run. All three earlier gaps that could be checked locally are closed, and I verified each one myself. One new non-blocking defect (verdict grammar) is listed below. crf 40 vs 36 is an open user decision, not a gap.
+
+Note on status: a strict reading of the GSD Step 9 rule ("pending" means gaps_found) would give gaps_found because of SC4. I set `passed` because the coordinator defined that as legitimate when every non-Windows criterion holds and the Windows gap is recorded as pending CI, which is the case here. The coordinator may downgrade it.
+
+### Truths after the fix
+
+| # | Truth | Status | Evidence (executed unless marked) |
+|---|---|---|---|
+| 1 | SC1 argv spawn, stdin frames, bounded stderr tail | VERIFIED | Unchanged code path; real-ffmpeg probes re-run: correct files for every timestamp shape, both formats. |
+| 2 | SC2 bounded stop, kill only as last resort, success only when proven | VERIFIED (macOS) | Normal runs still Finalized (below); the abort path is now honest (T5). |
+| 3 | SC3 honest, actionable errors | VERIFIED | Verdict table extended; SIGKILL and exit-255 verdicts now say "may be incomplete and was not verified" (grammar defect noted below). |
+| 4 | SC4 Windows | PENDING CI (written, not executed) | w4 now targets `no-such-ffmpeg.exe`. By reasoning: an absolute .exe path goes straight to CreateProcessW, which fails with NotFound, `spawn()` returns Err, and `Encoder::start` maps it to `EncoderError::Spawn`. Nothing on Windows was compiled or run. |
+| 5 | T5: Finalized never hides accepted-but-unwritten frames | VERIFIED | Real ffmpeg repro and code review below. |
+| 6 | T6: the unix encoder suite is reliable under load | VERIFIED | 57/57 loaded runs green (below). |
+
+### T5: code review (writer.rs, process.rs, report.rs)
+
+- `frames_unwritten` is computed **only** when `timeout_at(deadline, writer)` expired and the writer was aborted; on every other path it is 0. A normal finish therefore cannot become Truncated, however `frames_done` is counted.
+- `frames_done` is incremented after all of a source frame's repeats are written, at both sites that complete a frame: the replaced pending frame on `recv`, and the final held frame after `on_end`. Hold-flush ticks write repeats of the still-pending frame and correctly do not increment it.
+- Edge cases I checked:
+  - **Writer finishes just after the deadline fires.** `abort()` is a no-op, `frames_done == queued`, so unwritten is 0 and the outcome is Finalized. No false Truncated.
+  - **Repeat count of 0** (backwards timestamps). `write_n(.., 0)` succeeds and the frame still counts as done.
+  - **Queue-full drops.** These never reach `queued` (only a successful `try_send` increments it), so they cannot inflate unwritten.
+  - **Early-exit reader.** The writer returns on EPIPE (not aborted), so unwritten is 0 and `write_error` gives StoppedReading.
+  - **Zero frames.** queued is 0, giving NoFrames.
+  - **Aborted, then ffmpeg killed.** Unfinalized takes precedence; `frames_unwritten` is still reported in the struct.
+  - **Real failures with an abort.** ExitFailed, StoppedReading and EmptyOutput keep precedence (classify table rows).
+- The counters are read after `(&mut writer).await` on the aborted task, so the join orders them; Relaxed is fine.
+- Minor wording: a frame whose repeats were partly written counts as "not written" (an overstatement of at most 1). Info only.
+
+### T5: real ffmpeg repro (probe crate updated to print `frames_unwritten`)
+
+Same case as before: 64 frames 60 s apart, ffmpeg n9.0.2, `FINISH_TIMEOUT`:
+
+- **webm:** `Truncated { unwritten: 35 }`, ok=false, written=17820, queued=64, dropped=0, finish 10.03 s. Verdict: "recording truncated: the stop deadline passed while frames were still being written, so 35 queued frames were not written (video is shorter than the capture); ... (6195419 bytes) kept, finalized by ffmpeg but incomplete". ffprobe: valid vp9, 1782.1 s. Accounting checks out: 17820 / 600 = 29.7, so 29 frames were done and 64 - 29 = 35.
+- **mp4:** `Truncated { unwritten: 28 }`, ok=false, written=21649, ffprobe valid h264, 2165 s, finish 10.02 s.
+
+Before the fix both runs gave Finalized with "0 dropped". The verdict is now honest.
+
+### Normal outputs remain Finalized (real ffmpeg, both formats, ffprobe -count_frames)
+
+| Case | Result |
+|---|---|
+| Irregular ts | 30 frames, 3.0 s |
+| 5 s gap sent instantly | 71 frames, 7.1 s |
+| 5 s real-time idle | 70 frames, 7.0 s |
+| Backwards ts | 25 frames, 2.5 s |
+| One frame | 1 frame, 0.1 s |
+| Huge jump | clamped, 600.3 s, finish 2.8-3.4 s |
+| 10 real-time frames, then 3.5 s held final frame | 45 frames, 4.5 s |
+| Single frame held 9 s real time | 90 frames, 9.0 s |
+| Queue-full drops (queue 2, 300 sends, 295 dropped) | Finalized, unwritten=0 |
+| 8 concurrent senders | 39 + 361 = 400, Finalized, unwritten=0 |
+| Full queue of 67 KB frames (1934 dropped) | Finalized |
+
+- All of the above had `unwritten=0`.
+- Zero frames gives NoFrames.
+- SIGKILL gives ExitFailed "signal: 9".
+- SIGINT gives ExitFailed "exit code 255"; the file is valid (17 frames) and the verdict now says "may be incomplete and was not verified".
+- `real_tests` (which assert `ok()`) ran against the real ffmpeg in the full suite and passed.
+
+### New defect (non-blocking, introduced by d8b1d72)
+
+`report.rs` ExitFailed renders `"{path} is {validity}"` with `validity = "may be incomplete and was not verified"`, so the text reads "...killed.webm **is may be** incomplete and was not verified". Repro: SIGKILL or SIGINT real ffmpeg mid-recording (probe scenario f), or any `ExitFailed { status: "exit code 255" }` verdict. The unit test only checks `contains("may be incomplete")`, so it did not catch it. The content is honest and the error is grammatical only, but error strings are product surface (AGENTS.md). Fix: move "is" into the "not a valid recording" branch, and assert the full phrase in the test.
+
+### Load reliability (T6)
+
+Test binary `cargo test --release --lib record::encoder` (50 tests), 12 cores:
+
+| Load | Runs | Result | Before the fix |
+|---|---|---|---|
+| 24 `yes` loops, 3 parallel suites, 6 rounds | 18 | 18/18 green | j failed 7/18 |
+| 48 loops, 5 parallel, 3 rounds | 15 | 15/15 green | j failed 15/15 |
+| 48 loops, 8 parallel, 3 rounds | 24 | 24/24 green, slowest suite 12.75 s | not run |
+
+- That is 57/57 green, including the new `writer_abort_is_reported_as_truncated`. Its fake waits for `.up` and then needs only sleep 1 + cat inside the 2 s child floor, and it held under all of this load.
+- Afterwards, `pgrep -x yes` gave 0, and `pgrep -fl "ffmpeg|fake-enc|sleep 30|encprobe|bladebro-7851"` found nothing (exit 1). No `bladebro-enc*` dirs were left in TMPDIR.
+- The loosened j range (24..=400) is acceptable. The before-finish flush assertion (>= 150 bytes, strictly before finish) still carries the test, and 400 is the ceiling the test's own bounded waits allow.
+
+### Suite, lint, SYNC-01
+
+- `cargo fmt --check`: exit 0. `cargo clippy --release --all-targets -- -D warnings`: exit 0.
+- `cargo test --release`: 565 passed, 0 failed (524 + 6 + 1 + 5 + 14 + 10 + 2 + 3).
+- `git diff --stat fbad112 -- . ':!.planning' ':!docs'`: only src/record.rs (+6) and src/record/encoder.rs plus encoder/* (13 files, +2841), all fork-only. `BLADE_*` strings in the diff: only the existing `BLADE_FFMPEG` and `BLADE_RECORD_FORMAT`. No Cargo/npm/.github/CHANGELOG changes.
+- `git status --short`: unchanged from session start (.DS_Store files, .planning/EXECUTION_LOG.md). The probe crate lives only in the scratchpad. `gsd-tools eval-candidate` was not run, as instructed.
+
+### Docs (re-checked)
+
+- The worst-case stop of about 18 s (10 + 2 + 5 + 1) matches the constants in process.rs.
+- "4.3 is not checked in code" is accurate.
+- The truncated outcome is described.
+- crf 40 is unchanged and stated.
+
+### Open items (not gaps)
+
+1. **SC4 / LIFE-05.** Push and get a green windows-latest job (owner decision). Until then LIFE-05 stays unticked.
+2. **crf 40 vs 36.** User decision. 40 is what Phase 2 measured; 36 is the user's original value.
+3. **Grammar defect** in the signal/255 verdict (above). It is a one-word fix and should be fixed before Phase 7 wires verdicts to agents.
+
+---
+
+## Earlier report (gaps_found, 2026-10-22T08:16:11Z), kept for history
+
+### Phase 5 report (adversarial final, first round)
 
 **Phase goal:** Given a stream of JPEG frames, Bladebro produces a finalized video file and reports success only when that is proven, on Linux, macOS and Windows.
 **Verified:** 2026-10-22T08:16:11Z, verifier opus-adversarial (this replaces the earlier sonnet first-pass report; its useful content is kept below)
-**Status:** gaps_found
+**Status:** gaps_found (superseded: see "Re-verification after d8b1d72" above)
 **Re-verification:** Yes. It re-checks the first pass, which only skimmed pace.rs and the matrix bodies and did no load testing.
 
 **Verdict for the coordinator:** gaps_found. On macOS, SC1-SC3 hold, and every probe I threw at real ffmpeg either produced a correct video or an honest failure verdict, with nothing left running. Phase 5 still cannot be marked passed, for three reasons:

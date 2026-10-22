@@ -166,12 +166,12 @@ impl EncoderReport {
                 // ffmpeg's 255 for SIGINT) may still leave a playable file,
                 // which we cannot prove either way.
                 let validity = if status.starts_with("exit code") && status != "exit code 255" {
-                    "not a valid recording"
+                    "is not a valid recording"
                 } else {
                     "may be incomplete and was not verified"
                 };
                 format!(
-                "recording failed: ffmpeg exited with {status} after {written} frames; {path} is {validity}. ffmpeg said: {tail}"
+                "recording failed: ffmpeg exited with {status} after {written} frames; {path} {validity}. ffmpeg said: {tail}"
                 )
             }
             Outcome::Truncated { unwritten } => format!(
@@ -393,11 +393,13 @@ mod tests {
         );
         // Exit 1 is definitely bad; a signal or 255 (SIGINT) is unverified.
         let bad = |st: &str| report(Outcome::ExitFailed { status: st.into() }, "").verdict();
-        assert!(bad("exit code 1").contains("not a valid recording"));
+        assert!(bad("exit code 1").contains("is not a valid recording"));
         for st in ["exit code 255", "signal: 2 (SIGINT)"] {
             let v = bad(st);
             assert!(
-                !v.contains("not a valid recording") && v.contains("may be incomplete"),
+                !v.contains(" is may be")
+                    && !v.contains("not a valid recording")
+                    && v.contains(" may be incomplete and was not verified"),
                 "{v}"
             );
         }
