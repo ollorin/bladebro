@@ -4,6 +4,7 @@ Single reference for every bladebro-fork option: session recording, the ffmpeg o
 
 ## Quick answers
 
+- Separate file per tab? `BLADE_RECORD_TABS=per-tab` (see [Per-tab files](#per-tab-files)).
 - Hide the browser for tests: `BLADE_HEADLESS=1` (one run), `bladebro headless on` (your machine) or `"headless": true` in a committed `.bladebro.json` (a suite).
 - Keep it visible: leave everything unset (macOS and Windows show a window; Linux uses its private virtual display), or set `BLADE_HEADLESS=0` to override a lower layer.
 - Where settings live: environment, then `.bladebro.json` found from the current directory upward, then `<data root>/launch.json` and `<data root>/record.json`. See [Configuration layers and precedence](#configuration-layers-and-precedence).
@@ -158,6 +159,24 @@ How it works:
 The environment is read by the long-lived process. A daemon or MCP server started without `BLADE_RECORD` keeps answering "recording is off" until `bladebro stop` (or an MCP restart). The project file `.bladebro.json` is found from that process's working directory.
 
 Browser shutdown finalizes an active recording on a best-effort basis when it comes from MCP shutdown (stdin EOF, signal, idle) or the daemon's normal exit; the next record op returns that report prefixed `previous recording ended with the browser: `. Not covered yet (owned by Phase 9): daemon idle-timeout shutdown, the daemon drift relaunch and Closed-relaunch paths, and a daemon relaunch after a crash. On those the hub may still look active, and the next `record-stop` reports a lost connection. A killed process (SIGKILL) can leave an unfinalized file.
+
+### Per-tab files
+
+Set `BLADE_RECORD_TABS=per-tab` (or `record.tabs` in `record.json` / `.bladebro.json`) to get one file per tab instead of one file that follows the agent. There is no `state` parameter for it. Real results (headless Chrome, local fixtures; directories and ids shortened; the second result is a run where tab 2 was closed while recording):
+
+```
+recording saved (per-tab, 3 files): /abs/recordings/pt-tab1-20261022T145420Z-dd5570.webm (bytes 18877, duration 10.7 s, frames 107, dropped 0, segments [0.0 s tab 182C..., 8.7 s tab 182C...], captured 42); /abs/recordings/pt-tab2-20261022T145424Z-905bd9.webm (bytes 13282, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab B397...], captured 16); /abs/recordings/pt-tab3-20261022T145427Z-196942.webm (bytes 11114, duration 3.4 s, frames 34, dropped 0, segments [0.0 s tab 583E...], captured 14)
+recording saved (per-tab, 2 files): /abs/recordings/ptc-tab1-20261022T145446Z-6a8fd0.webm (bytes 15579, duration 7.2 s, frames 72, dropped 0, segments [0.0 s tab FC01..., 5.5 s tab FC01...], captured 33); /abs/recordings/ptc-tab2-20261022T145450Z-3ee0a9.webm (bytes 11919, duration 2.4 s, frames 24, dropped 0, segments [0.0 s tab 45CC...], captured 21). Note: tab 45CC... gone at 5.5 s; following tab FC01...; tab 45CC... closed at 5.7 s
+```
+
+How it works:
+
+- Files are named `<name>-tab<N>-<UTC>-<id>.<ext>`; `N` is the order of first visit (the tab you started on is `tab1`). Every file goes through the same folder, permission and no-overwrite rules as a single recording.
+- Returning to a tab continues its file (a new segment in that file; offsets are from that file's first frame). A file lasts from the tab's first visit until the tab closes or `record-stop`; while the agent is on another tab it holds its last frame (a gap longer than 10 minutes is clamped).
+- A closed tab's file is finished at once (its ffmpeg ends while recording continues) and its slot is free again. The result notes `tab <id> closed at <T> s`.
+- At most 8 files are open at once (one ffmpeg each, so CPU and disk grow with open tabs). The next tab is not recorded and the result says so: `tab <id> not recorded from <T> s: per-tab cap of 8 open files reached (close a tab to free one)`. That note does not make the result not clean. Close a tab to free a slot; a tab that went unrecorded is tried again when the agent returns to it.
+- Each file is finished on its own. One that fails (ffmpeg exits, the file cannot be created) makes the result `recording not clean (per-tab, N files): tab <id>: <reason>; <every file>`; the other files are finished and listed. A file that cannot be created is named `tab <id> not recorded from <T> s: <error>`.
+- `record-stop` finishes all files at the same time, each bounded; a file that cannot be finished in time is listed as `not finalized`. A second `record-start` is refused and names the first file.
 
 ### Example: Claude Code (.mcp.json)
 
