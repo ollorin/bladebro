@@ -19,6 +19,8 @@ pub const ENV_RECORD_FORMAT: &str = "BLADE_RECORD_FORMAT";
 pub const ENV_RECORD_FPS: &str = "BLADE_RECORD_FPS";
 /// Recording frame size.
 pub const ENV_RECORD_SIZE: &str = "BLADE_RECORD_SIZE";
+/// Multi-tab recording mode.
+pub const ENV_RECORD_TABS: &str = "BLADE_RECORD_TABS";
 
 /// 10 fps: vp9 4.55 cpu-s/min at 10 fps 1280x720 with 0 live drops
 /// (tools/record_sidecar/RESULTS.md "Recommended defaults for Phase 3").
@@ -89,6 +91,28 @@ impl Format {
         match self {
             Self::WebM => "libvpx-vp9",
             Self::Mp4 => "libx264",
+        }
+    }
+}
+
+/// How a recording treats several tabs: one file that follows the agent's tab
+/// (default), or one file per tab (at most 8 open at once).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Tabs {
+    /// One file, the video follows the agent's tab.
+    #[default]
+    Follow,
+    /// One file and one encoder per tab.
+    PerTab,
+}
+
+impl Tabs {
+    /// Parse `follow` or `per-tab`, case-insensitive, whitespace ignored.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "follow" => Ok(Self::Follow),
+            "per-tab" => Ok(Self::PerTab),
+            _ => Err(format!("must be follow or per-tab (got {:?})", s.trim())),
         }
     }
 }

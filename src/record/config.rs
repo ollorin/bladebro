@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 #[cfg(test)]
 use super::values::check_fps;
-use super::values::{Format, FrameSize, CONFIG_FILE};
+use super::values::{Format, FrameSize, Tabs, CONFIG_FILE};
 
 /// A six-field file; anything bigger is a mistake, not a config.
 const MAX_CONFIG_BYTES: u64 = 64 * 1024;
@@ -38,6 +38,8 @@ pub struct FileConfig {
     pub size: Option<String>,
     /// JPEG quality, 1..=100. File-only (D3-5).
     pub quality: Option<i64>,
+    /// `follow` or `per-tab`.
+    pub tabs: Option<String>,
 }
 
 /// Per-call (LLM-supplied) overrides as raw strings. They are parsed and
@@ -53,6 +55,9 @@ pub struct RecordOverrides {
     pub fps: Option<String>,
     /// `WIDTHxHEIGHT`.
     pub size: Option<String>,
+    /// `follow` or `per-tab`. Resolver parity only: the `state` tool has no
+    /// such parameter (every schema word is billed to every user).
+    pub tabs: Option<String>,
 }
 
 /// Fully resolved recording settings.
@@ -70,6 +75,8 @@ pub struct RecordConfig {
     pub size: FrameSize,
     /// JPEG quality.
     pub quality: u8,
+    /// Multi-tab mode.
+    pub tabs: Tabs,
     /// Frame queue depth (constant, see `QUEUE_LEN`).
     pub queue_len: usize,
     /// Requested name, raw (sanitized in 03-02).

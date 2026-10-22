@@ -363,6 +363,7 @@ mod tests {
                 height: 360,
             },
             quality: 70,
+            tabs: crate::record::Tabs::Follow,
             queue_len: 7,
             name: None,
             artifacts_dir: PathBuf::from("/a"),

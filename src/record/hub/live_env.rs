@@ -22,12 +22,19 @@ pub fn lane_for(real: bool, ephemeral: bool, pipe: bool, base: &str) -> Lane {
     }
 }
 
+/// The per-call layer the `state` tool can supply: the recording name only.
+/// `tabs` stays None on purpose (no schema parameter; BLADE_RECORD_TABS and
+/// the config files select the mode).
+fn overrides_for(name: &str) -> RecordOverrides {
+    RecordOverrides {
+        name: Some(name.to_string()),
+        ..Default::default()
+    }
+}
+
 impl HubEnv for PageEnv<'_> {
     fn config(&self, name: &str) -> Result<RecordConfig, String> {
-        crate::record::resolve_from_env(&RecordOverrides {
-            name: Some(name.to_string()),
-            ..Default::default()
-        })
+        crate::record::resolve_from_env(&overrides_for(name))
     }
 
     async fn ffmpeg(&self) -> Result<ResolvedFfmpeg, EncoderError> {
@@ -58,5 +65,15 @@ impl HubEnv for PageEnv<'_> {
 
     fn attach(&self) -> Attach {
         Attach::Port(self.page.base().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_state_tool_supplies_only_a_name() {
+        let o = super::overrides_for("n");
+        assert_eq!(o.name.as_deref(), Some("n"));
+        assert!(o.tabs.is_none() && o.format.is_none() && o.fps.is_none() && o.size.is_none());
     }
 }

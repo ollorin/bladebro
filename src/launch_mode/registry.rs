@@ -8,7 +8,7 @@ use super::mode::ENV_HEADLESS;
 use super::user::USER_LAUNCH_FILE;
 use crate::record::ffmpeg::ENV_FFMPEG;
 use crate::record::values::{
-    CONFIG_FILE, ENV_RECORD, ENV_RECORD_FORMAT, ENV_RECORD_FPS, ENV_RECORD_SIZE,
+    CONFIG_FILE, ENV_RECORD, ENV_RECORD_FORMAT, ENV_RECORD_FPS, ENV_RECORD_SIZE, ENV_RECORD_TABS,
 };
 
 /// Every environment variable the fork defines.
@@ -18,11 +18,13 @@ pub const ENV_VARS: &[&str] = &[
     ENV_RECORD_FORMAT,
     ENV_RECORD_FPS,
     ENV_RECORD_SIZE,
+    ENV_RECORD_TABS,
     ENV_FFMPEG,
 ];
 
 /// Keys of `record.json` and of the project file's `record` section.
-pub const RECORD_FILE_KEYS: &[&str] = &["enabled", "dir", "format", "fps", "size", "quality"];
+pub const RECORD_FILE_KEYS: &[&str] =
+    &["enabled", "dir", "format", "fps", "size", "quality", "tabs"];
 
 /// Top-level keys of `.bladebro.json`.
 pub const PROJECT_FILE_KEYS: &[&str] = &["headless", "record"];

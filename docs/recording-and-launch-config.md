@@ -17,6 +17,7 @@ Single reference for every bladebro-fork option: session recording, the ffmpeg o
 | `BLADE_RECORD_FORMAT` | `webm` | `webm` (VP9) or `mp4` (H.264) | Recording container |
 | `BLADE_RECORD_FPS` | `10` | Whole frames per second, 5-15 | Recording frame rate |
 | `BLADE_RECORD_SIZE` | `1280x720` | `WIDTHxHEIGHT`, both sides even, 160x120 to 3840x2160 | Recording frame size |
+| `BLADE_RECORD_TABS` | `follow` | `follow`: one file follows the agent's tab. `per-tab`: one file per tab (at most 8 open). Anything else is an error naming the value | Multi-tab recording mode |
 | `BLADE_FFMPEG` | auto | Absolute path to the ffmpeg binary used for recording. Set but unusable is reported, never silently ignored. Otherwise PATH, then known install locations. `bladebro doctor` shows what was found | ffmpeg override |
 
 ## Browser launch mode (BLADE_HEADLESS)
@@ -195,6 +196,7 @@ Highest layer first. A layer that does not set a value falls through to the next
 | recording dir | none | `BLADE_RECORD` (absolute path) | `record.dir` (vetted, see below) | `record.json` `dir` | `<data root>/recordings` |
 | format, fps, size | none via the `state` tool (library API only) | `BLADE_RECORD_FORMAT`, `BLADE_RECORD_FPS`, `BLADE_RECORD_SIZE` | `record.format`, `record.fps`, `record.size` | `record.json` | `webm`, 10, 1280x720 |
 | quality | none | none | `record.quality` | `record.json` `quality` | 70 |
+| tab mode | none via the `state` tool (library API only) | `BLADE_RECORD_TABS` | `record.tabs` | `record.json` `tabs` | `follow` |
 
 Through the `state` tool the only per-call recording input is `name`. Headless has no per-call layer: it is a property of the whole browser launch, not of a call.
 
@@ -210,6 +212,7 @@ Every key each config file accepts. A test compares this table with the code's o
 | `record.json` | `fps` | Frames per second, 5-15 |
 | `record.json` | `size` | `WIDTHxHEIGHT` |
 | `record.json` | `quality` | JPEG quality 1-100 |
+| `record.json` | `tabs` | `follow` or `per-tab` |
 | `.bladebro.json` | `headless` | Hidden browser (bool) |
 | `.bladebro.json` | `record` | Recording section; its keys follow |
 | `.bladebro.json record` | `enabled` | As `record.json` |
@@ -218,6 +221,7 @@ Every key each config file accepts. A test compares this table with the code's o
 | `.bladebro.json record` | `fps` | As `record.json` |
 | `.bladebro.json record` | `size` | As `record.json` |
 | `.bladebro.json record` | `quality` | As `record.json` |
+| `.bladebro.json record` | `tabs` | As `record.json` |
 | `launch.json` | `headless` | Written by `bladebro headless on` / `off` (bool) |
 
 ## Project file (.bladebro.json)
@@ -267,7 +271,7 @@ Run `bladebro stop` and retry. There is no automatic restart: it would kill anot
 ## Threat model: project files
 
 A cloned repository controls its `.bladebro.json`, so the file is treated as untrusted input.
-- It can set `headless` and recording `enabled`, `format`, `fps`, `size`, `quality`.
+- It can set `headless` and recording `enabled`, `format`, `fps`, `size`, `quality`, `tabs` (per-tab writes more files, at most 8 open at once, into the same vetted dir).
 - It cannot redirect recordings outside the project directory or `<data root>/recordings`.
 - It cannot run commands: no key in the schema executes anything, and no external program is ever executed from project-controlled input (not the working directory, not a PATH entry like `.`): `platformVersion` is read from the OS API and the ffmpeg lookup skips relative PATH entries.
 - A symlinked, foreign-owned or group/other-writable file is ignored with a warning (Unix).

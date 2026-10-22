@@ -12,9 +12,9 @@ use std::path::{Path, PathBuf};
 
 use super::config::{FileConfig, RecordConfig, RecordOverrides};
 use super::values::{
-    check_fps, parse_fps, parse_quality, parse_record_env, Format, FrameSize, RecordEnv, Toggle,
-    DEFAULT_FPS, DEFAULT_QUALITY, ENV_RECORD, ENV_RECORD_FORMAT, ENV_RECORD_FPS, ENV_RECORD_SIZE,
-    QUEUE_LEN, RECORDINGS_SUBDIR,
+    check_fps, parse_fps, parse_quality, parse_record_env, Format, FrameSize, RecordEnv, Tabs,
+    Toggle, DEFAULT_FPS, DEFAULT_QUALITY, ENV_RECORD, ENV_RECORD_FORMAT, ENV_RECORD_FPS,
+    ENV_RECORD_SIZE, ENV_RECORD_TABS, QUEUE_LEN, RECORDINGS_SUBDIR,
 };
 
 /// The project file's `record` section plus its path for error messages.
@@ -33,6 +33,7 @@ struct Parsed {
     fps: Option<u32>,
     size: Option<FrameSize>,
     quality: Option<u8>,
+    tabs: Option<Tabs>,
 }
 
 /// Parse and validate a file layer; `name(key)` builds the error prefix
@@ -72,6 +73,11 @@ fn parse_layer(f: Option<&FileConfig>, name: &dyn Fn(&str) -> String) -> Result<
             .quality
             .map(|q| parse_quality(q).map_err(|e| format!("{}: {e}", name("quality"))))
             .transpose()?,
+        tabs: f
+            .tabs
+            .as_deref()
+            .map(|v| Tabs::parse(v).map_err(|e| format!("{}: {e}", name("tabs"))))
+            .transpose()?,
     })
 }
 
@@ -100,6 +106,9 @@ pub fn resolve_layered(
     let env_size = nonblank(ENV_RECORD_SIZE)
         .map(|v| FrameSize::parse(&v).map_err(|e| format!("{ENV_RECORD_SIZE}: {e}")))
         .transpose()?;
+    let env_tabs = nonblank(ENV_RECORD_TABS)
+        .map(|v| Tabs::parse(&v).map_err(|e| format!("{ENV_RECORD_TABS}: {e}")))
+        .transpose()?;
 
     // --- file layers ---
     let proj = match project {
@@ -123,6 +132,11 @@ pub fn resolve_layered(
         .size
         .as_deref()
         .map(|v| FrameSize::parse(v).map_err(|e| format!("per-call size: {e}")))
+        .transpose()?;
+    let call_tabs = over
+        .tabs
+        .as_deref()
+        .map(|v| Tabs::parse(v).map_err(|e| format!("per-call tabs: {e}")))
         .transpose()?;
 
     // --- precedence ---
@@ -171,6 +185,11 @@ pub fn resolve_layered(
             .or(usr.size)
             .unwrap_or_default(),
         quality: proj.quality.or(usr.quality).unwrap_or(DEFAULT_QUALITY),
+        tabs: call_tabs
+            .or(env_tabs)
+            .or(proj.tabs)
+            .or(usr.tabs)
+            .unwrap_or_default(),
         queue_len: QUEUE_LEN,
         name: over.name.clone(),
         artifacts_dir: artifacts,
@@ -278,6 +297,86 @@ mod tests {
         )
         .unwrap();
         assert_eq!((c.format, c.fps, c.size.width), (Format::Mp4, 14, 1024));
+    }
+
+    #[test]
+    fn tabs_parse_table() {
+        for (i, want) in [
+            ("follow", Tabs::Follow),
+            (" FOLLOW ", Tabs::Follow),
+            ("per-tab", Tabs::PerTab),
+            ("Per-Tab", Tabs::PerTab),
+        ] {
+            assert_eq!(Tabs::parse(i), Ok(want), "{i:?}");
+        }
+        for i in ["", "pertab", "per_tab", "tabs"] {
+            let e = Tabs::parse(i).unwrap_err();
+            assert!(e.contains("follow") && e.contains("per-tab"), "{e}");
+            assert!(e.contains(&format!("{:?}", i.trim())), "{e}");
+        }
+    }
+
+    #[test]
+    fn tabs_precedence_default_and_errors() {
+        let t = |v: &str| {
+            Some(FileConfig {
+                tabs: Some(v.into()),
+                ..fc()
+            })
+        };
+        assert_eq!(okp(&[], None, None).tabs, Tabs::Follow);
+        let over = RecordOverrides {
+            tabs: Some("per-tab".into()),
+            ..Default::default()
+        };
+        let c = go_p(
+            &[("BLADE_RECORD_TABS", "follow")],
+            t("follow"),
+            t("follow"),
+            over,
+        )
+        .unwrap();
+        assert_eq!(c.tabs, Tabs::PerTab);
+        // env wins over project over user
+        let c = okp(
+            &[("BLADE_RECORD_TABS", "per-tab")],
+            t("follow"),
+            t("follow"),
+        );
+        assert_eq!(c.tabs, Tabs::PerTab);
+        assert_eq!(okp(&[], t("per-tab"), t("follow")).tabs, Tabs::PerTab);
+        assert_eq!(okp(&[], t("follow"), t("per-tab")).tabs, Tabs::Follow);
+        assert_eq!(okp(&[], None, t("per-tab")).tabs, Tabs::PerTab);
+        // blank env = unset
+        assert_eq!(
+            okp(&[("BLADE_RECORD_TABS", "  ")], None, t("per-tab")).tabs,
+            Tabs::PerTab
+        );
+        // a broken lower layer errors even when env overrides it
+        let e = go_p(
+            &[("BLADE_RECORD_TABS", "per-tab")],
+            None,
+            t("x"),
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(e.starts_with("record.json tabs:"), "{e}");
+        let e = go_p(&[], t("x"), None, Default::default()).unwrap_err();
+        assert!(e.starts_with(&format!("{} record.tabs:", label())), "{e}");
+        let e = go_p(
+            &[("BLADE_RECORD_TABS", "x")],
+            None,
+            None,
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(e.starts_with("BLADE_RECORD_TABS:"), "{e}");
+        let over = RecordOverrides {
+            tabs: Some("x".into()),
+            ..Default::default()
+        };
+        let e = go_p(&[], None, None, over).unwrap_err();
+        assert!(e.starts_with("per-call tabs:"), "{e}");
     }
 
     #[test]

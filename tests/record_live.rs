@@ -416,6 +416,7 @@ async fn record_live() {
             height: 720,
         },
         quality: DEFAULT_QUALITY,
+        tabs: bladebro::record::Tabs::Follow,
         queue_len: 16,
         name: None,
         artifacts_dir: PathBuf::from("/nonexistent-artifacts"),

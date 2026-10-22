@@ -101,6 +101,7 @@ fn rec_cfg(s: &Scratch, enabled: bool) -> RecordConfig {
             height: 720,
         },
         quality: 70,
+        tabs: crate::record::Tabs::Follow,
         queue_len: 16,
         name: None,
         artifacts_dir: s.0.join("artifacts"),

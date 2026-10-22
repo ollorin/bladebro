@@ -50,4 +50,4 @@ pub use source::{
     Endpoint, FrameSink, Source as FrameSource, SourceConfig, SourceError, SourceReport,
     SourceStats,
 };
-pub use values::{Format, FrameSize};
+pub use values::{Format, FrameSize, Tabs};
