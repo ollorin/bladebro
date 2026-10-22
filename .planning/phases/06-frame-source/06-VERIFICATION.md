@@ -1,156 +1,108 @@
 ---
 phase: 06-frame-source
-verified: 2026-10-22T10:40:00Z
-status: gaps_found
-verifier: gsd-verifier (opus, final adversarial pass)
-score: 5/8 must-haves verified (SC1-SC4 + Lagged-ack behavior verified; SC5 literal instrument bar environment-blocked; 06-04 duration fix and test-suite reliability FAILED)
+verified: 2026-10-22T11:00:00Z
+status: passed
+verifier: gsd-verifier (opus, final adversarial pass, re-verification after 06-05)
+score: 8/8 must-haves verified (SC1-SC4, SC5 method set and A/B stealth, Lagged ack, ends-at-stop, test suite green). SC5 literal instrument bar is environment-limited and needs user acceptance (see below)
 re_verification:
   previous_status: gaps_found
-  previous_score: 4/5 success criteria (sonnet, first pass)
+  previous_score: 5/8
   gaps_closed:
-    - "Lagged (bus-overflow) frames are never acked: product behavior now acks min(n,2) with the cached id (verified in code, killed-mutation M3/M7, and the passing runs of the new test show lost=2616 lag_acks=2)"
-  gaps_remaining:
-    - "SC5 literal bar (audit 111, diff_oracle, qol 122): environment-blocked, not a code gap (see Not verified)"
-    - "Cross-platform CI: not executed"
-  regressions:
-    - "cargo test --release is no longer reliably green: the new 06-04 test lagged_bus_still_acks_and_the_wire_stays_allowlisted fails in 4 of 6 full release lib runs"
-gaps:
-  - truth: "Test suite passes (cargo test --release green, non-negotiable #8)"
-    status: failed
-    failure_type: regression
-    severity: blocker
-    reason: "The 06-04 test record::source::capture_tests::flow::lagged_bus_still_acks_and_the_wire_stays_allowlisted is flaky on unmodified HEAD da5e35c: 4/6 full `cargo test --release --lib` runs FAILED (scenario timed out at the 20 s guard), 8/12 isolated release runs failed, 3/6 debug runs failed. Instrumented (scratch worktree only): in failing runs the stalled sink ran to its own 15 s deadline (longest_gap_ms 15004, lost 0, lag_acks 0), i.e. the bus never overflowed while the loop was blocked, so Lagged never happened and the test waits 12 s + up to 14 s > 20 s guard. Cause is the test design: BlockOnce blocks a tokio worker with std::thread::sleep in a 2-worker runtime, which can strand the reader/fake-server tasks (LIFO slot is not stealable). The product lag path itself works when the overflow does occur (lost 2616, lag_acks 2). CI runs exactly `cargo test --release`, so CI would be red most of the time."
-    artifacts:
-      - path: "src/record/source/capture_tests/flow.rs"
-        issue: "lagged_bus_still_acks_and_the_wire_stays_allowlisted: std::thread::sleep stall on a tokio worker; nondeterministic; 06-04-FIXES.md claims 'about 0.7 s'"
-    missing:
-      - "Make the stall deterministic (e.g. tokio::task::block_in_place inside the sink, or more workers plus a stall that does not hold a runtime worker), and count probe Lagged as progress"
-      - "Prove stability: e.g. 20 consecutive green `cargo test --release --lib record::source` runs"
-  - truth: "06-04 Gap-3 fix: the video ends at the stop request (docs: '8.00 s for an 8.00 s recording, 0.0 % drift')"
-    status: failed
-    failure_type: semantic_stub
-    severity: major
-    reason: "mark_end only clamps the FINAL hold (writer.rs on_end path, lines 101-107). The writer's 1 s hold-flush tick (writer.rs lines 90-97) computes est = ts + arrived.elapsed() and never consults shared.end_at, so a tick that fires during the 500 ms stop grace still writes the held frame past the stop mark. Reproduced live: dur-tick8 run 1 = ffprobe 8400 ms vs wall 8000 ms (+5.00 %, 84 frames written); last frame at 7381 ms, so the tick fired at about 8381 ms, inside the 8000-8500 ms grace, exactly +0.4 s. The 3 further tick8 runs (last frame at about 7600 ms, tick after the writer closed) gave -0.01/-0.04/-0.04 %, matching 06-04's numbers. Worst case is +grace (0.5 s = +6.25 % on 8 s). For an idle page the tick phase is first-frame time mod 1 s; the harness stops on whole seconds (REC_LIVE_SECS is u64), which hides this, but an agent stopping at an arbitrary time hits it about half the time. The unit test mark_end_stops_the_final_hold_before_finish waits 700 ms (< the 1 s tick), so it cannot catch this. The fix is non-deterministic and the docs overclaim."
-    artifacts:
-      - path: "src/record/encoder/writer.rs"
-        issue: "hold-flush tick branch ignores end_at (lines 90-97)"
-      - path: "src/record/encoder/lifecycle_tests.rs"
-        issue: "mark_end test sleeps 700 ms, never crosses HOLD_FLUSH_INTERVAL"
-      - path: "docs/recording-and-launch-config.md"
-        issue: "line 75 claims '8.00 s for an 8.00 s recording, 0.0 % drift' unconditionally"
-    missing:
-      - "In the tick branch, clamp est to end_at (or skip the flush once end_at is set)"
-      - "A deterministic test: send a frame, sleep about 900 ms, mark_end, sleep about 400 ms (a tick lands after the mark), finish; frames_written must equal the slots up to the mark"
-      - "Correct the docs sentence after the fix is measured"
-  - truth: "Ack is issued before decode/gate/sink (D6-4, SC1 'acked on receipt') is pinned by a test"
-    status: failed
-    failure_type: missing_test
-    severity: minor
-    reason: "Mutation M1 (move spawn_ack after handler.forward in capture.rs run) SURVIVED: all 58 record::source tests still pass. The code is correct today (verified by reading, and the live wire trace shows 720 frames = 720 acks), but no test would catch a reorder. The count tests only prove every frame is eventually acked."
-    artifacts:
-      - path: "src/record/source/capture_tests/flow.rs"
-        issue: "no ordering assertion (e.g. a sink that records whether the ack for that frame already reached the fake endpoint)"
-    missing:
-      - "A test where send_frame asserts the fake has already logged the ack for that frame (or a slow sink that shows acks are not delayed by decode/sink)"
+    - "Flaky lagged-bus test: 20/20 isolated release runs green (0.76-0.79 s each); the record:: lib subset 10/10; the full suite never failed on it in 5 runs; the no-lag-acks mutation now fails it 3/3"
+    - "Hold-flush tick ignored end_at: the tick now clamps to end_at; mutations (no clamp, max instead of min, final hold ignoring end_at) are all killed; live off-second stops whose tick fell inside the grace (extra 370 ms, 550 ms) came out +0.32 % and -0.60 % (pre-fix +5.00 %)"
+    - "Ack-before-sink order not pinned: new test ack_reaches_the_wire_before_the_sink_runs fails when the forward is moved before spawn_ack (mutation killed)"
+  gaps_remaining: []
+  regressions: []
 ---
 
-# Phase 6: Frame Source Verification Report (final adversarial pass)
+# Phase 6: Frame Source Verification Report (final, after 06-05)
 
 **Phase Goal:** Screencast frames flow from a real page into the encoder without ever stalling the CDP reader or changing what the page can see, and a blank capture is reported rather than passed off as success.
-**Verified:** 2026-10-22 (HEAD da5e35c, macOS arm64, Chrome 154, headless)
-**Status:** gaps_found
-**Re-verification:** Yes. The first pass (sonnet) was gaps_found; 06-04 fixes (e4fb927, b29386d, da5e35c) re-checked.
+**Verified:** 2026-10-22 (HEAD 7351769 = fix 42c90ce + report commit; macOS arm64, Chrome 154, headless)
+**Status:** passed (no code gaps). The SC5 environment limits below need explicit user acceptance.
+**Re-verification:** Yes. Previous status gaps_found (3 gaps). All 3 are closed and I re-checked each one myself.
 
-## Verdict in one paragraph
-The frame source itself is sound: it uses its own connection, sends only 4 Page methods, acks every frame, hands frames off through a bounded try_send queue, reports NoFrames honestly, and keeps the hook exemption tight. I reproduced all of that live. The phase is still **gaps_found** for two code reasons. (1) The new 06-04 Lagged test is flaky enough that `cargo test --release` failed 4 of 6 times on unmodified HEAD. (2) The 06-04 "video ends at the stop request" fix is incomplete: the writer's 1 s hold-flush tick ignores `end_at`, and I measured +5.00 % (8.40 s for 8.00 s) live. A third, minor gap: no test pins the ack-before-decode order (a mutation survived). The SC5 environment limits (diff_oracle not runnable, macOS audit 100 instead of 111, qol 120/122) are honestly disclosed and substituted. On their own they would be a user-acceptance item, not a code gap.
+## Verdict
+The 3 gaps from the previous pass are fixed and verified. I ran each fix, mutation-tested it and checked it live. The test suite is green and the lagged test is now deterministic. The tick clamp is correct, including the edge cases. Ack-before-sink order is pinned by a test. Wire discipline, NoFrames honesty and resize/idle durations were re-checked live. No code gap remains.
+
+What remains is one minor docs inaccuracy (non-blocking, see Findings) and the environment-limited SC5 items, which were honestly disclosed and which the user has to accept.
 
 ## What I ran myself (commands + output)
-All live runs: BLADE_HEADLESS=1, a fresh BLADE_HOME=$(mktemp -d) plus per-scenario homes, BLADE_NO_UPDATE_CHECK=1, 127.0.0.1:8765 fixtures, evidence written to scratch (committed evidence files untouched).
+Live rules for every run: BLADE_HEADLESS=1; a fresh BLADE_HOME per scenario (env.sh/new_home with mktemp); BLADE_NO_UPDATE_CHECK=1; 127.0.0.1:8765 fixtures; EVIDENCE redirected to scratch, so the committed evidence was not touched; no headed run.
 
 | Command | Result |
 |---|---|
 | `cargo fmt --check` | exit 0 |
-| `cargo clippy --release --all-targets -- -D warnings` | exit 0 (CLIPPY_RC=0) |
-| `cargo test --release` (1st run) | 583+6+1+5+14+2+10+2+3 = **626 passed, 0 failed, 1 ignored** |
-| `cargo test --release --lib` x6 | **4/6 FAILED**: `lagged_bus_still_acks_and_the_wire_stays_allowlisted ... FAILED`, "582 passed; 1 failed ... finished in 22.8s"; 2/6 ok (583 passed) |
-| same test isolated, release x12 | pass=4 fail=8 ("scenario timed out: Elapsed(())" at capture_tests.rs:21) |
-| `source_live.sh dur-tick8 bg dur-idle` | dur-tick8: wall 8000, ffprobe 8.400000 s, **drift +5.00 %**, 84 frames written, last_frame_ms 7381, decode exit 0. bg: outcome `NoFrames { waited_ms: 8504, hidden: true }`, verdict "capture failed: no frames for 8.5 s ... (not a success)", encoder "recording failed: no frames reached the encoder", no output file, one stderr WARN at 5.0 s. bg-control: 480 frames = 480 acks, 8100 vs 8002 (+1.22 %). dur-idle 20 s: 1 frame, 20.000 s vs 20001 (-0.00 %), quiet-tail note in verdict. leftovers 0 |
-| scratch copy of the script: dur-tick8 x3, dur-idle8 x4 | tick8: -0.01/-0.04/-0.04 % (last frame at about 7600 ms); idle8: -0.01/-0.01/-0.02/-0.01 %; leftovers 0 |
-| `source_live.sh trace slow` | trace: wire = {Page.enable 1, startScreencast 1, screencastFrameAck 720, stopScreencast 1}, all 7 PASS checks, Chrome argv 531/531/531 bytes, identical before/during/after; 12.1 s vs 12.0 (+0.83 %). slow: max_len 16, refused 148 == queue_dropped 148, accepted 99 == forwarded 99, frames 1484 == acks 1484, `see content`/`state tabs`/`nav` rc 0 in 50/46/341 ms, frames after same-tab nav: YES; decode exit 0 |
-| `source_stealth.sh` | [A] audit 100/100; [B] audit with recorder 100/100 (frames 5 == acks); [C] diff_oracle NOT RUN; [D] battery divergent=0, keys=99, noise ['voices'] |
-| `python3 -I -c "import websockets"` | ModuleNotFoundError (confirms the diff_oracle blocker) |
-| `python3 tools/qol_probe/run.py` | 120 passed, 2 failed: "chord cleared the live editor", "nested scroller movement is reported as such" (the same 2 recorded as baseline in 06-03-gates) |
-| Process scan vs saved baseline after every batch | no bladebro daemon, Chrome with bbrec homes, ffmpeg, record_live, or http.server left; the only new Chrome helper had ppid 1139 (the user's own Chrome) |
-| `git diff efd87ac^..HEAD --stat` outside src/record, tests, tools, docs, .planning | `src/cdp/client.rs +13 -1`, `src/record.rs +8` (fork-only module) |
-| commit trailers efd87ac^..HEAD | 18/18 carry `Co-authored-by: Claude` |
+| `cargo clippy --release --all-targets -- -D warnings` | exit 0 |
+| lagged test alone, release, x20 (`--exact`) | **20/20 pass**, 0.76-0.79 s each |
+| `cargo test --release --lib record::` x10 | 10/10 pass (202 tests each) |
+| `ack_reaches_the_wire_before_the_sink_runs` alone x10 | 10/10 pass |
+| `cargo test --release` x5 | runs 2-5: **628 passed, 0 failed, 1 ignored**. Run 1: 596 passed, 1 failed. The failure was `tests/daemon_lifecycle.rs::concurrent_cold_starts_have_one_owner` (cli.pid not present after its fixed 500 ms sleep). That test predates the phase (last change 8b3d82d, an ancestor of efd87ac) and is unrelated to recording. All phase tests passed in all 5 runs. |
+| `source_live.sh dur-tick8` with REC_LIVE_EXTRA_MS = 0 / 370 / 550 / 730 / 910 (plus a 6th run at 0 whose log was overwritten by a naming slip on my side) | wall 8001 -> 8000 ms (-0.01 %); 8373 -> 8400 (+0.32 %); 8551 -> 8500 (-0.60 %); 8732 -> 8700 (-0.37 %); 8912 -> 8900 (-0.13 %). All decode exit 0, frames == acks, leftovers 0. In the 370 and 550 runs the last frame came at about 7600 ms, so the 1 s tick (about 8600 ms) landed **inside** the stop grace, the exact pre-fix +5 % case; both are now clamped. |
+| `source_live.sh bg` | bg: outcome NoFrames, `health_at_stop NoFrames { for_ms: 8003, hidden: true }`, verdict "recording failed: no frames reached the encoder, so there is no video", no output file, one stderr WARN at 5.0 s. bg-control: 81 frames written, 8100 vs 8001 ms (+1.24 %), decode exit 0, leftovers 0 |
+| `source_live.sh trace` | wire_methods = {Page.enable 1, startScreencast 1, screencastFrameAck 720, stopScreencast 1}; all 7 PASS checks (subset of 4, enable first, start before first ack, wire acks 720 == acks_sent 720, wire == methods_sent, frames 720 == acks 720, Chrome argv identical before/during/after at 531 bytes); 12100 vs 12000 (+0.83 %); decode exit 0; leftovers 0 |
+| `source_live.sh resize dur-idle` | resize: sizes 1280x628 / 1001x641 / 1101x614, 16100 vs 16002 (+0.61 %), decode exit 0, 161 frames. dur-idle 20 s: 1 frame, 20000 vs 20000 (+0.00 %). Leftovers 0 |
+| Process diff vs a baseline taken before the live runs | only new process: a Chrome renderer helper with ppid 1139 (the user's own Chrome, not mine); no daemon, bbrec Chrome, ffmpeg, record_live or http.server left; port 8765 free |
+| `git diff efd87ac^..HEAD --stat` outside src/record*, tests, tools, docs, .planning | only `src/cdp/client.rs` (+12 -1) |
+| Cargo.toml/Cargo.lock/npm/CHANGELOG.md/.github in that range | no changes |
+| Commit trailers efd87ac^..HEAD | 20/20 carry `Co-authored-by: Claude <claude@anthropic.com>` |
+| `.planning/HOOKS.md` row 6 | matches the client.rs diff exactly (const + oversize condition, 8 MiB bound, Page.screencastFrame only) |
 
-### Mutation checks (scratch git worktree + its own target dir; repo source never edited; worktree removed afterwards)
+Cleanup of my own processes and files: one daemon (`bladebro daemon`, BLADE_HOME bladebro-daemon-race-52399) was leaked by the pre-existing daemon_lifecycle test during full run 3. I killed it and removed its temp dir. The scenario script leaves one empty `bbrec.*` dir per invocation (env.sh creates one, then new_home replaces BLADE_HOME). I removed my own empty ones. Older ones not from this session were left alone.
+
+### Mutation checks (scratch git worktree with its own CARGO_TARGET_DIR; repo source never edited; worktree removed)
 | Mutation | Result |
 |---|---|
-| M1 ack spawned after decode/sink | **SURVIVED** (58/58 pass) -> gap 3 |
-| M2 extra `Runtime.enable` via the raw session | killed (only_the_four..., hidden_event...) |
-| M3 Lagged acks unbounded (no `min(MAX_LAG_ACKS)`) | killed (lagged_acks_with_the_cached_id_bounded) |
-| M4 no `sink.mark_end()` on stop | killed (stop_marks_the_end_before_the_grace_wait) |
-| M5 zero frames no longer converted to NoFrames | killed (4 tests) |
-| M6 hook without the 8 MiB cap | killed (frame_above_the_cap_is_still_stripped) |
-| M7 no lag acks sent | killed (lagged_bus...; note that test is also flaky) |
-| M8 no ack for a stripped/undecodable frame | killed (2 tests) |
-| baseline, unmodified, debug x6 | 3/6 failed on the lagged test -> gap 1 |
+| A1 capture.rs: forward to the sink before spawn_ack/lag acks | **killed**: ack_reaches_the_wire_before_the_sink_runs FAILED (58 passed, 1 failed) |
+| T1 writer.rs: tick clamp removed | **killed**: hold_tick_after_mark_end_does_not_write_past_it |
+| T2 writer.rs: `held.max(..)` instead of `min` | **killed**: same test |
+| T3 writer.rs: final hold uses elapsed instead of end_at | **killed**: mark_end_stops_the_final_hold_before_finish and the tick test |
+| M7 capture.rs: no lag acks sent | **killed 3/3** (deterministic now; previously the test was flaky) |
+
+## Tick-clamp review (writer.rs 90-104, 107-121)
+- **end_at unset:** `held = arrived.elapsed()`, the same as before. Idle-page progressive flush is unchanged (dur-idle 20 s +0.00 %).
+- **Tick racing mark_end:** `end_at` is a OnceLock. A tick that reads it before the set writes up to "now", which is earlier than the mark. A tick after the set is capped at the mark. The Pacer is cumulative (written vs slots), so the final `on_end(ts + (end_at - arrived))` only adds what is still owed and nothing is double-written. Correct in both orders.
+- **end_at earlier than arrival** (a frame that arrived after the mark): `saturating_duration_since` gives 0, so the tick writes nothing past the frame's own ts. Correct.
+- **Frames arriving in the stop grace window:** capture.rs still forwards frames received after `mark_end` (and the held trailing frame via take_held), each with its own timestamp. The video therefore ends at the last in-grace frame rather than exactly at the stop request. In addition, `Pacer::on_end` forces the final frame to be written at least once, which can add up to one slot (100 ms at 10 fps). Measured on animated pages: +98 to +100 ms (trace 12 s +0.83 %, bg-control 8 s +1.24 %, resize 16 s +0.61 %). The theoretical bound is the 500 ms grace plus 1 slot, if Chrome kept emitting for the whole grace. Observed in-grace frames stopped within about 100 ms of the stop. Severity: minor. It is well inside OUT-03's 5 % (which is defined on an idle page) for any recording of a few seconds or more, and it is no longer the hold-flush defect.
+- **Worst-case drift on short runs:** idle/tick pages: at most about half a slot plus the first-frame offset (measured -0.74 % to +0.32 %, at most about 60 ms on 8 s). Animated pages: about +1 slot, roughly 100 ms (+1.25 % on 8 s, +5 % on a 2 s run). The pacer docs already state that spans under about 1 s can exceed 10 % by one slot.
 
 ## Observable Truths
 | # | Truth | Status | Evidence |
 |---|---|---|---|
-| 1 | SC1 JPEG via startScreencast, every frame acked on receipt, frames == acks | VERIFIED (order not test-pinned, gap 3) | capture.rs: spawn_ack before forward; handler decides ack before decode. Live: trace 720 = 720 wire acks, slow 1484 = 1484, control 480 = 480 |
-| 2 | SC2 slow encoder: reader serves, queue bounded, newest dropped, counted | VERIFIED | live slow run (above); recorder's own connection; Encoder::send_frame try_send refuses newest; limits.rs tests |
-| 3 | SC3 no frames -> NoFrames; 2 MB frame passes the hook unchanged | VERIFIED | live bg: NoFrames hidden=true, "not a success", no file; stop() converts Captured+0 frames; hook_tests two_mb... (M6 killed) |
-| 4 | SC4 idle duration within 5 %; odd/changing sizes playable | VERIFIED for the integer-second runs I made (idle 20 s -0.00 %, idle 8 s <= 0.02 %); resize/odd sizes from prior evidence only (06-03-resize.txt, not re-run) | see gap 2 for the non-integer stop-time risk |
-| 5 | SC5 only Page screencast methods; audit / diff_oracle / qol still pass | Method set and argv VERIFIED live; audit 100/100 A == B, battery divergent 0, qol 120/122 baseline-identical; **diff_oracle not run, 111 not reachable on macOS** | environment, not code (see Not verified) |
-| 6 | 06-04 gap 4: Lagged frames acked (bounded, cached id) | VERIFIED (behavior) | handler.rs 64-85, capture.rs 373-377; M3/M7 killed; passing runs show lost 2616, lag_acks 2 |
-| 7 | 06-04 gap 3: video ends at the stop request | FAILED | gap 2 |
-| 8 | Test suite green | FAILED | gap 1 |
+| 1 | SC1 / CAPT-01: JPEG via startScreencast; every frame acked on receipt; frames == acks | VERIFIED | live trace 720 == 720 on the wire; ack-before-sink pinned by a test (A1 killed) |
+| 2 | SC2 / CAPT-02: slow encoder does not block the reader; bounded queue; newest dropped and counted | VERIFIED | code (try_send, own connection), limits tests; 06-03 live slow run (prior pass re-ran it: refused 148 == queue_dropped 148); not re-run in this pass |
+| 3 | SC3 / CAPT-05: no frames -> NoFrames, not success; 2 MB frame passes the hook | VERIFIED | live bg (NoFrames hidden=true, failure verdict, no file); hook_tests 2 MB; HOOKS row 6 |
+| 4 | SC4 / OUT-03: idle duration within 5 %; odd/changing sizes playable | VERIFIED | dur-idle 20 s +0.00 %; tick8 x5 within -0.60..+0.32 %; resize 1001x641/1101x614 playable, +0.61 % |
+| 5 | SC5 / SAFE-01: only Page screencast methods, no new flag; audit/oracle/qol | VERIFIED for the method set, argv and the A/B checks. The literal instrument bar is environment-limited (see below) | live trace: 4 methods, argv identical |
+| 6 | Lagged frames acked (bounded, cached id) | VERIFIED | M7 killed deterministically; lagged test 20/20 |
+| 7 | Video ends at the stop request (06-04/06-05) | VERIFIED (hold-flush defect fixed; the in-grace frame and final-slot effect of about 100 ms on animated pages is minor, see Findings) | T1/T2/T3 killed; live off-second runs clamped |
+| 8 | Test suite green | VERIFIED | 628/0/1 in 4 of 5 full runs; the 1 failure was a pre-existing, out-of-phase daemon test |
 
-## Required Artifacts / Key Links
-- src/record/source/{capture,handler,frame,gate,report,sink,watch,wire}.rs: exist, substantive, wired (re-exported in src/record.rs as FrameSource, etc.). The live harness tests/record_live.rs drives the real Source + Encoder. No Phase 7 caller yet (by design; RecordHub is Phase 7).
-- Hook: client.rs route_cdp_text exempts only `Page.screencastFrame` with `text.len() <= 8 MiB`. HOOKS.md row 6 matches the diff and commit 57db2b5 exactly.
-- Source -> Encoder: FrameSink::send_frame -> Encoder::send_frame (try_send); FrameSink::mark_end -> Encoder::mark_end (OnceLock, first wins; finish keeps the earlier mark).
+## Requirements Coverage
+CAPT-01, CAPT-02, CAPT-05, OUT-03: satisfied at the source/encoder level. The user-facing configuration of the no-frames period arrives with Phase 7. SAFE-01: the wire/argv/injection part is satisfied; the "audit 111/111 with diff_oracle divergent 0" part is environment-limited (below).
 
-## Edge cases examined
-- Frame > 8 MiB: params stripped to `{}`. Acked with the cached id (counted acked_with_cached_id plus bad_frames); if it is the very first frame, counted `unacked`. Unreachable at the default 1280x720 maxWidth/maxHeight. OK.
-- Session id absent from the cache on Lagged: no ack, counted only (unit-tested). OK.
-- Extra acks vs Chrome flow control (observation, not a gap): a Lagged event can send up to 2 acks when the lost events held no frame. Chrome's in-flight counter would then be decremented below the true count, which loosens its 2-in-flight throttle by at most 2 per Lagged event. This is reachable only if more than 16384 events overflow the recorder's private, Page-only connection. Note: I did not check the Chromium-side counter floor in Chromium source.
-- Stop during backlog: the biased select keeps draining and acking until the grace deadline, then stopScreencast has been sent. OK.
-- mark_end vs finish race: OnceLock; mark_end is called from the loop before the sink Arc is released; finish's set fails if already marked. OK.
-- Frame arriving in the grace window: forwarded with its own timestamp, so it extends the video by its gap (trace on anim.html: +0.83 %). Minor, inherent. Separately, the hold-flush tick extends it with no new frame at all (gap 2).
-- No-frames honesty: zero frames at stop is NoFrames at any duration; silence after >= 1 frame is "Quiet", reported in the verdict, never a failure (documented as an inherent limit: static page vs stall cannot be told apart without touching the page). The NoFrames during recording is a stderr warning only; the failure verdict comes at stop() or via health(). Acceptable per D6-10.
-- Pipe transport: Endpoint::Pipe -> SourceError::PipeTransport with no I/O; the message names BLADE_TRANSPORT and `bladebro stop` and ends "Browsing is unaffected." Unit-tested.
-
-## Anti-Patterns Found
+## Findings (non-blocking)
 | File | Line | Pattern | Severity | Impact |
 |---|---|---|---|---|
-| src/record/source/capture_tests/flow.rs | ~200-215 | std::thread::sleep blocking a tokio worker in a test | Blocker | flaky required gate |
-| src/record/encoder/writer.rs | 90-97 | hold flush not bounded by end_at | Major | video longer than the recording, up to +0.5 s |
-| src/record/encoder/lifecycle_tests.rs | 267 | test window (700 ms) shorter than the mechanism under test (1 s tick) | Major | hollow guard for the 06-04 claim |
-| docs/recording-and-launch-config.md | 75 | unconditional "0.0 % drift" claim | Minor | overclaim |
-No TODO/stub. logical_cohesion: fine; source/ is split into focused children; capture.rs 423 LOC.
+| docs/recording-and-launch-config.md | 75 | "(at most about 60 ms, since the video is built from whole frame slots)" and "now ends at the stop request" are stated generally, but they were measured only on the tick page | Minor (docs) | Animated pages run about 100 ms long (+0.6 to +1.24 %), from the forced final slot plus frames that arrive during the grace. This phase's own evidence shows it (06-03 trace +0.83 %, 06-04 and this pass bg-control +1.22/+1.24 %). Suggested wording: "within about one frame slot (100 ms at 10 fps) of the recording time; on animated pages frames still in flight at the stop can add up to that". |
+| tests/daemon_lifecycle.rs | 196-204 | fixed 500 ms sleep before reading cli.pid; leaks a daemon when it panics or races | Pre-existing, out of phase | 1/5 full-suite flake on this host under load. Not a Phase 6 regression. Worth a separate fix. |
+| tools/record_sidecar/scenarios/source_live.sh + env.sh | - | leaves one empty mktemp `bbrec.*` dir per invocation | Nit (test tooling) | Temp-dir litter only; no profile data |
+No TODO or stub found. logical_cohesion: fine (capture.rs is about 423 LOC and focused; writer.rs is 125). Layer-1 gates (fp-gate, migration-security, cve-scan, p0-tier) are not shipped in this Rust repo: N/A. Charlotte QA/E2E: not a web/UI phase: N/A. No migrations.
 
-## SC5 / environment substitutions: judgment
-- audit 100/100 (macOS) instead of 111/111 (Linux): honest and equivalent in intent. A (no recorder) == B (recorder attached), so the recorder changes nothing the audit sees. Not a code gap.
-- diff_oracle: genuinely not runnable (websockets missing; installs forbidden), stated as NOT RUN with nothing claimed. Substituted by the Phase 2 probe battery A/B: divergent 0 across 99 keys, plus a wire trace proving only 4 Page methods and an identical Chrome argv. This is strong but **not equivalent**: diff_oracle compares against stock Chrome, while the battery compares bladebro with vs without the recorder. Not a code gap, but **the user must accept** that the DIVERGENT=0 bar was never measured in this phase, or run `python3 tools/diff_oracle/oracle.py` (with `--lane real` if desired) on a host with `websockets`.
-- qol_probe 120/122: the 2 failures are the same pre-existing ones, and the recorder is not on that path. The user must accept those 2 as baseline or have them fixed outside this phase.
-- Linux/Windows/CI: not executed. Note CI would currently hit gap 1.
-Had gaps 1-3 not existed, these items alone would make the phase **human_needed** (user acceptance), not gaps_found.
+## SC5 / environment items the user must accept (not code gaps)
+1. **diff_oracle was never run in this phase.** Python `websockets` is missing and installs are forbidden. The substitutes are the probe-battery A/B (divergent 0 over 99 keys, with vs without the recorder) and the wire trace (4 Page methods, identical argv). These substitutes are strong but not equivalent: they compare bladebro with itself, not with stock Chrome. To close it: run `python3 tools/diff_oracle/oracle.py` on a host with `websockets`.
+2. **audit 100/100 on macOS instead of 111/111 (the Linux figure).** The audit was identical with and without the recorder.
+3. **qol_probe 120/122.** The 2 failures are pre-existing and off the recorder path ("chord cleared the live editor", "nested scroller movement is reported as such").
+4. **No Linux/Windows build and no CI run.** Only macOS arm64, Chrome 154, headless. The stealth baseline in AGENTS.md was measured on Chrome 151.
 
 ## Not verified (honestly)
-- diff_oracle (not runnable here); audit 111 on Linux; Linux/Windows builds and CI; the rb lane; the Chrome 151 baseline (Chrome 154 used).
-- resize / odd-size scenario not re-run by me (06-03-resize.txt read only).
-- Chromium's frames_in_flight floor behavior under extra acks (from memory, not checked).
-- Idle-page drift at a non-integer stop time: derived from code plus the tick8 reproduction, not run directly (the harness only takes whole seconds).
+- diff_oracle, audit 111 on Linux, Linux/Windows/CI, the rb lane, the Chrome 151 baseline.
+- Not re-run by me in this pass: the slow-consumer live scenario and source_stealth.sh (audit/battery A/B). Both were run by me in the previous pass at da5e35c. 06-05 touched only writer.rs, tests, docs and the harness, not the source/wire path.
+- Chromium's frames_in_flight floor under the up-to-2 extra Lagged acks (reasoned, not checked in Chromium source).
+- The theoretical 500 ms in-grace extension; only the about 100 ms case was observed.
 
 ## Gaps Summary
-1. **Blocker:** a flaky 06-04 test makes `cargo test --release` red about 2/3 of the time on this host.
-2. **Major:** the "ends at stop request" fix is incomplete. The hold-flush tick ignores `end_at`; reproduced +5.00 % (worst case +0.5 s); the guard test and the docs overclaim.
-3. **Minor:** ack-before-decode order has no test (mutation survived).
-SC1-SC4 behavior, SAFE-01 wire discipline, the hook and NoFrames honesty are verified live by this pass.
+No code gaps. Previous gaps 1-3 are closed and verified: run 20x, mutation-killed, and checked live. One minor docs inaccuracy should be corrected (non-blocking). The phase passes subject to the user accepting the 4 environment-limited SC5 items above.
 
 _Verified: 2026-10-22_
-_Verifier: gsd-verifier (opus, final adversarial pass)_
+_Verifier: gsd-verifier (opus, final adversarial pass, re-verification after 06-05)_
