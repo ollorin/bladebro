@@ -47,6 +47,8 @@ pub(super) struct Params {
     pub confirm: Duration,
     pub no_frames_after: Duration,
     pub snap: Arc<Mutex<Snap>>,
+    /// First page of Chrome's list at record-start (see `Baseline`).
+    pub head: Option<String>,
 }
 
 struct Cur {
@@ -89,7 +91,7 @@ struct Run {
 }
 
 pub(super) async fn run(p: Params, mut stop_rx: oneshot::Receiver<Option<String>>) -> Merged {
-    let mut r = Run::new(p).await;
+    let mut r = Run::new(p);
     loop {
         tokio::select! {
             biased;
@@ -112,16 +114,8 @@ fn lost_report(tab: &str) -> SourceReport {
 }
 
 impl Run {
-    async fn new(p: Params) -> Run {
-        let head = if p.probe.is_fixed() {
-            None
-        } else {
-            match timeout(LIST_CAP, p.probe.list(&p.tab)).await {
-                Ok(Ok(l)) => agent_tab(&l, &[], super::pick::Rule::ListOrder),
-                _ => None,
-            }
-        };
-        let baseline = Baseline::new(head.as_deref(), &p.tab);
+    fn new(p: Params) -> Run {
+        let baseline = Baseline::new(p.head.as_deref(), &p.tab);
         let now = Instant::now();
         Run {
             segs: vec![SegRec {

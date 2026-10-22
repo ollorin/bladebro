@@ -63,6 +63,20 @@ pub struct SpawnArgs {
     pub scfg: SourceConfig,
     pub poll: Duration,
     pub confirm: Duration,
+    /// `first_head` sampled before the first source started.
+    pub head: Option<String>,
+}
+
+/// The first real page of Chrome's list right now: the baseline for `Baseline`
+/// (None with `Fixed`, or when the list cannot be read).
+pub async fn first_head(probe: &TabProbe, tab: &str) -> Option<String> {
+    if probe.is_fixed() {
+        return None;
+    }
+    match tokio::time::timeout(Duration::from_secs(2), probe.list(tab)).await {
+        Ok(Ok(l)) => agent_tab(&l, &[], Rule::ListOrder),
+        _ => None,
+    }
 }
 
 pub struct Tracker {
@@ -91,6 +105,7 @@ impl Tracker {
             poll: a.poll,
             confirm: a.confirm,
             snap: snap.clone(),
+            head: a.head,
         };
         let task = tokio::spawn(run::run(p, stop_rx));
         Tracker {

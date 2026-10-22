@@ -18,6 +18,8 @@
 mod adapter_tests;
 pub mod env;
 pub mod follow;
+#[cfg(all(test, unix))]
+mod follow_tests;
 pub mod live_env;
 pub mod machine;
 #[cfg(all(test, unix))]
