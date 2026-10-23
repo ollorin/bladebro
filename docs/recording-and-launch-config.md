@@ -158,7 +158,36 @@ How it works:
 
 The environment is read by the long-lived process. A daemon or MCP server started without `BLADE_RECORD` keeps answering "recording is off" until `bladebro stop` (or an MCP restart). The project file `.bladebro.json` is found from that process's working directory.
 
-Browser shutdown finalizes an active recording on a best-effort basis when it comes from MCP shutdown (stdin EOF, signal, idle) or the daemon's normal exit; the next record op returns that report prefixed `previous recording ended with the browser: `. Not covered yet (owned by Phase 9): daemon idle-timeout shutdown, the daemon drift relaunch and Closed-relaunch paths, and a daemon relaunch after a crash. On those the hub may still look active, and the next `record-stop` reports a lost connection. A killed process (SIGKILL) can leave an unfinalized file.
+### When a session ends
+
+Every way a session can end finalizes an active recording the same way: stop feeding frames, close ffmpeg's input, wait a bounded time (worst case about 16 s: 10 s for ffmpeg, 5 s for a last-resort kill, 1 s for its log), and only if ffmpeg does not exit is it killed and the result says so (`unfinalized`). The result is kept for the next record op and returned prefixed `previous recording ended with the browser: `. The partial file stays at the path `record-start` reported. After any of these exits a new `record-start` works (the recorder is never "active forever").
+
+| Exit path | MCP | Daemon | One-shot CLI |
+|---|---|---|---|
+| `record-stop` | finalized | finalized | n/a (record-start is refused) |
+| recorded tab closed, follow mode | continues on the next tab, finalized at stop | same | n/a |
+| recorded tab closed, per-tab mode | that tab's file finalized, the others keep recording | same | n/a |
+| stdin EOF | finalized, reported at next record op | n/a | n/a |
+| SIGTERM / SIGINT | finalized, reported at next record op | finalized, reported at next record op | refused (no recording possible) |
+| `bladebro stop` | n/a | finalized, reported at next record op | n/a |
+| idle timeout (`BLADE_IDLE_TIMEOUT`, default 600 s, 0 disables) | finalized, reported at next record op | finalized, reported at next record op | n/a |
+| Chrome relaunch (lane or settings change, lost connection, `Closed`) | finalized, reported at next record op | finalized, reported at next record op | n/a |
+| Chrome relaunch after the recorder's own connection was already lost | interrupted, partial kept (`recording not clean`) | interrupted, partial kept | n/a |
+| one-shot CLI exit | n/a | n/a | refused (no recording possible): `record-start` needs a long-lived session |
+| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (live timing not measured yet) | same (see Measurements) | n/a |
+| ffmpeg killed mid-recording | interrupted, partial kept | interrupted, partial kept | n/a |
+| Chrome killed mid-recording | handled in Phase 9 plan 02 | handled in Phase 9 plan 02 | n/a |
+| disk low, maximum duration or size | handled in Phase 9 plan 03 | handled in Phase 9 plan 03 | n/a |
+
+Details:
+
+- The idle timeout is not paused by a recording: a recording that sees no tool call for `BLADE_IDLE_TIMEOUT` seconds is finalized with Chrome and reported at the next record op.
+- `bladebro stop` waits for the finalize (the client waits up to 30 s, the finalize is bounded by about 16 s for one file).
+- On macOS and Linux ffmpeg runs in its own process group. A terminal Ctrl-C reaches bladebro only, which then closes ffmpeg's input and finalizes; ffmpeg is not interrupted halfway through writing its trailer. A second signal while finalizing is ignored until the bounded finalize ends. If bladebro itself is killed (SIGKILL), ffmpeg sees its input close and finalizes the file on its own.
+- SIGHUP: the MCP server treats it like SIGTERM; the daemon ignores it on purpose.
+- The one-shot CLI cannot hold a recording because it exits after one command, so `record-start` is refused there with a message to use MCP or the daemon.
+- Windows: Ctrl-C is handled. Closing the console, logoff and shutdown are not handled (that needs a console control handler). If bladebro dies, ffmpeg sees its input close and the job object that contains it ends it; a hard kill can leave an unfinalized file. This was reasoned from the code and not tested on Windows.
+- The matrix above is `MATRIX` in `src/record/exit.rs`; every row is backed by a test in `src/record/exit_tests.rs` or by a live scenario.
 
 ### Per-tab files
 
