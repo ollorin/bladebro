@@ -88,7 +88,7 @@ opened_id() { sed -nE 's/.*tab ([0-9A-F]{32}).*/\1/p' <<<"$1" | head -1; }
 seg_inner() { sed -nE 's/.*segments \[([^]]*)\].*/\1/p' <<<"$1" | head -1; }
 seg_ids() { seg_inner "$1" | tr ',' '\n' | sed -E 's/^ *[0-9.]+ s tab //; s/ \(no frames\)//'; }
 seg_offs() { seg_inner "$1" | tr ',' '\n' | sed -E 's/^ *([0-9.]+) s tab .*/\1/'; }
-rgb_at() { "$FFMPEG" -v error -ss "$2" -i "$1" -frames:v 1 -vf scale=1:1 -f rawvideo -pix_fmt rgb24 - 2>/dev/null | od -An -tu1 | tr -s ' ' | sed 's/^ //'; }
+rgb_at() { "$FFMPEG" -nostdin -v error -ss "$2" -i "$1" -frames:v 1 -vf scale=1:1 -f rawvideo -pix_fmt rgb24 - 2>/dev/null | od -An -tu1 | tr -s ' ' | sed 's/^ //'; }
 tone() { awk -v r="$1" -v g="$2" -v b="$3" 'BEGIN{ if(r>200&&g<60&&b<60)print "red"; else if(b>200&&r<60&&g<60)print "blue"; else if(g>120&&r<60&&b<60)print "green"; else if(r>200&&g>160&&b<60)print "yellow"; else print "other(" r "," g "," b ")"}'; }
 tone_at() { local c; c=$(rgb_at "$1" "$2"); tone $c; }
 # mid_of TEXT K TOTAL: midpoint (s) of segment K (0-based) on the video clock
@@ -104,7 +104,7 @@ analyse() {
   [ -s "$f" ] || { say "FAIL [$id] output file missing or empty: $f"; FAILS=$((FAILS + 1)); return; }
   pj=$("$FFPROBE" -v error -show_entries stream=codec_name,width,height:format=duration -of json "$f" | tr -d '\n ')
   say "[$id] ffprobe: $pj"
-  dec=$("$FFMPEG" -v error -i "$f" -f null - 2>&1 >/dev/null); rc=$?
+  dec=$("$FFMPEG" -nostdin -v error -i "$f" -f null - 2>&1 >/dev/null); rc=$?
   check "$id" "full decode exit=$rc stderr_lines=$(printf '%s' "$dec" | grep -c .)" test "$rc" = 0 -a -z "$dec"
   check "$id" "codec vp9 1280x720 (constant output size)" bash -c "echo '$pj' | grep -q '\"codec_name\":\"vp9\"' && echo '$pj' | grep -q '\"width\":1280' && echo '$pj' | grep -q '\"height\":720'"
   nb=$("$FFPROBE" -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 "$f")
@@ -451,7 +451,7 @@ sc_pertab_close() {
   say "[per-tab-close] tab 2 file: $bfile"
   dur=$("$FFPROBE" -v error -show_entries format=duration -of csv=p=0 "$bfile" 2>/dev/null)
   check per-tab-close "tab 2 file is finalized before record-stop (ffprobe duration '$dur')" python3 -I -c "import sys; float('${dur:-x}')"
-  check per-tab-close "tab 2 file decodes cleanly" test -z "$("$FFMPEG" -v error -i "$bfile" -f null - 2>&1 >/dev/null)"
+  check per-tab-close "tab 2 file decodes cleanly" test -z "$("$FFMPEG" -nostdin -v error -i "$bfile" -f null - 2>&1 >/dev/null)"
   sleep 1
   stop=$("$BB" state record-stop 2>&1); rc=$?
   say "[per-tab-close] record-stop rc=$rc: $stop"
