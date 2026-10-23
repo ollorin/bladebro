@@ -8,7 +8,7 @@
 # profile or ~/.blade; the real lane is not exercised.
 #
 #   bash tools/record_sidecar/scenarios/follow_live.sh [--only ID]   (default: every scenario)
-#   ids: mcp daemon popup close xorigin off perf audit per-tab per-tab-close
+#   ids: mcp daemon popup popup-measure close xorigin off perf audit per-tab per-tab-close
 #   (08-02) per-tab: project-file layer (record.tabs) -> one file per tab, then BLADE_RECORD_TABS=follow
 #   overrides it -> one file; per-tab-close: a closed tab's file is finished while recording continues.
 #
@@ -186,6 +186,34 @@ sc_popup() {
   path2=$(saved_path "$stop2"); analyse popup "$path2" "$stop2"
   unset BLADE_RECORD
   end_scn popup
+}
+
+sc_popup_measure() {
+  say "== popup-measure: window-features popup, agent never runs switch-tab (measurement, no verdict asserted)"
+  new_home; export BLADE_RECORD=1
+  "$BB" nav "$FIX/popup.html" >/dev/null 2>&1
+  local O before after P stop T0
+  O=$(cur_id)
+  before=$("$BB" state tabs 2>&1 | sed -nE 's/^[* ] +([0-9A-F]{32}) .*/\1/p' | sort)
+  "$BB" state record-start pm >/dev/null 2>&1
+  T0=$(date +%s)
+  sleep 1.5
+  "$BB" act click "window" 2>&1 | head -1 | sed 's/^/[popup-measure] click window: /' | tee -a "$EVIDENCE"
+  sleep 4
+  after=$("$BB" state tabs 2>&1 | sed -nE 's/^[* ] +([0-9A-F]{32}) .*/\1/p' | sort)
+  P=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+  say "[popup-measure] opener: $O  popup: $P"
+  say "[popup-measure] tabs after 4 s with no input:"; "$BB" state tabs 2>&1 | sed 's/^/[popup-measure]   /' | tee -a "$EVIDENCE"
+  say "[popup-measure] wall-clock s since record-start at the input action: $(( $(date +%s) - T0 ))"
+  "$BB" act press Tab 2>&1 | head -1 | sed 's/^/[popup-measure] input action (press Tab): /' | tee -a "$EVIDENCE"
+  sleep 4
+  say "[popup-measure] tabs after the input action:"; "$BB" state tabs 2>&1 | sed 's/^/[popup-measure]   /' | tee -a "$EVIDENCE"
+  say "[popup-measure] wall-clock s since record-start at record-stop: $(( $(date +%s) - T0 ))"
+  stop=$("$BB" state record-stop 2>&1); say "[popup-measure] stop: $stop"
+  say "[popup-measure] segment tab ids in order: $(seg_ids "$stop" | tr '\n' ' ')"
+  say "[popup-measure] segment offsets (s): $(seg_offs "$stop" | tr '\n' ' ')"
+  unset BLADE_RECORD
+  end_scn popup-measure
 }
 
 sc_close() {
@@ -442,10 +470,10 @@ sc_audit() {
   end_scn audit
 }
 
-for id in mcp daemon popup close xorigin off perf audit per-tab per-tab-close; do
+for id in mcp daemon popup popup-measure close xorigin off perf audit per-tab per-tab-close; do
   want "$id" || continue
   case "$id" in
-    mcp) sc_mcp ;; daemon) sc_daemon ;; popup) sc_popup ;; close) sc_close ;; xorigin) sc_xorigin ;;
+    mcp) sc_mcp ;; daemon) sc_daemon ;; popup) sc_popup ;; popup-measure) sc_popup_measure ;; close) sc_close ;; xorigin) sc_xorigin ;;
     off) sc_off ;; perf) sc_perf ;; audit) sc_audit ;;
     per-tab) sc_pertab ;; per-tab-close) sc_pertab_close ;;
   esac

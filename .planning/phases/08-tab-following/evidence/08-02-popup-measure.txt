@@ -1,0 +1,23 @@
+# follow_live.sh 08-01/08-02  started 2026-10-23T00:37:34Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (242bbe0-dirty))  chrome: bladebro 4.6.5
+# git: 242bbe0
+== popup-measure: window-features popup, agent never runs switch-tab (measurement, no verdict asserted)
+[popup-measure] click window: outcome: new tab opened — C (tab E1FFCD576B9460B0AC1EEE071B5ABC6A)
+[popup-measure] opener: 7721777F2CF79AB861F70B049A5A6CF1  popup: E1FFCD576B9460B0AC1EEE071B5ABC6A
+[popup-measure] tabs after 4 s with no input:
+[popup-measure]     E1FFCD576B9460B0AC1EEE071B5ABC6A  C — http://127.0.0.1:8765/c.html
+[popup-measure]   * 7721777F2CF79AB861F70B049A5A6CF1  Popup — http://127.0.0.1:8765/popup.html
+[popup-measure]   (* = current tab; switch-tab <target_id> to change)
+[popup-measure] wall-clock s since record-start at the input action: 7
+[popup-measure] input action (press Tab): outcome: pressed Tab
+[popup-measure] tabs after the input action:
+[popup-measure]     E1FFCD576B9460B0AC1EEE071B5ABC6A  C — http://127.0.0.1:8765/c.html
+[popup-measure]   * 7721777F2CF79AB861F70B049A5A6CF1  Popup — http://127.0.0.1:8765/popup.html
+[popup-measure]   (* = current tab; switch-tab <target_id> to change)
+[popup-measure] wall-clock s since record-start at record-stop: 11
+[popup-measure] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.5UVlpKx2LF/recordings/pm-20261023T003737Z-5bb260.webm (bytes 36311, duration 10.8 s, frames 108, dropped 0, segments [0.0 s tab 7721777F2CF79AB861F70B049A5A6CF1, 3.7 s tab E1FFCD576B9460B0AC1EEE071B5ABC6A, 10.7 s tab 7721777F2CF79AB861F70B049A5A6CF1], captured 78)
+[popup-measure] segment tab ids in order: 7721777F2CF79AB861F70B049A5A6CF1 E1FFCD576B9460B0AC1EEE071B5ABC6A 7721777F2CF79AB861F70B049A5A6CF1 
+[popup-measure] segment offsets (s): 0.0 3.7 10.7 
+PASS [popup-measure] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-23T00:37:49Z failures=0

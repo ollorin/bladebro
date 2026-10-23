@@ -166,7 +166,7 @@ Plans:
 **Depends on**: Phase 7
 **Requirements**: CAPT-03, CAPT-04
 **Success Criteria** (what must be TRUE):
-  1. In default mode, `switch-tab`, `open-tab` and a popup rebind capture into the same file, and `record-stop` lists each switch as a segment boundary with its time offset
+  1. In default mode, `switch-tab` and `open-tab` rebind capture into the same file, and `record-stop` lists each switch as a segment boundary with its time offset. A click-opened popup (`target=_blank` / `window.open`) leaves the opener as the agent's page, so it becomes a segment after `switch-tab` to it; a window-feature popup (`window.open(..., 'width=500,height=400')`) is followed without `switch-tab`, per live measurement (evidence/08-02-popup-measure.txt)
   2. Closing the recorded tab or a cross-origin process swap does not silently end the recording; the outcome is reported
   3. With per-tab-files mode enabled, each tab produces its own file and `record-stop` lists all of them
   4. Integration tests on popup and tab-switch fixtures cover both modes
