@@ -174,7 +174,7 @@ Every way a session can end finalizes an active recording the same way: stop fee
 | Chrome relaunch (lane or settings change, lost connection, `Closed`) | finalized, reported at next record op | finalized, reported at next record op | n/a |
 | Chrome relaunch after the recorder's own connection was already lost | interrupted, partial kept (`recording not clean`) | interrupted, partial kept | n/a |
 | one-shot CLI exit | n/a | n/a | refused (no recording possible): `record-start` needs a long-lived session |
-| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (live timing not measured yet) | same (see Measurements) | n/a |
+| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (live timing not measured yet) | same | n/a |
 | ffmpeg killed mid-recording | interrupted, partial kept | interrupted, partial kept | n/a |
 | Chrome killed mid-recording | handled in Phase 9 plan 02 | handled in Phase 9 plan 02 | n/a |
 | disk low, maximum duration or size | handled in Phase 9 plan 03 | handled in Phase 9 plan 03 | n/a |
