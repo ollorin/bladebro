@@ -66,6 +66,8 @@ pub(super) struct Snap {
     pub health: Health,
     /// Per-tab mode: every file so far, in tab order.
     pub files: Vec<std::path::PathBuf>,
+    /// The follower gave up on Chrome (3 failed tab-list reads in a row).
+    pub lost: bool,
 }
 
 pub struct SpawnArgs {
@@ -121,6 +123,7 @@ impl Tracker {
             tab: a.tab.clone(),
             health: a.first.health(),
             files: a.policy.files(),
+            lost: false,
         }));
         let per_tab = matches!(a.policy, Policy::PerTab(_));
         let extra = match &a.policy {
@@ -160,6 +163,11 @@ impl Tracker {
             .unwrap_or_else(|e| e.into_inner())
             .health
             .clone()
+    }
+
+    /// Chrome stopped answering the tab list (the recording guard's trigger).
+    pub fn browser_lost(&self) -> bool {
+        self.snap.lock().unwrap_or_else(|e| e.into_inner()).lost
     }
 
     /// Per-tab mode: the files so far (empty in follow mode).

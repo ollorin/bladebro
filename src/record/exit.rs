@@ -145,7 +145,25 @@ pub const MATRIX: &[Row] = &[
         "Chrome killed mid-recording",
         "mcp+daemon",
         INTERRUPTED,
-        "planned: 09-02",
+        "guard_tests::chrome_killed_no_calls",
+    ),
+    row(
+        "ffmpeg killed, noticed by the guard (no agent call)",
+        "mcp+daemon",
+        INTERRUPTED,
+        "guard_tests::kill_ffmpeg",
+    ),
+    row(
+        "recorder connection lost, Chrome alive",
+        "mcp+daemon",
+        "recording not misreported; stop ends it, next start works",
+        "guard_tests::lost_cdp_only",
+    ),
+    row(
+        "per-tab recording, Chrome killed",
+        "mcp+daemon",
+        INTERRUPTED,
+        "guard_tests::per_tab_interrupted",
     ),
     row(
         "disk low / max duration / max size",

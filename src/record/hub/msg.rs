@@ -150,3 +150,34 @@ pub fn follower_stuck() -> String {
 pub fn orphan_prefix() -> &'static str {
     "previous recording ended with the browser: "
 }
+
+/// Parked results that already say what happened start with this; they are
+/// not prefixed with `orphan_prefix` (it would claim the browser ended them).
+const INTERRUPTED: &str = "previous recording interrupted: ";
+
+/// The stored orphan text as the next record op prints it.
+pub fn orphan_text(t: &str) -> String {
+    if t.starts_with(INTERRUPTED) {
+        t.to_string()
+    } else {
+        format!("{}{t}", orphan_prefix())
+    }
+}
+
+pub fn reason_browser_lost() -> &'static str {
+    "browser connection lost"
+}
+
+pub fn reason_encoder_dead() -> &'static str {
+    "encoder exited"
+}
+
+/// LIFE-02: the guard ended a recording early. `finish` is the finalize report
+/// (never "saved": the recording did not end by the agent's stop).
+pub fn interrupted(reason: &str, at_s: f64, path: &str, finish: &str) -> String {
+    let finish = match finish.strip_prefix("recording saved: ") {
+        Some(rest) => format!("finalized: {rest}"),
+        None => finish.to_string(),
+    };
+    format!("{INTERRUPTED}{reason} at {at_s:.1} s; partial file kept: {path}. {finish}")
+}

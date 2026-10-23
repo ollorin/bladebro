@@ -24,6 +24,7 @@ const BOOT: &str = include_str!("../mcp/server/boot.rs");
 const SERVE: &str = include_str!("../mcp/server/serve.rs");
 const CLI: &str = include_str!("../cli.rs");
 const THIS: &str = include_str!("exit_tests.rs");
+const GUARD_TESTS: &str = include_str!("hub/guard_tests.rs");
 const PREFIX: &str = "previous recording ended with the browser: ";
 
 fn fake(n: usize, off: f64) -> FakeOpts {
@@ -354,6 +355,10 @@ fn matrix_complete() {
         let ok = ["live:", "n/a:", "planned: 09-0"]
             .iter()
             .any(|m| r.test.starts_with(m))
+            || r.test.strip_prefix("guard_tests::").is_some_and(|n| {
+                GUARD_TESTS.contains(&format!("async fn {n}("))
+                    || GUARD_TESTS.contains(&format!("fn {n}("))
+            })
             || THIS.contains(&format!("async fn {}(", r.test))
             || THIS.contains(&format!("fn {}(", r.test));
         assert!(

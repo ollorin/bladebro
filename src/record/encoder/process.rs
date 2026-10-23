@@ -225,6 +225,14 @@ impl Encoder {
         &self.path
     }
 
+    /// ffmpeg can no longer take frames: the writer hit a write error (broken
+    /// pipe after a kill), or the process has exited. Non-blocking and does
+    /// not reap (the child stays waitable for `finish`). Used by the recording
+    /// guard to end an interrupted recording early.
+    pub fn is_dead(&self) -> bool {
+        self.shared.write_error.get().is_some() || self.pid.is_some_and(process_exited)
+    }
+
     pub fn frames_dropped(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
     }
@@ -330,6 +338,35 @@ impl Encoder {
 
 fn elapsed_ms(since: Instant) -> u64 {
     u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// True once `pid` (our child) has exited, without reaping it: a zombie still
+/// answers `kill(pid, 0)`, so ask `waitid` with WNOWAIT instead.
+#[cfg(unix)]
+fn process_exited(pid: u32) -> bool {
+    // SAFETY: zeroed siginfo_t is a valid out-parameter for waitid; WNOHANG|WNOWAIT
+    // only inspects the child's state.
+    unsafe {
+        let mut info: libc::siginfo_t = std::mem::zeroed();
+        let r = libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        );
+        if r != 0 {
+            // ECHILD: already reaped elsewhere, so it is gone.
+            return std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD);
+        }
+        info.si_pid() != 0
+    }
+}
+
+/// Windows: the writer's write error is the signal (a dead ffmpeg closes the
+/// pipe); no cheap non-reaping exit check without more Win32 surface.
+#[cfg(not(unix))]
+fn process_exited(_pid: u32) -> bool {
+    false
 }
 
 #[cfg(test)]

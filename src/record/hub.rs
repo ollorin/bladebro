@@ -7,6 +7,7 @@
 //! - `env`: `HubEnv` (config, ffmpeg, lane, current tab, attach) injected into the machine.
 //! - `follow`: tab following (CAPT-03): follower task, agent-tab rule, segment sink, merge.
 //! - `follow_report`: pure per-tab stop result (CAPT-04), one compact line for every file.
+//! - `guard`: per-recording task that finalizes early on a dead browser/encoder (LIFE-02).
 //! - `machine`: `Hub` state machine (start/stop/finish_orphan, start-failure cleanup, encoder hand-back).
 //! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
 //!
@@ -27,6 +28,9 @@ pub mod follow_report;
 mod follow_report_tests;
 #[cfg(all(test, unix))]
 mod follow_tests;
+pub mod guard;
+#[cfg(all(test, unix))]
+mod guard_tests;
 pub mod live_env;
 pub mod machine;
 #[cfg(all(test, unix))]
@@ -178,6 +182,10 @@ pub async fn try_handle(args: &Value, page: &Page) -> Option<crate::error::Resul
         Some(n) => h.start(&env, n).await,
         None => h.stop(&env).await,
     };
+    // LIFE-02: a started recording gets its guard (generation-checked).
+    if let (Some(_), Ok(_), Some(g)) = (name, &r, h.active_gen()) {
+        guard::spawn(hub(), g, guard::GUARD_TICK);
+    }
     Some(r.map_err(map_err))
 }
 

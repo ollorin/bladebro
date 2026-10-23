@@ -57,7 +57,27 @@ pub struct Knobs {
     pub no_frames_after: Option<Duration>,
 }
 
+/// Why the guard ended a recording early (LIFE-02).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Interrupt {
+    /// The follower lost Chrome (browser killed or its port gone).
+    BrowserLost,
+    /// ffmpeg is dead or its pipe is broken.
+    EncoderDead,
+}
+
+/// What one guard tick learned about its recording.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Verdict {
+    /// Not the active recording any more (stopped, replaced): the guard exits.
+    Gone,
+    Healthy,
+    Interrupted(Interrupt),
+}
+
 struct Active {
+    /// Generation of this recording; a guard only acts on its own (D9-7).
+    gen: u64,
     path: PathBuf,
     /// The one encoder (follow mode); per-tab files are owned by the follower.
     enc: Option<Arc<Encoder>>,
@@ -73,6 +93,8 @@ pub struct Hub {
     /// returned by the next stop and prepended to the next start (D7-7).
     orphaned: Option<(bool, String)>,
     knobs: Knobs,
+    /// Last generation handed out.
+    last_gen: u64,
 }
 
 /// Get the encoder back from the shared handle once the source released its
@@ -110,6 +132,55 @@ impl Hub {
 
     pub fn is_active(&self) -> bool {
         self.active.is_some()
+    }
+
+    /// Generation of the active recording (None when idle).
+    pub fn active_gen(&self) -> Option<u64> {
+        self.active.as_ref().map(|a| a.gen)
+    }
+
+    /// One guard tick: cheap, non-async, no I/O.
+    pub fn verdict(&self, gen: u64) -> Verdict {
+        let Some(a) = self.active.as_ref().filter(|a| a.gen == gen) else {
+            return Verdict::Gone;
+        };
+        if a.rec.browser_lost() {
+            return Verdict::Interrupted(Interrupt::BrowserLost);
+        }
+        if a.enc.as_ref().is_some_and(|e| e.is_dead()) {
+            return Verdict::Interrupted(Interrupt::EncoderDead);
+        }
+        Verdict::Healthy
+    }
+
+    /// Finalize the recording early (stdin closed so the partial file plays to
+    /// the cut) and park an honest `interrupted` result, but only if `gen` is
+    /// still the active recording: a stale guard never stops a newer one.
+    pub async fn interrupt_if(&mut self, gen: u64, why: Interrupt) -> bool {
+        if self.active.as_ref().map(|a| a.gen) != Some(gen) {
+            return false;
+        }
+        let Some(a) = self.active.take() else {
+            return false;
+        };
+        let (at_s, path) = (a.started.elapsed().as_secs_f64(), a.path.clone());
+        let finish = match self.finish_active(a, None).await {
+            Ok(t) | Err(HubError::Failed(t)) | Err(HubError::Usage(t)) => t,
+        };
+        let reason = match why {
+            Interrupt::BrowserLost => msg::reason_browser_lost(),
+            Interrupt::EncoderDead => msg::reason_encoder_dead(),
+        };
+        self.orphaned = Some((
+            false,
+            scrub(&msg::interrupted(
+                reason,
+                at_s,
+                &path.display().to_string(),
+                &finish,
+            )),
+        ));
+        true
     }
 
     /// Text of the stored orphan result, if any (best-effort logging).
@@ -232,7 +303,9 @@ impl Hub {
             poll: self.knobs.poll.unwrap_or(POLL),
             confirm: self.knobs.confirm.unwrap_or(CONFIRM),
         });
+        self.last_gen += 1;
         self.active = Some(Active {
+            gen: self.last_gen,
             path,
             enc,
             rec,
@@ -240,7 +313,7 @@ impl Hub {
             fps: cfg.fps,
         });
         let text = match self.orphaned.take() {
-            Some((_, t)) => format!("{}{t}\n{text}", msg::orphan_prefix()),
+            Some((_, t)) => format!("{}\n{text}", msg::orphan_text(&t)),
             None => text,
         };
         Ok(scrub(&text))
@@ -251,7 +324,7 @@ impl Hub {
         let Some(a) = self.active.take() else {
             return match self.orphaned.take() {
                 Some((ok, t)) => {
-                    let t = scrub(&format!("{}{t}", msg::orphan_prefix()));
+                    let t = scrub(&msg::orphan_text(&t));
                     if ok {
                         Ok(t)
                     } else {

@@ -235,6 +235,7 @@ impl Run {
             s.health = c.src.health();
         }
         s.files = self.policy.files();
+        s.lost = self.lost;
     }
 
     async fn tick(&mut self) {

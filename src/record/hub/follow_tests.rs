@@ -145,6 +145,11 @@ impl Rig {
         }
     }
 
+    /// Script a browser that stopped answering the tab list.
+    pub(super) fn fail(&self, f: bool) {
+        self.list.lock().expect("list").fail = f;
+    }
+
     pub(super) fn set(&self, tabs: Vec<TabView>) {
         self.list.lock().expect("list").tabs = tabs;
     }
