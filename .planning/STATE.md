@@ -1,5 +1,7 @@
 # Project State
 
+> **ON HOLD (user request, 2026-10-23):** Phases 1-8 and 4.1 verified; Phase 9 executed but NOT verified; resume with /gsd:execute-roadmap, then run the sonnet + adversarial opus verification for Phase 9 first.
+
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-10-21)
@@ -66,3 +68,5 @@ None yet.
 Last session: 2026-10-21
 Stopped at: Roadmap and state initialized
 Resume file: None
+
+- [Phase 9 status 2026-10-23]: EXECUTED, NOT VERIFIED (no sonnet/opus pass yet). 09-01..09-03 done; last known 772 pass / 0 fail / 12 ignored (not re-run after hold), audit 100/100, qol_probe 120/122 (two known), exit_live 91 PASS. Upstream hooks: src/cli/daemon.rs, src/session_profile/reap.rs (HOOKS.md).

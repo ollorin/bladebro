@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [x] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
-- [ ] **Phase 9: Finalization on Every Exit Path** - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
+- [ ] **Phase 9: Finalization on Every Exit Path** (EXECUTED, NOT VERIFIED) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [ ] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
 - [ ] **Phase 12: Full Instrument Gate** - Test-suite completeness plus the full stealth, cross-platform and regression gate with recording on
@@ -188,9 +188,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 09-01: `finish()` hooks in MCP teardown, daemon shutdown/idle, `bladebro stop`, one-shot CLI, signal handling
-- [ ] 09-02: Crash/relaunch handling + reaper extension for ffmpeg children + orphan test
-- [ ] 09-03: Free-space check ("disk low" stop) + size-per-minute measurements in docs
+- [x] 09-01: `finish()` hooks in MCP teardown, daemon shutdown/idle, `bladebro stop`, one-shot CLI, signal handling
+- [x] 09-02: Crash/relaunch handling + reaper extension for ffmpeg children + orphan test
+- [x] 09-03: Free-space check ("disk low" stop) + size-per-minute measurements in docs
 
 ### Phase 10: Evidence Extras
 **Goal**: A reviewer can see at a glance what the recording shows and jump to the moment that matters
