@@ -123,7 +123,7 @@ sc_daemon_rec() {
   say "[daemon-rec] record-stop rc=$rc_o: $stop"
   check daemon-rec "start and stop exit 0" test "$rc_s" = 0 -a "$rc_o" = 0
   check daemon-rec "report says recording saved" grep -q "recording saved: " <<<"$stop"
-  check daemon-rec "tab note present (agent is now on tab)" grep -q "agent is now on tab" <<<"$stop"
+  check daemon-rec "segments listing shows the open-tab follow (two segments)" grep -Eq 'segments \[0\.0 s tab [^,]+, [0-9.]+ s tab ' <<<"$stop"
   path=$(saved_path "$stop")
   check daemon-rec "absolute path exists" test -n "$path" -a -f "$path"
   size=$(fsize "$path"); say "[daemon-rec] file size $size, reported bytes $(num_after "$stop" bytes)"

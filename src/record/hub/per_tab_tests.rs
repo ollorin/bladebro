@@ -329,7 +329,11 @@ async fn a_stop_is_bounded_when_one_encoder_ignores_eof() {
         tokio::time::sleep(Duration::from_millis(300)).await;
         r.set(vec![view("B", &b.url), view("A", &a.url)]);
         until("B started", || started(&b)).await;
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // The fake ffmpeg exec()s into `sleep` asynchronously: poll, don't guess.
+        until("the hung encoder to exec sleep", || {
+            count_alive("sleep 4242.7") == 1
+        })
+        .await;
         assert_eq!(count_alive("sleep 4242.7"), 1);
         let t0 = Instant::now();
         let t = err(r.hub.stop(&r.env).await);
