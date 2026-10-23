@@ -1,0 +1,20 @@
+# hub_live.sh 07-03  started 2026-10-23T00:28:17Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (242bbe0-dirty))  chrome: bladebro 4.6.5
+# git: 242bbe0
+== daemon-rec: CLI daemon record-start, browse, record-stop
+[daemon-rec] record-start rc=0: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub.hbfPfFAnrH/recordings/d1-20261023T003129Z-c0da18.webm (tab 0282D2FCF2B5CF3E6B57CC81D50DE22B); first frame not awaited. record-stop saves it.
+[daemon-rec] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub.hbfPfFAnrH/recordings/d1-20261023T003129Z-c0da18.webm (bytes 38162, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab 0282D2FCF2B5CF3E6B57CC81D50DE22B, 1.8 s tab 05E7D85118728D6B30433C01068100D0], captured 63)
+PASS [daemon-rec] start and stop exit 0
+PASS [daemon-rec] report says recording saved
+PASS [daemon-rec] segments listing shows the open-tab follow (two segments)
+PASS [daemon-rec] absolute path exists
+[daemon-rec] file size 38162, reported bytes 38162
+PASS [daemon-rec] reported bytes equal file size
+[daemon-rec] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.000000"}}
+PASS [daemon-rec] full decode exit=0 stderr_lines=0
+PASS [daemon-rec] codec vp9 1280x720
+[daemon-rec] duration 8.0 s vs wall 8.47 s: drift 5.6% (5% bar: NOT met)
+PASS [daemon-rec] duration within 10% of wall clock (5.6%)
+PASS [daemon-rec] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-23T00:31:40Z failures=0
