@@ -55,6 +55,8 @@ pub struct Row {
 }
 
 pub const FINALIZED: &str = "finalized";
+pub const FINALIZED_GONE: &str =
+    "finalized, file plays in full (the session is gone: nothing reports it)";
 pub const REPORTED_LATER: &str = "finalized, reported at next record op";
 pub const INTERRUPTED: &str = "interrupted, partial kept";
 pub const REFUSED: &str = "refused (no recording possible)";
@@ -90,18 +92,18 @@ pub const MATRIX: &[Row] = &[
         "that tab's file finalized, the others keep recording",
         "row_per_tab_close",
     ),
-    row("stdin EOF", "mcp", REPORTED_LATER, "row_stdin_eof_mcp"),
-    row("SIGTERM / SIGINT", "mcp", REPORTED_LATER, "row_signal_mcp"),
+    row("stdin EOF", "mcp", FINALIZED_GONE, "row_stdin_eof_mcp"),
+    row("SIGTERM / SIGINT", "mcp", FINALIZED_GONE, "row_signal_mcp"),
     row(
         "SIGTERM / SIGINT",
         "daemon",
-        REPORTED_LATER,
+        FINALIZED_GONE,
         "row_signal_daemon",
     ),
     row(
         "bladebro stop",
         "daemon",
-        REPORTED_LATER,
+        FINALIZED_GONE,
         "row_bladebro_stop_daemon",
     ),
     row("idle timeout", "mcp", REPORTED_LATER, "row_idle_mcp"),
@@ -134,7 +136,7 @@ pub const MATRIX: &[Row] = &[
         "kill -9 of bladebro",
         "mcp+daemon",
         SELF_FINALIZED,
-        "live: evidence/09-02-kill9.txt, 09-03-live.txt (exit_live.sh mcp_kill9, daemon_kill9)",
+        "live: evidence/09-03-live.txt (exit_live.sh mcp_kill9, daemon_kill9; also 09-02-kill9.txt)",
     ),
     row(
         "ffmpeg killed mid-recording",

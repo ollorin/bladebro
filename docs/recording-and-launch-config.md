@@ -160,31 +160,32 @@ The environment is read by the long-lived process. A daemon or MCP server starte
 
 ### When a session ends
 
-Every way a session can end finalizes an active recording the same way: stop feeding frames, close ffmpeg's input, wait a bounded time (worst case about 16 s: 10 s for ffmpeg, 5 s for a last-resort kill, 1 s for its log), and only if ffmpeg does not exit is it killed and the result says so (`unfinalized`). The result is kept for the next record op and returned prefixed `previous recording ended with the browser: `. The partial file stays at the path `record-start` reported. After any of these exits a new `record-start` works (the recorder is never "active forever").
+Every way a session can end finalizes an active recording the same way: stop feeding frames, close ffmpeg's input, wait a bounded time (worst case about 16 s: 10 s for ffmpeg, 5 s for a last-resort kill, 1 s for its log), and only if ffmpeg does not exit is it killed and the result says so (`unfinalized`). The result is kept for the next record op and returned prefixed `previous recording ended with the browser: `. In the MCP lane the first call after Chrome died may start with a one-line `note: Chrome was restarted ...` before the recording text. The partial file stays at the path `record-start` reported. After any of these exits a new `record-start` works (the recorder is never "active forever").
 
 | Exit path | MCP | Daemon | One-shot CLI |
 |---|---|---|---|
 | `record-stop` | finalized | finalized | n/a (record-start is refused) |
 | recorded tab closed, follow mode | continues on the next tab, finalized at stop | same | n/a |
 | recorded tab closed, per-tab mode | that tab's file finalized, the others keep recording | same | n/a |
-| stdin EOF | finalized, reported at next record op | n/a | n/a |
-| SIGTERM / SIGINT | finalized, reported at next record op | finalized, reported at next record op | refused (no recording possible) |
-| `bladebro stop` | n/a | finalized, reported at next record op | n/a |
-| idle timeout (`BLADE_IDLE_TIMEOUT`, default 600 s, 0 disables) | finalized, reported at next record op | finalized, reported at next record op | n/a |
+| stdin EOF | finalized, file plays in full (live: process exited in about 0.8 s); the session is gone, so nothing reports it | n/a | n/a |
+| SIGTERM / SIGINT | finalized, file plays in full (live: exited in about 0.8 s); nothing reports it | same (live: about 0.8 s) | n/a (record-start is refused) |
+| `bladebro stop` | n/a | finalized, file plays in full (live: returned in about 0.85 s, `daemon stopped`) | n/a |
+| idle timeout (`BLADE_IDLE_TIMEOUT`, default 600 s, 0 disables; checked every 15 s) | finalized, reported at next record op (live: timeout 20 s, Chrome and ffmpeg gone after about 26 s) | same (live: about 26 s) | n/a |
 | Chrome relaunch (lane or settings change, lost connection, `Closed`) | finalized, reported at next record op | finalized, reported at next record op | n/a |
 | Chrome relaunch after the recorder's own connection was already lost | interrupted, partial kept (`recording not clean`) | interrupted, partial kept | n/a |
 | one-shot CLI exit | n/a | n/a | refused (no recording possible): `record-start` needs a long-lived session |
-| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (measured: ffmpeg gone in about 0.1 s, file decodes in full; nothing reports it, the new session has no record of it) | same | n/a |
-| ffmpeg killed mid-recording | interrupted within 2 s, reported at next record op (`encoder exited`); a file that has no data yet is reported as empty | same | n/a |
-| Chrome killed mid-recording | interrupted within about 1 s, file finalized and playable up to the cut, reported at next record op (`browser connection lost`) | same | n/a |
+| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (live: ffmpeg gone 62 ms after the kill, file decodes in full; nothing reports it, the new session has no record of it) | same (live: 58 ms) | n/a |
+| ffmpeg killed mid-recording | interrupted within 2 s, reported at next record op (`encoder exited`); a file that has no data yet is reported as empty (live: 0 bytes, VP9 writes at finalize); a new record-start works | same | n/a |
+| Chrome killed mid-recording | interrupted, file finalized and playable up to the cut, reported at next record op (`browser connection lost`); live: ffmpeg gone about 2.1 s after the kill (the stop may instead say `ended with the browser` when the relaunch finds the dead Chrome first); browsing and a new record-start work afterwards | same | n/a |
 | recorder connection lost, Chrome still alive | recording continues when the tab is still listed (the follower reconnects); otherwise stop reports it as not clean; a new start works | same | n/a |
-| disk low, maximum duration or size | handled in Phase 9 plan 03 | handled in Phase 9 plan 03 | n/a |
+| disk low (under 500 MiB free), 2 h maximum duration, 1 GiB per file | stopped and finalized, reported at next record op (see [Disk space and limits](#disk-space-and-limits)) | same | n/a |
 
 What the next record op says after an interruption (exact text; `<T>` is seconds into the recording, `<path>` the file `record-start` reported). It is an error result (the recording did not end by your stop), and it is never `recording saved`:
 
 - `previous recording interrupted: browser connection lost at <T> s; partial file kept: <path>. recording not clean: ...` (Chrome was killed or its debugging port stopped answering)
 - `previous recording interrupted: encoder exited at <T> s; partial file kept: <path>. recording not clean: recording failed: ffmpeg exited with signal: 9 ...` (ffmpeg died)
 - `previous recording interrupted: ...; file is empty, nothing playable: <path>. ...` when the file has no bytes at all (ffmpeg was killed before it wrote anything)
+- `previous recording stopped: disk low (<N> MiB free); saved: <path> (bytes ..., duration ...)`, `previous recording stopped: maximum duration (2 h) reached; saved: ...`, `previous recording stopped: size limit (1 GiB) reached; saved: ...` (a limit stop; see [Disk space and limits](#disk-space-and-limits))
 - `previous recording ended with the browser: ...` when a Chrome relaunch, idle timeout or shutdown finalized it first (the usual case when the next call is what finds the dead Chrome)
 
 How it is noticed: while a recording runs, a small guard checks it every 2 s. It ends the recording early (closes ffmpeg's input so the file plays up to where it was cut) when the tab list stops answering for three reads in a row (about 0.6 s) or when ffmpeg is dead. The guard never talks to a page, so browsing is unaffected, and a guard from an earlier recording never stops a newer one. In per-tab mode only the browser check applies (every file is finalized); a killed ffmpeg of one tab file shows up in that file's line at stop.
@@ -194,10 +195,37 @@ Details:
 - The idle timeout is not paused by a recording: a recording that sees no tool call for `BLADE_IDLE_TIMEOUT` seconds is finalized with Chrome and reported at the next record op.
 - `bladebro stop` waits for the finalize (the client waits up to 30 s, the finalize is bounded by about 16 s for one file).
 - On macOS and Linux ffmpeg runs in its own process group. A terminal Ctrl-C reaches bladebro only, which then closes ffmpeg's input and finalizes; ffmpeg is not interrupted halfway through writing its trailer. A second signal while finalizing is ignored until the bounded finalize ends. If bladebro itself is killed (SIGKILL), ffmpeg sees its input close and finalizes the file on its own.
+- Live proof (headless Chrome, local fixtures, both lanes, every path above that can be driven): `tools/record_sidecar/scenarios/exit_live.sh`, output kept in `.planning/phases/09-finalization-on-every-exit-path/evidence/09-03-live.txt`. After each exit the file was decoded in full and no ffmpeg, bladebro or scratch Chrome was left within 10 s (they were gone within 0.1 s). One exception, not caused by recording: after `kill -9` of an MCP server its Chrome is not reaped by the next MCP launch (the same happens with no recording; the daemon lane does reap it).
 - SIGHUP: the MCP server treats it like SIGTERM; the daemon ignores it on purpose.
 - The one-shot CLI cannot hold a recording because it exits after one command, so `record-start` is refused there with a message to use MCP or the daemon.
 - Windows: Ctrl-C is handled. Closing the console, logoff and shutdown are not handled (that needs a console control handler). If bladebro dies, ffmpeg sees its input close and the job object that contains it ends it; a hard kill can leave an unfinalized file. This was reasoned from the code and not tested on Windows.
 - The matrix above is `MATRIX` in `src/record/exit.rs`; every row is backed by a test in `src/record/exit_tests.rs` or by a live scenario.
+
+### Disk space and limits
+
+These are fixed values, not settings (no environment variable, no config key). To record longer, stop and start again.
+
+- **Before recording:** `record-start` is refused when the recordings folder's disk has less than 500 MiB free: `recording not started: disk low (<N> MiB free in <dir>, need 500 MiB)`. Nothing is created and no ffmpeg is started.
+- **While recording:** the guard (every 2 s) checks free space. Under 500 MiB it stops the recording and finalizes the file; the next record op says `previous recording stopped: disk low (<N> MiB free); saved: <path> (...)`. The file plays in full up to that point. A free-space reading that fails is never treated as low.
+- **Maximum duration:** 2 h per recording: `previous recording stopped: maximum duration (2 h) reached; saved: ...`.
+- **Maximum file size:** 1 GiB per file (each file in per-tab mode): `previous recording stopped: size limit (1 GiB) reached; saved: ...` (per-tab: `... reached by <file name>; saved (per-tab, N files): ...`).
+- The recording is finalized in every case, so the result is `saved`, not an error. A new `record-start` works afterwards (it is refused only while the disk is still low).
+- Windows: the free-space check is not available (the disk guard is off); the duration and size limits still apply.
+- Why 500 MiB: two minutes at the largest setting (3840x2160, 15 fps) is about 5 MB in the measurements below, so 500 MiB leaves a very large margin, including for busier pages. 2 h costs about 80 MB at the defaults and about 320 MB at the largest setting, so the 2 h limit bites before 1 GiB in practice.
+- Verified with injected free-space values and short limits in unit tests (`guard_tests`, `disk_tests`). A real disk was never filled and a real 2 h recording was never made.
+
+### File size per minute
+
+| Setting | Phase 2 measurement | Phase 9 measurement |
+|---|---|---|
+| default: webm (VP9), 10 fps, 1280x720 | about 0.87 MB/min | 0.67 MB/min |
+| mp4 (H.264), 10 fps, 1280x720 | about 0.54 MB/min | 0.42 MB/min |
+| webm, 15 fps, 1280x720 | about 1.15 MB/min | 1.05 MB/min |
+| webm, 10 fps, 1920x1080 | about 1.12 MB/min | 0.84 MB/min |
+| largest: webm, 15 fps, 3840x2160 | not measured | 2.67 MB/min |
+| largest: mp4, 15 fps, 3840x2160 | not measured | 1.78 MB/min |
+
+Phase 9 numbers: one 60 s recording per setting, headless Chrome on macOS arm64, a local moving-box fixture (`tools/record_sidecar/fixtures/anim.html`), 1 MB = 10^6 bytes, duration from ffprobe; raw lines in `.planning/phases/09-finalization-on-every-exit-path/evidence/09-03-sizes.txt`. It is one fixture and one run each: real pages move more or less, so treat the figures as an order of magnitude (a mostly static page is smaller, a video or busy page larger). Two hours is about 80 MB at the defaults and about 320 MB at the largest setting (webm).
 
 ### Leftover encoders
 

@@ -397,7 +397,7 @@ def sc_idle(lane):
         check(sid, f"idle timeout ({IDLE_S} s, checked every 15 s) closed Chrome and ffmpeg (after {gone and round(gone, 1)} s)", gone is not None)
         e, t = d.state("record-stop")
         say(f"[{sid}] record-stop err={e}: {t}")
-        check(sid, "text starts 'previous recording ended with the browser: '", t.startswith("previous recording ended with the browser: ") or "previous recording ended with the browser: " in t)
+        check(sid, "text contains 'previous recording ended with the browser: ' (after the self-heal note line)", "previous recording ended with the browser: " in t)
         analyse(sid, path)
         e, t = d.nav(f"{FIX}/anim.html")
         e, t = d.state("record-start", name="again")
@@ -454,7 +454,7 @@ def sc_kill_chrome(lane):
         time.sleep(1)
         e, t = d.state("record-stop")
         say(f"[{sid}] record-stop err={e}: {t}")
-        check(sid, "text: 'previous recording interrupted: browser connection lost'",
+        check(sid, "text: 'previous recording interrupted: browser connection lost' (or the relaunch hook's 'ended with the browser')",
               "previous recording interrupted: browser connection lost" in t or "ended with the browser" in t)
         check(sid, "never claims a clean save", not t.startswith("recording saved"))
         analyse(sid, path)
