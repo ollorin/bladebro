@@ -170,9 +170,13 @@ impl Hub {
             return false;
         };
         let (at_s, path) = (a.started.elapsed().as_secs_f64(), a.path.clone());
+        let one_file = a.enc.is_some();
         let finish = match self.finish_active(a, None).await {
             Ok(t) | Err(HubError::Failed(t)) | Err(HubError::Usage(t)) => t,
         };
+        // Judged after the finalize (ffmpeg writes its output on EOF). Follow
+        // mode has one file; per-tab files are judged by their own report.
+        let empty = one_file && std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) == 0;
         let reason = match why {
             Interrupt::BrowserLost => msg::reason_browser_lost(),
             Interrupt::EncoderDead => msg::reason_encoder_dead(),
@@ -183,6 +187,7 @@ impl Hub {
                 reason,
                 at_s,
                 &path.display().to_string(),
+                empty,
                 &finish,
             )),
         ));

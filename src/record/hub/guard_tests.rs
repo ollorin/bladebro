@@ -289,6 +289,7 @@ fn texts_scrubbed() {
             r,
             3.2,
             "/tmp/x.webm",
+            false,
             "recording saved: /tmp/x.webm (frames 3)",
         );
         assert_eq!(scrub(&t), t);
@@ -296,4 +297,48 @@ fn texts_scrubbed() {
         assert!(!t.contains("recording saved"), "{t}");
         assert!(t.contains("finalized: "), "{t}");
     }
+}
+
+#[test]
+fn empty_file_is_not_called_a_partial() {
+    let t = super::msg::interrupted(
+        "encoder exited",
+        4.0,
+        "/tmp/x.webm",
+        true,
+        "recording not clean",
+    );
+    assert!(
+        t.contains("file is empty, nothing playable: /tmp/x.webm"),
+        "{t}"
+    );
+    assert!(!t.contains("partial file kept"), "{t}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn browser_lost_with_an_empty_file_says_so() {
+    // The encoder swallowed everything and wrote nothing: "partial file kept"
+    // would promise a playable file that does not exist.
+    guard40(async {
+        let a = FakeCdp::start(fake(400, 0.0)).await;
+        let mut r = Rig::with("ge", &a, "cat > /dev/null", Tabs::Follow, LONG).await;
+        let h = shared(&mut r);
+        let (path, _g) = start_guarded(&r, &h).await;
+        until("screencast", || started(&a)).await;
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        a.close_now();
+        r.fail(true);
+        until_idle(&h, "browser lost").await;
+        let t = err(h.lock().await.stop(&r.env).await);
+        assert_eq!(std::fs::metadata(&path).expect("file").len(), 0);
+        assert!(
+            t.contains(&format!(
+                "file is empty, nothing playable: {}",
+                path.display()
+            )),
+            "{t}"
+        );
+        assert!(!t.contains("partial file kept"), "{t}");
+    })
+    .await;
 }

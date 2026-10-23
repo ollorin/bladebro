@@ -174,10 +174,17 @@ pub fn reason_encoder_dead() -> &'static str {
 
 /// LIFE-02: the guard ended a recording early. `finish` is the finalize report
 /// (never "saved": the recording did not end by the agent's stop).
-pub fn interrupted(reason: &str, at_s: f64, path: &str, finish: &str) -> String {
+pub fn interrupted(reason: &str, at_s: f64, path: &str, empty: bool, finish: &str) -> String {
     let finish = match finish.strip_prefix("recording saved: ") {
         Some(rest) => format!("finalized: {rest}"),
         None => finish.to_string(),
     };
-    format!("{INTERRUPTED}{reason} at {at_s:.1} s; partial file kept: {path}. {finish}")
+    // An encoder killed before it wrote anything leaves a 0-byte file: say so
+    // instead of promising a playable partial.
+    let file = if empty {
+        format!("file is empty, nothing playable: {path}")
+    } else {
+        format!("partial file kept: {path}")
+    };
+    format!("{INTERRUPTED}{reason} at {at_s:.1} s; {file}. {finish}")
 }
