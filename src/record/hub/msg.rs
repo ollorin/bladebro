@@ -154,10 +154,12 @@ pub fn orphan_prefix() -> &'static str {
 /// Parked results that already say what happened start with this; they are
 /// not prefixed with `orphan_prefix` (it would claim the browser ended them).
 const INTERRUPTED: &str = "previous recording interrupted: ";
+/// A recording the guard stopped on a limit (LIFE-04), finalized.
+const STOPPED: &str = "previous recording stopped: ";
 
 /// The stored orphan text as the next record op prints it.
 pub fn orphan_text(t: &str) -> String {
-    if t.starts_with(INTERRUPTED) {
+    if t.starts_with(INTERRUPTED) || t.starts_with(STOPPED) {
         t.to_string()
     } else {
         format!("{}{t}", orphan_prefix())
@@ -187,4 +189,47 @@ pub fn interrupted(reason: &str, at_s: f64, path: &str, empty: bool, finish: &st
         format!("partial file kept: {path}")
     };
     format!("{INTERRUPTED}{reason} at {at_s:.1} s; {file}. {finish}")
+}
+
+pub fn reason_disk_low(free_mib: u64) -> String {
+    format!("disk low ({free_mib} MiB free)")
+}
+
+pub fn reason_max_duration() -> String {
+    format!(
+        "maximum duration ({}) reached",
+        crate::record::disk::MAX_DURATION_TEXT
+    )
+}
+
+pub fn reason_max_size(file: Option<&str>) -> String {
+    let by = file.map(|f| format!(" by {f}")).unwrap_or_default();
+    format!(
+        "size limit ({}) reached{by}",
+        crate::record::disk::MAX_FILE_TEXT
+    )
+}
+
+/// Refusal at record-start: nothing is created and no ffmpeg is spawned.
+pub fn disk_low_refusal(free_mib: u64, dir: &str) -> String {
+    format!(
+        "recording not started: disk low ({free_mib} MiB free in {dir}, need {} MiB)",
+        crate::record::disk::DISK_LOW_MIB
+    )
+}
+
+/// LIFE-04: the guard stopped a recording on a limit. The file was finalized;
+/// `finish` is the finalize report ("recording saved: <path> (...)").
+pub fn stopped(reason: &str, path: &str, finish: &str) -> String {
+    // Single file: "recording saved: <p>"; per-tab: "recording saved (per-tab,
+    // N files): <p>; <p>". Both read "saved..." after the reason.
+    let rest = finish
+        .strip_prefix("recording saved")
+        .map_or_else(|| finish.to_string(), |r| format!("saved{r}"));
+    // A failed finalize keeps its own report; the path is then added.
+    if rest.starts_with("saved") {
+        format!("{STOPPED}{reason}; {rest}")
+    } else {
+        format!("{STOPPED}{reason}; {rest} (file: {path})")
+    }
 }

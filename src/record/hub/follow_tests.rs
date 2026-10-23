@@ -6,6 +6,7 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -40,6 +41,8 @@ pub(super) struct Env {
     pub tab: Mutex<String>,
     first_ws: String,
     probe: TabProbe,
+    /// Injected free space (LIFE-04); `u64::MAX` = unknown.
+    pub free: Arc<AtomicU64>,
 }
 
 impl HubEnv for Env {
@@ -62,6 +65,13 @@ impl HubEnv for Env {
     }
     fn probe(&self) -> TabProbe {
         self.probe.clone()
+    }
+    fn free_fn(&self) -> crate::record::disk::FreeFn {
+        let f = self.free.clone();
+        Arc::new(move |_| match f.load(Ordering::SeqCst) {
+            u64::MAX => None,
+            v => Some(v),
+        })
     }
 }
 
@@ -127,6 +137,7 @@ impl Rig {
             tab: Mutex::new("A".into()),
             first_ws: first.url.clone(),
             probe,
+            free: Arc::new(AtomicU64::new(u64::MAX)),
         };
         let hub = Hub::with_knobs(Knobs {
             stop_grace: Some(Duration::from_millis(100)),
@@ -135,6 +146,7 @@ impl Rig {
             confirm: Some(Duration::from_millis(10)),
             new_confirm: Some(Duration::from_millis(150)),
             no_frames_after: Some(no_frames_after),
+            ..Default::default()
         });
         Rig {
             s,

@@ -14,8 +14,11 @@
 //! - Triggers: the follower lost Chrome (3 failed tab-list reads, ~0.6 s) and
 //!   ffmpeg dead (write error or exited). Per-tab mode has no single encoder
 //!   handle here, so only the browser trigger applies to it.
+//! - Limits (LIFE-04, `record::disk`): after the health check, the same tick
+//!   probes free space (outside the lock; unknown never stops), then checks the
+//!   maximum duration and the per-file size. A hit finalizes the file and parks
+//!   `previous recording stopped: <reason>; saved: <path>...`.
 //! - The guard never touches a page or a CDP session: browsing is unaffected.
-//!   09-03 adds disk-low / duration / size checks to the same tick.
 
 use std::ops::Deref;
 use std::time::Duration;
@@ -46,7 +49,26 @@ where
             let mut h = hub.lock().await;
             match h.verdict(gen) {
                 Verdict::Gone => return,
-                Verdict::Healthy => {}
+                Verdict::Healthy => {
+                    // Disk probe (a `df` subprocess) runs outside the lock.
+                    let probe = h.disk_probe(gen);
+                    drop(h);
+                    let free = match probe {
+                        Some((f, dir)) => tokio::task::spawn_blocking(move || f(&dir))
+                            .await
+                            .unwrap_or(None),
+                        None => None,
+                    };
+                    let mut h = hub.lock().await;
+                    if let Some(why) = h.limit_hit(gen, free) {
+                        if h.stop_on_limit(gen, why).await {
+                            if let Some(t) = h.orphaned_text() {
+                                tracing::warn!(target: "bladebro.record", "{t}");
+                            }
+                        }
+                        return;
+                    }
+                }
                 Verdict::Interrupted(why) => {
                     if h.interrupt_if(gen, why).await {
                         if let Some(t) = h.orphaned_text() {

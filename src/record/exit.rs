@@ -50,7 +50,7 @@ pub struct Row {
     pub path: &'static str,
     pub lane: &'static str,
     pub outcome: &'static str,
-    /// Test fn name in exit_tests.rs, or a `live:` / `n/a:` / `planned:` marker.
+    /// Test fn name in exit_tests.rs, or a `live:` / `n/a:` marker (no `planned:` rows: the matrix is final).
     pub test: &'static str,
 }
 
@@ -58,6 +58,7 @@ pub const FINALIZED: &str = "finalized";
 pub const REPORTED_LATER: &str = "finalized, reported at next record op";
 pub const INTERRUPTED: &str = "interrupted, partial kept";
 pub const REFUSED: &str = "refused (no recording possible)";
+pub const STOPPED: &str = "stopped by a limit, finalized";
 pub const SELF_FINALIZED: &str = "self-finalized by ffmpeg on stdin EOF";
 
 const fn row(
@@ -133,7 +134,7 @@ pub const MATRIX: &[Row] = &[
         "kill -9 of bladebro",
         "mcp+daemon",
         SELF_FINALIZED,
-        "live: evidence/09-02-kill9.txt (exit_live.sh kill9-parent in 09-03)",
+        "live: evidence/09-02-kill9.txt, 09-03-live.txt (exit_live.sh mcp_kill9, daemon_kill9)",
     ),
     row(
         "ffmpeg killed mid-recording",
@@ -172,10 +173,28 @@ pub const MATRIX: &[Row] = &[
         "orphans_tests::fake_ffmpeg_sweep_kills_only_matching_orphans",
     ),
     row(
-        "disk low / max duration / max size",
+        "disk low (below 500 MiB free) while recording",
         "mcp+daemon",
-        "stopped, finalized",
-        "planned: 09-03",
+        STOPPED,
+        "guard_tests::disk_low_during",
+    ),
+    row(
+        "record-start with disk low",
+        "mcp+daemon",
+        "refused, nothing created",
+        "guard_tests::start_refused_disk_low",
+    ),
+    row(
+        "maximum duration (2 h)",
+        "mcp+daemon",
+        STOPPED,
+        "guard_tests::max_duration_stops_and_finalizes",
+    ),
+    row(
+        "file size limit (1 GiB, per file)",
+        "mcp+daemon",
+        STOPPED,
+        "guard_tests::max_size_stops_and_finalizes",
     ),
     row(
         "Windows console close / logoff",

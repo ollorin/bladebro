@@ -15,6 +15,7 @@ use super::follow::{
 };
 use super::follow_report::compose_per_tab;
 use super::msg::{self, scrub};
+use crate::record::disk::{self, FreeFn};
 use crate::record::{
     create_recording_file, tab_stem, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource,
     SourceConfig, Tabs,
@@ -55,6 +56,9 @@ pub struct Knobs {
     pub new_confirm: Option<Duration>,
     /// A zero-frame segment this long is a failure (default: the 5 s watchdog).
     pub no_frames_after: Option<Duration>,
+    /// Test-shortened LIFE-04 limits (default: `record::disk` consts).
+    pub max_duration: Option<Duration>,
+    pub max_file_bytes: Option<u64>,
 }
 
 /// Why the guard ended a recording early (LIFE-02).
@@ -64,6 +68,16 @@ pub enum Interrupt {
     BrowserLost,
     /// ffmpeg is dead or its pipe is broken.
     EncoderDead,
+}
+
+/// Why the guard STOPPED a healthy recording on a limit (LIFE-04).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Limit {
+    /// Free space fell below the threshold (MiB free).
+    DiskLow(u64),
+    MaxDuration,
+    /// Per-tab mode names the file that reached the limit.
+    MaxSize(Option<String>),
 }
 
 /// What one guard tick learned about its recording.
@@ -84,6 +98,8 @@ struct Active {
     rec: Tracker,
     started: Instant,
     fps: u32,
+    /// Free-space probe captured at start (injectable, LIFE-04).
+    free: FreeFn,
 }
 
 #[derive(Default)]
@@ -143,6 +159,63 @@ impl Hub {
     pub fn dir_of(&self, gen: u64) -> Option<PathBuf> {
         let a = self.active.as_ref().filter(|a| a.gen == gen)?;
         a.path.parent().map(PathBuf::from)
+    }
+
+    /// The free-space probe and dir of generation `gen`, so the guard can run
+    /// the (blocking) probe outside the hub lock.
+    pub fn disk_probe(&self, gen: u64) -> Option<(FreeFn, PathBuf)> {
+        let a = self.active.as_ref().filter(|a| a.gen == gen)?;
+        Some((a.free.clone(), a.path.parent().map(PathBuf::from)?))
+    }
+
+    /// LIFE-04 limits of a healthy recording: disk low (`free` from the probe,
+    /// `None` = unknown, never a stop), maximum duration, per-file size.
+    pub fn limit_hit(&self, gen: u64, free: Option<u64>) -> Option<Limit> {
+        let a = self.active.as_ref().filter(|a| a.gen == gen)?;
+        if disk::is_low(free) {
+            return Some(Limit::DiskLow(disk::mib(free.unwrap_or(0))));
+        }
+        if a.started.elapsed() >= self.knobs.max_duration.unwrap_or(disk::MAX_DURATION) {
+            return Some(Limit::MaxDuration);
+        }
+        let max = self.knobs.max_file_bytes.unwrap_or(disk::MAX_FILE_BYTES);
+        let files = match a.enc {
+            Some(_) => vec![a.path.clone()],
+            None => a.rec.files(),
+        };
+        let big = files
+            .iter()
+            .find(|f| std::fs::metadata(f).map(|m| m.len()).unwrap_or(0) >= max)?;
+        let name = a.enc.is_none().then(|| {
+            big.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        });
+        Some(Limit::MaxSize(name))
+    }
+
+    /// Stop and FINALIZE a recording that hit a limit; park the honest
+    /// `stopped` outcome (ok = the finalize verdict). Stale generations do
+    /// nothing, like `interrupt_if`.
+    pub async fn stop_on_limit(&mut self, gen: u64, why: Limit) -> bool {
+        if self.active.as_ref().map(|a| a.gen) != Some(gen) {
+            return false;
+        }
+        let Some(a) = self.active.take() else {
+            return false;
+        };
+        let path = a.path.display().to_string();
+        let (ok, finish) = match self.finish_active(a, None).await {
+            Ok(t) => (true, t),
+            Err(HubError::Failed(t)) | Err(HubError::Usage(t)) => (false, t),
+        };
+        let reason = match why {
+            Limit::DiskLow(m) => msg::reason_disk_low(m),
+            Limit::MaxDuration => msg::reason_max_duration(),
+            Limit::MaxSize(f) => msg::reason_max_size(f.as_deref()),
+        };
+        self.orphaned = Some((ok, scrub(&msg::stopped(&reason, &path, &finish))));
+        true
     }
 
     /// One guard tick: cheap, non-async, no I/O.
@@ -225,6 +298,14 @@ impl Hub {
         let cfg = env.config(name).map_err(failed)?;
         if !cfg.enabled {
             return Err(failed(msg::off()));
+        }
+        // LIFE-04: refuse below the threshold before anything is created.
+        let free = env.free_fn();
+        if let Some(f) = free(&cfg.dir).filter(|f| disk::is_low(Some(*f))) {
+            return Err(failed(msg::disk_low_refusal(
+                disk::mib(f),
+                &cfg.dir.display().to_string(),
+            )));
         }
         let ffmpeg = env.ffmpeg().await.map_err(|e| failed(e.to_string()))?;
         let tab = env.current_tab().await.map_err(failed)?;
@@ -322,6 +403,7 @@ impl Hub {
             rec,
             started: Instant::now(),
             fps: cfg.fps,
+            free,
         });
         let text = match self.orphaned.take() {
             Some((_, t)) => format!("{}\n{text}", msg::orphan_text(&t)),

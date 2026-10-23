@@ -351,11 +351,18 @@ async fn row_kill_ffmpeg() {
 }
 
 #[test]
+fn matrix_has_no_planned_rows() {
+    for r in MATRIX {
+        assert!(!r.test.contains("planned"), "{} / {}", r.path, r.lane);
+        assert!(!r.outcome.contains("planned"), "{} / {}", r.path, r.lane);
+    }
+    assert!(!include_str!("exit.rs").contains("planned: 09"));
+}
+
+#[test]
 fn matrix_complete() {
     for r in MATRIX {
-        let ok = ["live:", "n/a:", "planned: 09-0"]
-            .iter()
-            .any(|m| r.test.starts_with(m))
+        let ok = ["live:", "n/a:"].iter().any(|m| r.test.starts_with(m))
             || r.test.strip_prefix("guard_tests::").is_some_and(|n| {
                 GUARD_TESTS.contains(&format!("async fn {n}("))
                     || GUARD_TESTS.contains(&format!("fn {n}("))

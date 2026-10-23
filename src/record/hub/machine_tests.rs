@@ -4,7 +4,7 @@
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -40,6 +40,8 @@ pub(super) struct TestEnv {
     probe: Option<TabProbe>,
     pub(super) config_calls: AtomicUsize,
     pub(super) ffmpeg_calls: AtomicUsize,
+    /// Injected free space (LIFE-04); `u64::MAX` = unknown.
+    pub(super) free: Arc<AtomicU64>,
 }
 
 impl HubEnv for TestEnv {
@@ -62,6 +64,13 @@ impl HubEnv for TestEnv {
     }
     fn attach(&self) -> Attach {
         self.attach.clone()
+    }
+    fn free_fn(&self) -> crate::record::disk::FreeFn {
+        let f = self.free.clone();
+        Arc::new(move |_| match f.load(Ordering::SeqCst) {
+            u64::MAX => None,
+            v => Some(v),
+        })
     }
     fn probe(&self) -> TabProbe {
         match &self.probe {
@@ -118,6 +127,7 @@ pub(super) fn env(s: &Scratch, script: &Path, attach: Attach) -> TestEnv {
         probe: None,
         config_calls: AtomicUsize::new(0),
         ffmpeg_calls: AtomicUsize::new(0),
+        free: Arc::new(AtomicU64::new(u64::MAX)),
     }
 }
 

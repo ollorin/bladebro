@@ -43,6 +43,11 @@ pub trait HubEnv {
     /// How the follower reads Chrome's tab list. Default: the debugging port
     /// over HTTP, or `Fixed` (no following, Phase 7 behavior) for an explicit
     /// page WebSocket. Tests override it with a scripted list.
+    /// Free-space probe for the recordings dir (LIFE-04). Injectable so tests
+    /// never fill a disk; default is the `df` copy in `record::disk`.
+    fn free_fn(&self) -> crate::record::disk::FreeFn {
+        std::sync::Arc::new(crate::record::disk::free_bytes)
+    }
     fn probe(&self) -> TabProbe {
         match self.attach() {
             Attach::Port(base) => TabProbe::Http { base },

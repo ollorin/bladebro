@@ -342,3 +342,256 @@ async fn browser_lost_with_an_empty_file_says_so() {
     })
     .await;
 }
+
+// ---- LIFE-04: disk low, maximum duration, file size ----
+
+use std::sync::atomic::Ordering;
+
+use super::machine::{Knobs, Limit};
+
+const MIB: u64 = 1 << 20;
+const GIB10: u64 = 10 * 1024 * MIB;
+
+fn limit_knobs(max_duration: Option<Duration>, max_file_bytes: Option<u64>) -> Knobs {
+    Knobs {
+        stop_grace: Some(Duration::from_millis(100)),
+        finish_timeout: Some(Duration::from_secs(10)),
+        poll: Some(Duration::from_millis(30)),
+        confirm: Some(Duration::from_millis(10)),
+        new_confirm: Some(Duration::from_millis(150)),
+        no_frames_after: Some(LONG),
+        max_duration,
+        max_file_bytes,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn start_refused_disk_low() {
+    guard20(async {
+        let s = Scratch::new();
+        let script = s.script("fake-enc-dl0", M_OK);
+        let f = FakeCdp::start(frames(5)).await;
+        let e = env(&s, &script, Attach::Ws(f.url.clone()));
+        e.free.store(100 * MIB, Ordering::SeqCst);
+        let mut hub = Hub::new();
+        let t = err(hub.start(&e, "d").await);
+        assert!(
+            t.starts_with("recording not started: disk low (100 MiB free in "),
+            "{t}"
+        );
+        assert!(t.ends_with("need 500 MiB)"), "{t}");
+        assert!(!hub.is_active());
+        assert_eq!(
+            e.ffmpeg_calls.load(Ordering::SeqCst),
+            0,
+            "no ffmpeg resolved"
+        );
+        assert!(!s.0.join("recordings").exists(), "nothing created");
+        assert!(pids_of(&script).is_empty(), "no ffmpeg spawned");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn start_ok_unknown_and_at_threshold() {
+    guard20(async {
+        for (tag, free) in [("unk", u64::MAX), ("thr", 500 * MIB)] {
+            let s = Scratch::new();
+            let script = s.script(&format!("fake-enc-dl1{tag}"), M_OK);
+            let f = FakeCdp::start(frames(5)).await;
+            let e = env(&s, &script, Attach::Ws(f.url.clone()));
+            e.free.store(free, Ordering::SeqCst);
+            let mut hub = Hub::new();
+            okay(hub.start(&e, "ok").await);
+            f.wait_emitter_done().await;
+            okay(hub.stop(&e).await);
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn disk_low_during() {
+    guard20(async {
+        let s = Scratch::new();
+        let script = s.script("fake-enc-dl2", M_OK);
+        let f1 = FakeCdp::start(frames(60)).await;
+        let e1 = env(&s, &script, Attach::Ws(f1.url.clone()));
+        e1.free.store(GIB10, Ordering::SeqCst);
+        let h = Arc::new(Mutex::new(Hub::new()));
+        let t = okay(h.lock().await.start(&e1, "d").await);
+        let path = std::path::PathBuf::from(
+            t.split("recording started: ")
+                .nth(1)
+                .and_then(|r| r.split(" (tab ").next())
+                .expect("path"),
+        );
+        let gen = h.lock().await.active_gen().expect("gen");
+        let _g = guard::spawn(h.clone(), gen, TICK);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(active(&h).await, "10 GiB free: keeps recording");
+        e1.free.store(200 * MIB, Ordering::SeqCst);
+        until_idle(&h, "disk low").await;
+        assert!(pids_of(&script).is_empty(), "fake ffmpeg gone");
+        assert!(std::fs::metadata(&path).expect("file").len() > 0);
+        let t = okay(h.lock().await.stop(&e1).await);
+        assert!(
+            t.starts_with("previous recording stopped: disk low (200 MiB free); saved: "),
+            "{t}"
+        );
+        assert!(t.contains(&path.display().to_string()), "{t}");
+        assert!(!t.contains("interrupted"), "{t}");
+        // With room again the next recording works.
+        let f2 = FakeCdp::start(frames(5)).await;
+        let e2 = env(&s, &script, Attach::Ws(f2.url.clone()));
+        e2.free.store(GIB10, Ordering::SeqCst);
+        okay(h.lock().await.start(&e2, "again").await);
+        f2.wait_emitter_done().await;
+        okay(h.lock().await.stop(&e2).await);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn max_duration_stops_and_finalizes() {
+    guard20(async {
+        let s = Scratch::new();
+        let script = s.script("fake-enc-dl3", M_OK);
+        let f = FakeCdp::start(frames(80)).await;
+        let e = env(&s, &script, Attach::Ws(f.url.clone()));
+        let h = Arc::new(Mutex::new(Hub::with_knobs(limit_knobs(
+            Some(Duration::from_millis(300)),
+            None,
+        ))));
+        okay(h.lock().await.start(&e, "m").await);
+        let gen = h.lock().await.active_gen().expect("gen");
+        let _g = guard::spawn(h.clone(), gen, TICK);
+        until_idle(&h, "max duration").await;
+        let t = okay(h.lock().await.stop(&e).await);
+        assert!(
+            t.starts_with("previous recording stopped: maximum duration (2 h) reached; saved: "),
+            "{t}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn max_size_stops_and_finalizes() {
+    guard40(async {
+        let a = FakeCdp::start(fake(400, 0.0)).await;
+        let mut r = Rig::with("gz", &a, OK_SCRIPT, Tabs::Follow, LONG).await;
+        r.hub = Hub::with_knobs(limit_knobs(None, Some(4096)));
+        let h = shared(&mut r);
+        let (path, _g) = start_guarded(&r, &h).await;
+        until_idle(&h, "size limit").await;
+        assert!(std::fs::metadata(&path).expect("file").len() >= 4096);
+        assert_eq!(r.encoders_alive(), 0);
+        let t = okay(h.lock().await.stop(&r.env).await);
+        assert!(
+            t.starts_with("previous recording stopped: size limit (1 GiB) reached; saved: "),
+            "{t}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn per_tab_size_finalizes_every_file() {
+    guard40(async {
+        let a = FakeCdp::start(fake(400, 0.0)).await;
+        let b = FakeCdp::start(fake(400, 3.0)).await;
+        let mut r = Rig::with("gzp", &a, OK_SCRIPT, Tabs::PerTab, LONG).await;
+        // Only tab A's frames pass the limit before B starts; B's file is
+        // young, so the text must still list both files at the stop.
+        r.hub = Hub::with_knobs(limit_knobs(None, Some(200_000)));
+        let h = shared(&mut r);
+        let (_path, _g) = start_guarded(&r, &h).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        r.set(vec![view("B", &b.url), view("A", &a.url)]);
+        until("B started", || started(&b)).await;
+        until_idle(&h, "per-tab size limit").await;
+        assert_eq!(r.encoders_alive(), 0, "every file's ffmpeg finalized");
+        let t = okay(h.lock().await.stop(&r.env).await);
+        assert!(
+            t.starts_with("previous recording stopped: size limit (1 GiB) reached by g-tab"),
+            "{t}"
+        );
+        assert!(
+            t.contains(" reached by g-tab"),
+            "names the file over the limit: {t}"
+        );
+        assert!(t.matches(" (bytes ").count() >= 2, "both files listed: {t}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn no_false_stop_when_free_space_flickers() {
+    guard20(async {
+        let s = Scratch::new();
+        let script = s.script("fake-enc-dl4", M_OK);
+        let f = FakeCdp::start(frames(40)).await;
+        let e = env(&s, &script, Attach::Ws(f.url.clone()));
+        e.free.store(GIB10, Ordering::SeqCst);
+        let h = Arc::new(Mutex::new(Hub::new()));
+        okay(h.lock().await.start(&e, "f").await);
+        let gen = h.lock().await.active_gen().expect("gen");
+        let _g = guard::spawn(h.clone(), gen, TICK);
+        for i in 0..8 {
+            e.free
+                .store(if i % 2 == 0 { u64::MAX } else { GIB10 }, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            assert!(active(&h).await, "unknown free space is never a stop");
+        }
+        okay(h.lock().await.stop(&e).await);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stale_generation_ignores_a_limit() {
+    guard20(async {
+        let s = Scratch::new();
+        let script = s.script("fake-enc-dl5", M_OK);
+        let f1 = FakeCdp::start(frames(5)).await;
+        let e1 = env(&s, &script, Attach::Ws(f1.url.clone()));
+        let h = Arc::new(Mutex::new(Hub::new()));
+        okay(h.lock().await.start(&e1, "one").await);
+        let old = h.lock().await.active_gen().expect("gen");
+        f1.wait_emitter_done().await;
+        okay(h.lock().await.stop(&e1).await);
+        let f2 = FakeCdp::start(frames(40)).await;
+        let e2 = env(&s, &script, Attach::Ws(f2.url.clone()));
+        e2.free.store(GIB10, Ordering::SeqCst);
+        okay(h.lock().await.start(&e2, "two").await);
+        let new = h.lock().await.active_gen().expect("gen");
+        assert_ne!(old, new);
+        assert!(!h.lock().await.stop_on_limit(old, Limit::DiskLow(1)).await);
+        assert!(h.lock().await.limit_hit(old, Some(MIB)).is_none());
+        assert!(active(&h).await, "generation 2 unaffected");
+        okay(h.lock().await.stop(&e2).await);
+    })
+    .await;
+}
+
+#[test]
+fn limit_texts_are_scrubbed_and_honest() {
+    use super::msg::{reason_disk_low, reason_max_duration, reason_max_size, scrub, stopped};
+    for r in [
+        reason_disk_low(312),
+        reason_max_duration(),
+        reason_max_size(None),
+    ] {
+        let t = stopped(&r, "/tmp/x.webm", "recording saved: /tmp/x.webm (frames 3)");
+        assert_eq!(scrub(&t), t);
+        assert!(t.starts_with("previous recording stopped: "), "{t}");
+        assert!(t.contains("; saved: /tmp/x.webm (frames 3)"), "{t}");
+    }
+    let bad = stopped(
+        "disk low (1 MiB free)",
+        "/tmp/x.webm",
+        "recording not clean: x",
+    );
+    assert!(bad.contains("(file: /tmp/x.webm)"), "{bad}");
+}

@@ -23,6 +23,9 @@
 
 pub mod config;
 pub mod dir;
+pub mod disk;
+#[cfg(test)]
+mod disk_tests;
 pub mod encoder;
 pub mod exit;
 pub mod ffmpeg;
