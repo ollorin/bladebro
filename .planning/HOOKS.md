@@ -38,7 +38,7 @@ reviewed quickly and conflicts localized. New files (e.g. `src/record/**`, `tool
 | 7 | src/state.rs | `StateOp::ListTabs`: `let own = hub::own_target(cdp).await;` + marker via `hub::is_current(...)` (formatted, ~6 lines) | recorder's own CDP attach made the recorded tab report attached; current tab now from the page session's target id while recording, unchanged otherwise (07-04 gap) | 761910a |
 
 Phase 8: no new hooks (zero edits to upstream files; verified by the opus verifier against `git diff --name-only bb9e7dd..HEAD` and `git cat-file -e upstream/main:<path>`).
-| 9 | src/cli/daemon.rs | drift/lost relaunch branch: `crate::record::hub::finish_best_effort().await;` before `b.shutdown()` (1 line) | finalize an active recording before Chrome is relaunched; report goes to the next record op (LIFE-01) | PENDING_HASH |
-| 9 | src/cli/daemon.rs | `Err(BladeError::Closed)` relaunch: same one-line hook before `b.shutdown()` | same (LIFE-01) | PENDING_HASH |
-| 9 | src/cli/daemon.rs | idle timeout block: same one-line hook directly above `b.shutdown()`, after the login snapshot | a recording idle for BLADE_IDLE_TIMEOUT is finalized, not dropped with Chrome (LIFE-01) | PENDING_HASH |
-| 9 | src/cli/daemon.rs | post-loop: the Phase 7 hook line moved above the login snapshot block (net 0 lines) | finalize before anything that talks to Chrome, so a dead Chrome cannot delay the finalize (LIFE-01) | PENDING_HASH |
+| 9 | src/cli/daemon.rs | drift/lost relaunch branch: `crate::record::hub::finish_best_effort().await;` before `b.shutdown()` (1 line) | finalize an active recording before Chrome is relaunched; report goes to the next record op (LIFE-01) | 488c0e0 |
+| 9 | src/cli/daemon.rs | `Err(BladeError::Closed)` relaunch: same one-line hook before `b.shutdown()` | same (LIFE-01) | 488c0e0 |
+| 9 | src/cli/daemon.rs | idle timeout block: same one-line hook directly above `b.shutdown()`, after the login snapshot | a recording idle for BLADE_IDLE_TIMEOUT is finalized, not dropped with Chrome (LIFE-01) | 488c0e0 |
+| 9 | src/cli/daemon.rs | post-loop: the Phase 7 hook line moved above the login snapshot block (net 0 lines) | finalize before anything that talks to Chrome, so a dead Chrome cannot delay the finalize (LIFE-01) | 488c0e0 |
