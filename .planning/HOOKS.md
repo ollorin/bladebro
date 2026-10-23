@@ -36,3 +36,5 @@ reviewed quickly and conflicts localized. New files (e.g. `src/record/**`, `tool
 | 7 | src/cli/daemon.rs | `hub::finish_best_effort().await` before the post-loop browser shutdown (1 line) | finalize an active recording on daemon exit | be1a3d6 |
 | 7 | src/mcp/tools.rs | state `op` enum +`record-start`,`record-stop`; one RECORDING description line; `name` description suffix (3 places, +233 collapsed chars ~58 tokens) | CTRL-04: record ops through the existing state tool, no sixth tool (Phase 1 D-01 Option A) | 381e0c3 |
 | 7 | src/state.rs | `StateOp::ListTabs`: `let own = hub::own_target(cdp).await;` + marker via `hub::is_current(...)` (formatted, ~6 lines) | recorder's own CDP attach made the recorded tab report attached; current tab now from the page session's target id while recording, unchanged otherwise (07-04 gap) | 761910a |
+
+Phase 8: no new hooks (zero edits to upstream files; verified by the opus verifier against `git diff --name-only bb9e7dd..HEAD` and `git cat-file -e upstream/main:<path>`).

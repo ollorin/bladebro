@@ -253,7 +253,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 5. Encoder Process Manager | 3/3 | 3/3 plans executed; SC4 (windows-latest CI) pending: written, not executed (macOS only) | - |
 | 6. Frame Source | 3/3 | Complete on macOS (headless; Linux/Windows not executed; diff_oracle not run) | 2026-10-22 |
 | 7. RecordHub and state Ops | 3/3 | Complete (macOS headless; opus verified, +07-04 gap fix) | 2026-10-22 |
-| 8. Tab Following | 0/2 | Not started | - |
+| 8. Tab Following | 2/2 | Executed (macOS headless; opus verifier: human_needed on popup wording; 720 tests; 0 upstream hooks) | 2026-10-23 |
 | 9. Finalization on Every Exit Path | 0/3 | Not started | - |
 | 10. Evidence Extras | 0/2 | Not started | - |
 | 11. Integration Docs | 0/2 | Not started | - |
