@@ -174,10 +174,20 @@ Every way a session can end finalizes an active recording the same way: stop fee
 | Chrome relaunch (lane or settings change, lost connection, `Closed`) | finalized, reported at next record op | finalized, reported at next record op | n/a |
 | Chrome relaunch after the recorder's own connection was already lost | interrupted, partial kept (`recording not clean`) | interrupted, partial kept | n/a |
 | one-shot CLI exit | n/a | n/a | refused (no recording possible): `record-start` needs a long-lived session |
-| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (live timing not measured yet) | same | n/a |
-| ffmpeg killed mid-recording | interrupted, partial kept | interrupted, partial kept | n/a |
-| Chrome killed mid-recording | handled in Phase 9 plan 02 | handled in Phase 9 plan 02 | n/a |
+| kill -9 of bladebro | self-finalized by ffmpeg on stdin EOF (measured: ffmpeg gone in about 0.1 s, file decodes in full; nothing reports it, the new session has no record of it) | same | n/a |
+| ffmpeg killed mid-recording | interrupted within 2 s, reported at next record op (`encoder exited`); a file that has no data yet is reported as empty | same | n/a |
+| Chrome killed mid-recording | interrupted within about 1 s, file finalized and playable up to the cut, reported at next record op (`browser connection lost`) | same | n/a |
+| recorder connection lost, Chrome still alive | recording continues when the tab is still listed (the follower reconnects); otherwise stop reports it as not clean; a new start works | same | n/a |
 | disk low, maximum duration or size | handled in Phase 9 plan 03 | handled in Phase 9 plan 03 | n/a |
+
+What the next record op says after an interruption (exact text; `<T>` is seconds into the recording, `<path>` the file `record-start` reported). It is an error result (the recording did not end by your stop), and it is never `recording saved`:
+
+- `previous recording interrupted: browser connection lost at <T> s; partial file kept: <path>. recording not clean: ...` (Chrome was killed or its debugging port stopped answering)
+- `previous recording interrupted: encoder exited at <T> s; partial file kept: <path>. recording not clean: recording failed: ffmpeg exited with signal: 9 ...` (ffmpeg died)
+- `previous recording interrupted: ...; file is empty, nothing playable: <path>. ...` when the file has no bytes at all (ffmpeg was killed before it wrote anything)
+- `previous recording ended with the browser: ...` when a Chrome relaunch, idle timeout or shutdown finalized it first (the usual case when the next call is what finds the dead Chrome)
+
+How it is noticed: while a recording runs, a small guard checks it every 2 s. It ends the recording early (closes ffmpeg's input so the file plays up to where it was cut) when the tab list stops answering for three reads in a row (about 0.6 s) or when ffmpeg is dead. The guard never talks to a page, so browsing is unaffected, and a guard from an earlier recording never stops a newer one. In per-tab mode only the browser check applies (every file is finalized); a killed ffmpeg of one tab file shows up in that file's line at stop.
 
 Details:
 
@@ -188,6 +198,12 @@ Details:
 - The one-shot CLI cannot hold a recording because it exits after one command, so `record-start` is refused there with a message to use MCP or the daemon.
 - Windows: Ctrl-C is handled. Closing the console, logoff and shutdown are not handled (that needs a console control handler). If bladebro dies, ffmpeg sees its input close and the job object that contains it ends it; a hard kill can leave an unfinalized file. This was reasoned from the code and not tested on Windows.
 - The matrix above is `MATRIX` in `src/record/exit.rs`; every row is backed by a test in `src/record/exit_tests.rs` or by a live scenario.
+
+### Leftover encoders
+
+ffmpeg exits by itself when bladebro dies (its input closes), so leftovers are rare. As a backstop bladebro removes an ffmpeg only when all four hold: the program is named `ffmpeg`, its command line has bladebro's own input flags (`-f image2pipe ... -i pipe:0`), its output is a file in the recordings folder with a bladebro-style name (`<name>-<UTC stamp>-<6 hex>.webm` or `.mp4`), and its parent process is gone (or is pid 1). Your own ffmpeg, an ffmpeg in another folder, and an ffmpeg whose bladebro is still running are never touched. It sends SIGTERM, waits up to 2 s, and uses SIGKILL only if the same process (same command line) is still there.
+
+When: at every Chrome launch (the same place stale browsers are cleaned up; the scan runs in the background so launch time is unchanged) and at every `record-start`, for the recordings folder in use. macOS and Linux only: on Windows nothing is swept, because the job object that holds ffmpeg ends it together with bladebro (reasoned, not tested on Windows). The scan reads the process list with `ps`, so a very unusual install path of ffmpeg that contains ` -` is not recognized (it is left alone).
 
 ### Per-tab files
 

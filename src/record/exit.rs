@@ -133,7 +133,7 @@ pub const MATRIX: &[Row] = &[
         "kill -9 of bladebro",
         "mcp+daemon",
         SELF_FINALIZED,
-        "live: exit_live.sh kill9-parent",
+        "live: evidence/09-02-kill9.txt (exit_live.sh kill9-parent in 09-03)",
     ),
     row(
         "ffmpeg killed mid-recording",

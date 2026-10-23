@@ -154,3 +154,114 @@ async fn real_webm_end_to_end() {
 async fn real_mp4_end_to_end() {
     run_real(Format::Mp4, "h264").await;
 }
+
+/// What the kernel does when bladebro is kill -9'd: the pipe's write end
+/// closes, ffmpeg reads EOF. With the exact Encoder argv and real frames,
+/// ffmpeg must exit 0 on its own, quickly, and leave a playable file.
+#[cfg(unix)]
+#[test]
+fn parent_death_eof_finalizes() {
+    use std::io::Write;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let Some(ff) = real_ffmpeg() else {
+        eprintln!("skip: no real ffmpeg (set {ENV_FFMPEG} or install to ~/.local/ffmpeg/bin)");
+        return;
+    };
+    let info = probe(&ff, PROBE_TIMEOUT).expect("usable ffmpeg");
+    if !info.encoders.has(Format::WebM.encoder()) {
+        eprintln!("skip: no VP9 encoder");
+        return;
+    }
+    let s = Scratch::new();
+    let jpg = s.0.join("f.jpg");
+    let gen = Command::new(&ff)
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=1001x641:rate=1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "mjpeg",
+            "-pix_fmt",
+            "yuvj420p",
+            "-y",
+        ])
+        .arg(&jpg)
+        .output();
+    if !matches!(&gen, Ok(o) if o.status.success()) {
+        eprintln!("skip: cannot generate the test frame");
+        return;
+    }
+    let frame = std::fs::read(&jpg).expect("frame");
+    let out = s.0.join("parent-death.webm");
+    let spec = EncodeSpec {
+        format: Format::WebM,
+        fps: 10,
+        size: FrameSize::default(),
+    };
+    let args = super::args::build_args(&spec, &info.version, &out).expect("args");
+    let mut child = Command::new(&ff)
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn ffmpeg");
+    let mut stdin = child.stdin.take().expect("stdin");
+    for _ in 0..20 {
+        stdin.write_all(&frame).expect("frame");
+    }
+    let t = Instant::now();
+    drop(stdin); // no finish(): the parent is "dead"
+    let status = loop {
+        if let Some(st) = child.try_wait().expect("wait") {
+            break st;
+        }
+        if t.elapsed() > Duration::from_secs(2) {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("ffmpeg did not exit within 2 s of stdin EOF");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    eprintln!(
+        "parent death: ffmpeg exited {status} {} ms after EOF",
+        t.elapsed().as_millis()
+    );
+    assert!(status.success(), "{status}");
+    assert!(std::fs::metadata(&out).expect("file").len() > 0);
+    let probe_bin = ff.with_file_name(exe("ffprobe"));
+    if probe_bin.is_file() {
+        let o = Command::new(&probe_bin)
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(&out)
+            .output()
+            .expect("ffprobe");
+        let dur: f64 = String::from_utf8_lossy(&o.stdout)
+            .trim()
+            .parse()
+            .expect("duration");
+        assert!(dur > 0.0, "duration {dur}");
+        let d = Command::new(&ff)
+            .args(["-v", "error", "-i"])
+            .arg(&out)
+            .args(["-f", "null", "-"])
+            .output()
+            .expect("decode");
+        assert!(d.status.success(), "{}", String::from_utf8_lossy(&d.stderr));
+    }
+}
