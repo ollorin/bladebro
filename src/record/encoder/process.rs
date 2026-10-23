@@ -131,6 +131,12 @@ impl Encoder {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // Own process group: a terminal Ctrl-C (SIGINT to the foreground group)
+        // must reach bladebro only. bladebro then finalizes by closing stdin;
+        // a SIGINT hitting ffmpeg too races that and ends it with exit 255.
+        // A parent crash still finalizes: ffmpeg exits on stdin EOF.
+        #[cfg(unix)]
+        cmd.process_group(0);
         // Written, not compiled here; CREATE_NO_WINDOW keeps a console from
         // flashing when the daemon has none.
         #[cfg(windows)]

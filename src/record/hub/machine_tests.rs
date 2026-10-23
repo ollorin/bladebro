@@ -17,7 +17,7 @@ use crate::record::values::{Format, FrameSize};
 use crate::record::{EncoderError, RecordConfig, ResolvedFfmpeg};
 
 const BOTH: &[&str] = &["libx264", "libvpx-vp9"];
-const OK_SCRIPT: &str = r#"for a; do out="$a"; done; cat > "$out""#;
+pub(super) const OK_SCRIPT: &str = r#"for a; do out="$a"; done; cat > "$out""#;
 const DEAD: [&str; 4] = [
     "Target closed",
     "No target with given id",
@@ -25,21 +25,21 @@ const DEAD: [&str; 4] = [
     "Target.detachedFromTarget",
 ];
 
-async fn guard<F: Future>(f: F) -> F::Output {
+pub(super) async fn guard<F: Future>(f: F) -> F::Output {
     tokio::time::timeout(Duration::from_secs(20), f)
         .await
         .expect("scenario timed out")
 }
 
-struct TestEnv {
-    cfg: Result<RecordConfig, String>,
-    ffmpeg: Result<ResolvedFfmpeg, EncoderError>,
-    lane: Lane,
-    tab: Mutex<String>,
-    attach: Attach,
+pub(super) struct TestEnv {
+    pub(super) cfg: Result<RecordConfig, String>,
+    pub(super) ffmpeg: Result<ResolvedFfmpeg, EncoderError>,
+    pub(super) lane: Lane,
+    pub(super) tab: Mutex<String>,
+    pub(super) attach: Attach,
     probe: Option<TabProbe>,
-    config_calls: AtomicUsize,
-    ffmpeg_calls: AtomicUsize,
+    pub(super) config_calls: AtomicUsize,
+    pub(super) ffmpeg_calls: AtomicUsize,
 }
 
 impl HubEnv for TestEnv {
@@ -108,7 +108,7 @@ fn rec_cfg(s: &Scratch, enabled: bool) -> RecordConfig {
     }
 }
 
-fn env(s: &Scratch, script: &Path, attach: Attach) -> TestEnv {
+pub(super) fn env(s: &Scratch, script: &Path, attach: Attach) -> TestEnv {
     TestEnv {
         cfg: Ok(rec_cfg(s, true)),
         ffmpeg: Ok(fake_ffmpeg(script, BOTH)),
@@ -121,7 +121,7 @@ fn env(s: &Scratch, script: &Path, attach: Attach) -> TestEnv {
     }
 }
 
-fn hub() -> Hub {
+pub(super) fn hub() -> Hub {
     Hub::with_knobs(Knobs {
         stop_grace: Some(Duration::from_millis(100)),
         finish_timeout: Some(Duration::from_secs(10)),
@@ -130,7 +130,7 @@ fn hub() -> Hub {
 }
 
 /// Frames slow enough to clear the 10 fps gate (100 ms).
-fn frames(n: usize) -> FakeOpts {
+pub(super) fn frames(n: usize) -> FakeOpts {
     FakeOpts {
         frames: n,
         interval: Duration::from_millis(120),
@@ -145,14 +145,14 @@ fn clean(s: &str) -> &str {
     s
 }
 
-fn okay(r: Result<String, HubError>) -> String {
+pub(super) fn okay(r: Result<String, HubError>) -> String {
     match r {
         Ok(t) => clean(&t).to_string(),
         Err(e) => panic!("expected Ok, got Err: {e}"),
     }
 }
 
-fn err(r: Result<String, HubError>) -> String {
+pub(super) fn err(r: Result<String, HubError>) -> String {
     match r {
         Err(e) => clean(&e.to_string()).to_string(),
         Ok(t) => panic!("expected Err, got Ok: {t}"),
@@ -160,12 +160,12 @@ fn err(r: Result<String, HubError>) -> String {
 }
 
 /// The absolute path out of "recording started: <path> (tab ...".
-fn started_path(t: &str) -> PathBuf {
+pub(super) fn started_path(t: &str) -> PathBuf {
     let rest = t.split("recording started: ").nth(1).expect("started text");
     PathBuf::from(rest.split(" (tab ").next().expect("path"))
 }
 
-fn files_in(dir: &Path) -> Vec<PathBuf> {
+pub(super) fn files_in(dir: &Path) -> Vec<PathBuf> {
     match std::fs::read_dir(dir) {
         Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path())).collect(),
         Err(_) => vec![],

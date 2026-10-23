@@ -264,6 +264,7 @@ pub async fn run_daemon() -> Result<()> {
                             if drifted { "lane/settings changed" } else { "connection lost" }
                         );
                         if let Some(b) = browser.take() {
+                            crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
                             let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -359,6 +360,7 @@ pub async fn run_daemon() -> Result<()> {
                         // Self-heal: relaunch and retry.
                         eprintln!("[bladebro] browser closed during tool call, reconnecting...");
                         if let Some(b) = browser.take() {
+                            crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
                             let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
                         }
                         page = None;
@@ -409,6 +411,7 @@ pub async fn run_daemon() -> Result<()> {
                                 if let Err(e) = crate::logins::snapshot(p.cdp_ref()).await { eprintln!("[bladebro] login snapshot failed: {e}"); }
                             }
                         }
+                        crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
                         let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
                     }
                     page = None;
@@ -440,8 +443,9 @@ pub async fn run_daemon() -> Result<()> {
         }
     }
 
-    // Cleanup: persist live logins, then kill Chrome gracefully.
-    // (Never on the real lane — not our cookie store.)
+    crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
+                                                    // Cleanup: persist live logins, then kill Chrome gracefully.
+                                                    // (Never on the real lane — not our cookie store.)
     if let Some(ref p) = page {
         if !crate::realbrowser::real_lane() {
             if let Err(e) = crate::logins::snapshot(p.cdp_ref()).await {
@@ -449,7 +453,6 @@ pub async fn run_daemon() -> Result<()> {
             }
         }
     }
-    crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
     if let Some(b) = browser {
         let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
     }

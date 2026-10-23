@@ -23,6 +23,8 @@ mod lifecycle_tests;
 mod matrix_tests;
 mod pace;
 mod process;
+#[cfg(all(test, unix))]
+mod process_group_tests;
 #[cfg(test)]
 mod real_tests;
 mod report;

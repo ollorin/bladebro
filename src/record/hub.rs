@@ -18,6 +18,9 @@
 #[cfg(test)]
 mod adapter_tests;
 pub mod env;
+#[cfg(all(test, unix))]
+#[path = "exit_tests.rs"]
+mod exit_tests;
 pub mod follow;
 pub mod follow_report;
 #[cfg(test)]
