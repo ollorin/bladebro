@@ -1,0 +1,34 @@
+# lane_matrix_local 2026-10-23T02:13:03Z (real lane skipped)
+bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+== daemon lane
+  #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.9s]
+  #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.1s]
+  #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.2s]
+  #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.2s]
+  #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.3s]
+lane daemon exit 0
+bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+== one-shot lane
+  #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.5s]
+  #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.6s]
+  #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+  #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.0s]
+  #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.6s]
+lane oneshot exit 0
+bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+== mcp (stdio, default WS) lane
+  #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [202.9s]
+  #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+  #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+  #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+  #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+lane mcp exit 0
+bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+== mcp (pipe opt-in) lane
+  #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.7s]
+  #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.9s]
+  #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.7s]
+  #4: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.9s]
+  #5: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [3.3s]
+lane mcp-pipe exit 0
+FIN

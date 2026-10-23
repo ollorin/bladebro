@@ -1,0 +1,28 @@
+# audit 2026-10-23T02:07:38Z git c641e43 BLADE_HOME=scratchpad/audithome
+[bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+[bladebro] launching Chrome from /Applications/Google Chrome.app/Contents/MacOS/Google Chrome on port 50258 (headless)
+[bladebro] Chrome ready: Chrome/154.0.8037.58 (protocol 1.3)
+[stealth] GL healthcheck: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) (hardware) via native-gl-egl
+[stealth] generated new fingerprint seed: 807161995
+[stealth] GL healthcheck says hardware (ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)) — no WebGL spoof
+[stealth] registering mediaDevices patch
+[audit] running stealth vectors...
+
+====================================================
+  BLADEBRO STEALTH AUDIT
+====================================================
+  Bladebro Stealth Vector Suite SCORE: 100/100 pass PASS webdriver: false PASS ua-no-headless: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chr PASS ua-platform-coherent: ua=false platform=MacIntel INFO platform: MacIntel PASS plugins: 5 PASS mimeTypes: 2 PASS chrome-obj: object PASS no-cdc: 0 cdc props PASS outer-inner-width: diff=16 PASS outer-inner-heig
+
+  Self-check:
+    navigator.webdriver: OK (false)
+    window.cdc_:         OK (undefined)
+    navigator.plugins:   OK (5 plugins)
+    toString integrity:  OK (native)
+
+  Consistency (vs previous audit run):
+    first run — baseline recorded
+====================================================
+  VERDICT: PASS
+audit exit 0
+55439 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=network --noerrdialogs --user-data-dir=/private/tmp/claude-501/-Users-sokolov-st-brainrocket-com-claude-bladebro/692c
+# post-check: no audithome process left (verified after the audit helper exited)
