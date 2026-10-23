@@ -35,6 +35,12 @@ where
     R: Deref<Target = Mutex<Hub>> + Send + Sync + 'static,
 {
     tokio::spawn(async move {
+        // A previous recorder may have died with its ffmpeg: sweep this
+        // recording's own dir (the reaper only knows the default dirs).
+        let dir = hub.lock().await.dir_of(gen);
+        if let Some(d) = dir {
+            crate::record::orphans::sweep_dir(d);
+        }
         loop {
             tokio::time::sleep(tick).await;
             let mut h = hub.lock().await;

@@ -18,6 +18,7 @@ use super::SessionProfile;
 /// bladebro died (SIGKILL, OOM, panic), the next launch
 /// cleans up after it.
 pub fn reap_orphans() {
+    crate::record::orphans::sweep(); // fork hook (record): see .planning/HOOKS.md
     reap_orphans_at(&platform::blade_dir());
 
     // Stale Xvfb locks + orphan Xvfb processes (Linux).

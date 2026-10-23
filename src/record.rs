@@ -14,6 +14,7 @@
 //!   doctor report (DoctorLine).
 //! - `encoder`: ffmpeg encoder: argv builder, timestamp pacing, process lifecycle, honest verdicts (SAFE-04, LIFE-05).
 //! - `source`: screencast frame source: own CDP connection, ack-first, fps gate, bounded hand-off, counters (CAPT-01/02/05, SAFE-01).
+//! - `orphans`: ffmpeg orphan sweeper (LIFE-03): classify + sweep, hooked from the reaper.
 //! - `exit`: exit-path matrix (LIFE-01): which exits finalize, signal/Windows reasoning (pure data + docs).
 //! - `hub`: recording hub: one active recording per process, state ops record-start/record-stop, honest stop report (CTRL-01/04/05, OUT-05).
 //!
@@ -28,6 +29,9 @@ pub mod ffmpeg;
 pub mod hub;
 pub mod layered;
 pub mod names;
+pub mod orphans;
+#[cfg(all(test, unix))]
+mod orphans_tests;
 pub mod source;
 pub mod values;
 

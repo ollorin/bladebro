@@ -139,6 +139,12 @@ impl Hub {
         self.active.as_ref().map(|a| a.gen)
     }
 
+    /// Recordings dir of generation `gen` (where its files are written).
+    pub fn dir_of(&self, gen: u64) -> Option<PathBuf> {
+        let a = self.active.as_ref().filter(|a| a.gen == gen)?;
+        a.path.parent().map(PathBuf::from)
+    }
+
     /// One guard tick: cheap, non-async, no I/O.
     pub fn verdict(&self, gen: u64) -> Verdict {
         let Some(a) = self.active.as_ref().filter(|a| a.gen == gen) else {

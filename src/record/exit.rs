@@ -166,6 +166,12 @@ pub const MATRIX: &[Row] = &[
         "guard_tests::per_tab_interrupted",
     ),
     row(
+        "orphaned bladebro ffmpeg (owner dead)",
+        "mcp+daemon",
+        "swept at the next Chrome launch / record-start",
+        "orphans_tests::fake_ffmpeg_sweep_kills_only_matching_orphans",
+    ),
+    row(
         "disk low / max duration / max size",
         "mcp+daemon",
         "stopped, finalized",

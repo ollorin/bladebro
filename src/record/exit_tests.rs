@@ -25,6 +25,7 @@ const SERVE: &str = include_str!("../mcp/server/serve.rs");
 const CLI: &str = include_str!("../cli.rs");
 const THIS: &str = include_str!("exit_tests.rs");
 const GUARD_TESTS: &str = include_str!("hub/guard_tests.rs");
+const ORPHAN_TESTS: &str = include_str!("orphans_tests.rs");
 const PREFIX: &str = "previous recording ended with the browser: ";
 
 fn fake(n: usize, off: f64) -> FakeOpts {
@@ -359,6 +360,9 @@ fn matrix_complete() {
                 GUARD_TESTS.contains(&format!("async fn {n}("))
                     || GUARD_TESTS.contains(&format!("fn {n}("))
             })
+            || r.test
+                .strip_prefix("orphans_tests::")
+                .is_some_and(|n| ORPHAN_TESTS.contains(&format!("fn {n}(")))
             || THIS.contains(&format!("async fn {}(", r.test))
             || THIS.contains(&format!("fn {}(", r.test));
         assert!(
