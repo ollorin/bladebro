@@ -1,5 +1,6 @@
 # Project State
 
+> **Phase 10 verified (2026-10-26, macOS headless; opus passed 4/4; 891 tests; audit 100/100; qol 120/122; hooks: cli.rs, cli/help.rs, mcp/server/proto.rs, mcp/tools.rs, all in HOOKS.md).** Next: Phase 11, then 12.
 > **Phase 8.1 verified (2026-10-26, macOS headless; opus passed 5/5; 820 tests; audit 100/100; qol 120/122; hooks: src/page/mod.rs 1 line, src/state.rs +2/-6, both in HOOKS.md).** Next: Phase 10.
 > **HOLD LIFTED (user "limits reset, you can continue", 2026-10-26):** finish Phase 10, then Phases 11 and 12.
 

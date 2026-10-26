@@ -33,8 +33,8 @@ Requirements for the first milestone. Each maps to a roadmap phase.
 - [ ] **OUT-03**: Video duration matches wall-clock time within 5% on an idle page, and odd or changing frame sizes still produce a playable file
 - [ ] **OUT-04**: Recordings are written to a dedicated directory (default `~/.blade/recordings/`, never auto-rotated) with unique, sanitized file names
 - [ ] **OUT-05**: `record-stop` returns the absolute path, size in bytes, duration, frame count, dropped-frame count and segment boundaries
-- [ ] **OUT-06**: The result includes a poster frame (PNG) path, and the agent can pass an optional marker (such as a failure note) whose time offset is recorded
-- [ ] **OUT-07**: Bladebro writes an action timeline sidecar (JSON) aligned to the video, built from existing action verdicts
+- [x] **OUT-06**: The result includes a poster frame (PNG) path, and the agent can pass an optional marker (such as a failure note) whose time offset is recorded
+- [x] **OUT-07**: Bladebro writes an action timeline sidecar (JSON) aligned to the video, built from existing action verdicts
 
 ### Lifecycle & Reliability
 
@@ -131,8 +131,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OUT-03 | Phase 6 | Pending |
 | OUT-04 | Phase 3 | Pending |
 | OUT-05 | Phase 7 | Pending |
-| OUT-06 | Phase 10 | Pending |
-| OUT-07 | Phase 10 | Pending |
+| OUT-06 | Phase 10 | Complete |
+| OUT-07 | Phase 10 | Complete |
 | LIFE-01 | Phase 9 | Pending |
 | LIFE-02 | Phase 9 | Pending |
 | LIFE-03 | Phase 9 | Pending |

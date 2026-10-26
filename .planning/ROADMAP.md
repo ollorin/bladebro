@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
 - [x] **Phase 8.1: Follow Every Popup (INSERTED)** (verified 2026-10-26, macOS, opus passed) - A click-opened or script-opened popup becomes a segment without `switch-tab`; the video returns to the opener when it closes; `state tabs` and the segments agree (user decision 2026-10-26; runs after Phase 9 is verified)
 - [x] **Phase 9: Finalization on Every Exit Path** (verified 2026-10-26, macOS) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
-- [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
+- [x] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [ ] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
 - [ ] **Phase 12: Full Instrument Gate** - Test-suite completeness plus the full stealth, cross-platform and regression gate with recording on
 
