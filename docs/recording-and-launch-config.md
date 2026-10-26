@@ -116,7 +116,7 @@ recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, dura
 | captured | frames passed to the encoder after the fps cap (Chrome may send many more); shown only when different from `frames`. It can exceed `frames`, because a frame on screen for less than one 1/fps slot gets no video slot, and it can be lower, because a held frame is repeated to fill its time |
 | dropped | frames dropped by the encoder queue plus frames lost on the CDP connection |
 | segments | one entry per tab the video shows, `[<offset> s tab <id>]`; the offset is the time of that tab's first frame on the video clock (first frame of the video = 0.0), and the id is the full target id that `state tabs` prints. A tab with no frames is labelled `<id> (no frames)` |
-| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced (see [Tab following](#tab-following)) |
+| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced; `popup <P> closed at <T> s; back on opener <O>` when a followed popup closed; `N popup(s) not recorded (never in front)` for popups that never reached the front; `agent was on tab <A> at stop; video followed tab <B>` when they differ at stop (see [Tab following](#tab-following)) |
 
 The stop is `ok` only when capture and encoder both finished cleanly. Otherwise it is an error (MCP `isError`, CLI exit 1; in `batch`/`run` an error step stops the batch) whose text starts with `recording not clean:` and still carries the path and numbers.
 
@@ -146,10 +146,39 @@ recording saved: /abs/path/c-20261022T141401Z-e248c8.webm (bytes 27994, duration
 How it works:
 
 - The recorder reads Chrome's tab list over HTTP (`/json` on the debugging port) every 200 ms. It sends no CDP command for this and nothing is visible to the page. The agent is on the first page of that list (Chrome orders it most recently activated first; Chrome did not report an `attached` flag, so that flag is not used). A switch is made when the same tab is first on two samples about 50 ms apart.
-- `switch-tab` to an open tab is followed within about 0.25 s (allow up to about 0.7 s on a busy machine or when the agent goes back and forth right away): the recorder connects to the new tab first, then releases the old one. `open-tab` is followed after the new tab has stayed in front for 1.5 s (about 1.7 s in total), so the segment offset is that much later than the call; this delay is what keeps a popup that is put back behind its opener from becoming a segment.
-- Popups: a click that opens a tab (`target=_blank`, or `window.open` without window features) leaves the opener as the agent's page (the opener is re-activated after the click), so such a popup is not in the video until the agent runs `switch-tab` to it, and then it becomes a segment. A popup that opens as its own window with window features (`window.open(url, '', 'width=500,height=400')`) is different, and this was measured live (headless, local fixture, the agent never ran `switch-tab`): the recording followed it, with a segment starting 3.7 s after `record-start` for a click made about 1.5 s in (it has to be in front for 1.5 s first), while `state tabs` kept the opener as the current tab. It did not go back to the opener at the next input action: after a `press Tab` at about 7 s the video stayed on the popup, and the return segment appeared only at 10.7 s, at `record-stop` (11 s after the start). Only `press` was measured; `click` and `type` were not. So with window-feature popups the video can show the popup while the agent works on the opener; run `switch-tab` back to the opener if that matters. A popup that was already first when `record-start` ran is ignored until the front tab changes once.
+- `switch-tab` to an open tab is followed within about 0.25 s (allow up to about 0.7 s on a busy machine or when the agent goes back and forth right away): the recorder connects to the new tab first, then releases the old one. `open-tab` (a tab nobody opened) takes the same two-sample check, so it is followed within about 0.25 s as well (by code reading; the Phase 8.1 live run did not time it separately).
+- Popups: a tab opened by a tab of the recording is followed by itself, without `switch-tab`, once it has stayed in front for 300 ms. This covers a `target=_blank` link, `window.open` with or without window features, and popups of popups. The recorder reads which tab opened each new tab with one `Target.getTargets` call when a new tab appears. While recording, bladebro skips the opener re-front after a popup click (one line in `src/page/mod.rs`, active only while a recording runs). That skip is what keeps a tab-style popup in front; without it the popup is hidden at once and never becomes a segment.
+  - Follow delay, measured live (headless, macOS arm64, local fixtures, 3 runs per kind, no `switch-tab`; delay = seconds from the click returning until `state tabs` marks the popup `R`): blank link 0.05-0.06 s, `window.open` without features 0.06 s, cross-origin link 0.05-0.21 s, window-feature popup 0.20-0.21 s. The MCP lane measured 0.00-0.17 s on the same kinds. In the Phase 8.1 spike (click at about 1 s) the popup segment started at 1.8 s (blank link) and 2.0 s (`window.open`) on the video clock.
+  - Return: the agent's next `act`, `vision` or `nav` re-fronts the opener, so for tab-style popups the video returns to the opener at that input. Measured with `act press Tab` on the opener, in every tab-style kind.
+  - Window-feature popup (`window.open(url, '', 'width=500,height=400')`): it is a separate window. Input on the opener does not re-front it (measured: `press Tab` did not return the video), so the video stays on the popup until the popup closes or the agent runs `switch-tab` back to the opener. The video does not return to the opener by itself in this case.
+  - Closing a followed popup returns the video to its opener with the note `popup <P> closed at <T> s; back on opener <O>` (measured: segments opener, popup, opener). Closing the last tab leaves no tab: Chrome exits, and stop reports `no tab left at <T> s` as `recording not clean`. The file is kept and decodes in full (measured).
+  - Bursts: a popup becomes a segment only if it stays in front for 300 ms. One that never does is not recorded and is named once in the stop note: `N popup(s) not recorded (never in front): <ids>; switch-tab to record one` (at most 3 ids named). Timing decides which popups of a burst are segments. A live burst of three clicks gave six segments and no note; an earlier live run named one popup in that note.
+  - Blocked popups: a popup that Chrome blocks is never a tab, so it produces no segment. bladebro's Chrome runs with `--disable-popup-blocking`, so a `window.open` without a user gesture is a real tab and is followed (measured). A `rel=noopener` popup has no known opener: it is followed after the same 300 ms, but it is never counted into the popup family or the stop note.
+  - A popup that was already first when `record-start` ran is ignored until the front tab changes once.
 - Several switches inside one check are not all recorded: only the last tab is followed and the tabs in between get no segment. A switch made less than one check before `record-stop` is caught up at the stop, so the last tab is in the video.
-- The recorder opens its own connection for every tab it records, with the same four methods as above.
+- The recorder opens its own connection for every tab it records, with the same five methods as above (`Target.getTargets` only when a new tab appears).
+
+#### state tabs while recording
+
+While a recording runs, each `state tabs` row has two marker columns: `*` for the agent's tab (the one `act` and `see` act on) and `R` for the tab the video shows.
+
+| Row starts with | Meaning |
+|---|---|
+| `*R` | agent and video are on the same tab |
+| `* ` | agent only |
+| ` R` | video only (the agent is on another tab) |
+| `  ` | neither |
+
+The footer line `(* agent, R video: differ; switch-tab to move the agent)` appears only when the agent and the video are on different tabs. Without a recording the output is unchanged: `*` marks the attached tab, a space otherwise, and there is no differ footer. Real output, mid-popup (ids shortened):
+
+```
+*  9EF9...  Popper — http://127.0.0.1:8765/popper.html
+ R 0A7E...  B — http://127.0.0.1:8765/b.html
+(* agent, R video: differ; switch-tab to move the agent)
+(* = current tab; switch-tab <target_id> to change)
+```
+
+When the agent and the video differ at stop, the stop result adds the note `agent was on tab <A> at stop; video followed tab <B>`. For example, a window-feature popup still in front at stop gives this note with the popup as `<B>`.
 - Tabs of a different size are letterboxed into the configured size (the file keeps one width and height; tested with 1280x720 and 500x400 frames into one WebM and one MP4).
 - Closing the recorded tab, or a tab replaced by a new target id, continues on the agent's next tab with the note `tab <A> gone at <T> s; following tab <B>` and the result stays "recording saved". Cross-site navigation of the recorded tab kept the same tab id and frames in testing (127.0.0.1 to localhost).
 - Not clean (`recording not clean: ...`, the file is kept): no tab left (`no tab left at <T> s`), the browser stopped answering the tab list three times in a row (`browser connection lost at <T> s`), or a tab that could not be recorded (`tab <B> not recorded from <T> s: ...`). Never `recording saved` when the agent's tab went unrecorded.
@@ -250,6 +279,7 @@ How it works:
 - At most 8 files are open at once (one ffmpeg each, so CPU and disk grow with open tabs). The next tab is not recorded and the result says so: `tab <id> not recorded from <T> s: per-tab cap of 8 open files reached (close a tab to free one)`. That note does not make the result not clean. Close a tab to free a slot; a tab that went unrecorded is tried again when the agent returns to it.
 - Each file is finished on its own. One that fails (ffmpeg exits, the file cannot be created) makes the result `recording not clean (per-tab, N files): tab <id>: <reason>; <every file>`; the other files are finished and listed. A file that cannot be created is named `tab <id> not recorded from <T> s: <error>`.
 - `record-stop` finishes all files at the same time, each bounded; a file that cannot be finished in time is listed as `not finalized`. A second `record-start` is refused and names the first file.
+- A followed popup gets its own file, numbered like any tab; a popup that never reaches the front gets none. When the popup closes its file is finished and the opener's file continues, with the note `popup <P> closed at <T> s; back on opener <O>` (measured: a popup closed at 4.1 s got a 2.4 s file of its own). The cap of 8 open files applies to popups too.
 
 ### Example: Claude Code (.mcp.json)
 
