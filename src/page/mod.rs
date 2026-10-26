@@ -611,7 +611,7 @@ impl Page {
                 verdict = new_verdict;
                 // Keep the opener usable and report the popup once. Finish
                 // normal busy/timing cleanup below, even when a tab opened.
-                if let Err(e) = self.activate().await {
+                if let Err(e) = crate::record::hub::activate_opener(self).await {
                     verdict.push_str(&format!(
                         "; opener activation failed: {e}; use state switch-tab"
                     ));

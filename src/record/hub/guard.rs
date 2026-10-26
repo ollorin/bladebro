@@ -62,6 +62,7 @@ where
                     let mut h = hub.lock().await;
                     if let Some(why) = h.limit_hit(gen, free) {
                         if h.stop_on_limit(gen, why).await {
+                            super::publish_active(&h);
                             if let Some(t) = h.orphaned_text() {
                                 tracing::warn!(target: "bladebro.record", "{t}");
                             }
@@ -71,6 +72,7 @@ where
                 }
                 Verdict::Interrupted(why) => {
                     if h.interrupt_if(gen, why).await {
+                        super::publish_active(&h);
                         if let Some(t) = h.orphaned_text() {
                             tracing::warn!(target: "bladebro.record", "{t}");
                         }

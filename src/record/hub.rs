@@ -57,6 +57,36 @@ pub use machine::{Hub, HubError};
 
 static HUB: OnceLock<Mutex<Hub>> = OnceLock::new();
 static EPHEMERAL: AtomicBool = AtomicBool::new(false);
+/// Mirror of the global hub's `is_active()`, readable without the hub lock or
+/// initializing it (the page layer asks it on every popup click).
+static RECORDING: AtomicBool = AtomicBool::new(false);
+
+/// True while the global hub holds an active recording.
+pub fn recording_active() -> bool {
+    RECORDING.load(Ordering::Relaxed)
+}
+
+/// Store the flag from the hub's state; called after every transition of the
+/// global hub (start/stop, orphan finish, guard finalize).
+pub(crate) fn publish_active(h: &Hub) {
+    RECORDING.store(h.is_active(), Ordering::Relaxed);
+}
+
+/// Decision of the opener re-front after a click opened a tab: while recording
+/// the popup keeps the front (stock Chrome behaviour) so it can be recorded.
+pub(crate) fn refront_after_popup(active: bool) -> bool {
+    !active
+}
+
+/// Upstream hook (`Page::act`, new-tab branch). Recording off: exactly
+/// `page.activate()`, so the CDP method sequence is unchanged.
+pub async fn activate_opener(page: &Page) -> crate::error::Result<()> {
+    if refront_after_popup(recording_active()) {
+        page.activate().await
+    } else {
+        Ok(())
+    }
+}
 
 /// The one hub of this process (one browser, one recording).
 pub fn hub() -> &'static Mutex<Hub> {
@@ -85,6 +115,7 @@ pub async fn finish_best_effort() {
         return;
     }
     h.finish_orphan().await;
+    publish_active(&h);
     if let Some(t) = h.orphaned_text() {
         tracing::warn!(target: "bladebro.record", "{t}");
     }
@@ -182,6 +213,7 @@ pub async fn try_handle(args: &Value, page: &Page) -> Option<crate::error::Resul
         Some(n) => h.start(&env, n).await,
         None => h.stop(&env).await,
     };
+    publish_active(&h);
     // LIFE-02: a started recording gets its guard (generation-checked).
     if let (Some(_), Ok(_), Some(g)) = (name, &r, h.active_gen()) {
         guard::spawn(hub(), g, guard::GUARD_TICK);
@@ -268,5 +300,35 @@ mod tabs_marker_tests {
     #[test]
     fn agent_on_recorded_tab_marks_it() {
         assert!(is_current(true, "A", Some("A")));
+    }
+}
+
+#[cfg(test)]
+mod popup_hook_tests {
+    use super::*;
+
+    #[test]
+    fn flag_defaults_off_without_initializing_the_hub() {
+        assert!(!recording_active());
+        assert!(!initialized());
+    }
+
+    #[test]
+    fn refront_is_skipped_only_while_recording() {
+        assert!(refront_after_popup(false));
+        assert!(!refront_after_popup(true));
+    }
+
+    #[test]
+    fn publish_reads_the_hub_state() {
+        publish_active(&Hub::default());
+        assert!(!recording_active());
+    }
+
+    #[test]
+    fn upstream_line_is_the_only_hook() {
+        let src = include_str!("../page/mod.rs");
+        assert_eq!(src.matches("activate_opener(self)").count(), 1);
+        assert!(src.contains("self.activate().await?;"));
     }
 }
