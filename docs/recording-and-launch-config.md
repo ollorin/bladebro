@@ -695,15 +695,15 @@ On Windows the CLI has no daemon and refuses record-start; record through MCP th
 
 ## Measurements
 
-Not re-run in Phase 11. These come from earlier phases, on macOS with headless Chrome:
+Not re-run in Phase 11. These come from earlier phases, on macOS. Phase 2 figures were measured headed, later phases headless:
 
 - The size table in [File size per minute](#file-size-per-minute): Phase 2 and Phase 9 (Phase 9 source: `.planning/phases/09-finalization-on-every-exit-path/evidence/09-03-sizes.txt`).
 - Phase 10 figures (labelled 10-01 or 10-02 where they appear).
-- The unlabelled "in testing" figures in [How frames are captured](#how-frames-are-captured) (frame rates, drift, the silence and background-tab notes) and the cross-site note in [Tab following](#tab-following): earlier phases (frame rates and drift from Phase 6, `06-02-live.txt` and `06-05-live.txt`; the Phase 8.1 popup spike from `08.1-01-spike.txt`). Treat them as order-of-magnitude figures and re-measure before relying on them.
+- The unlabelled "in testing" figures in [How frames are captured](#how-frames-are-captured) and the cross-site note in [Tab following](#tab-following): earlier phases. The headless frame rate and drift are from Phase 6 (`06-02-live.txt` and `06-05-live.txt`); the Phase 8.1 popup spike is from `08.1-01-spike.txt`. The about-100 frames/s headed rate, the minimized window's about 0.3 frames/s, the 37 s silence (one run in seven, not reproduced) and the background-tab result are from Phase 2: `tools/record_sidecar/RESULTS.md` and `tools/record_sidecar/results/core.json` (headed Chrome), with the minimized and background runs in `results/extra.json` and the silence in `.planning/phases/02-sidecar-prototype-gate/deferred-items.md`. Treat them as order-of-magnitude figures and re-measure before relying on them.
 
 ## Not verified
 
-The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local fixtures. Every result sample on this page (each fenced output block) is output from the Phase 11 runs (11-01, 11-02 and 11-03 evidence in `.planning/phases/11-integration-docs/evidence/`, as mapped in `snippet-map.tsv`), not output carried over from earlier phases. Figures quoted in prose and the size table are earlier-phase measurements; see [Measurements](#measurements). Not run:
+The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local fixtures. Every result sample on this page (each fenced output block) is output from the Phase 11 runs (11-01, 11-02 and 11-03 evidence in `.planning/phases/11-integration-docs/evidence/`, as mapped in `snippet-map.tsv`), not output carried over from earlier phases. Figures quoted in prose that carry no 11-01, 11-02 or 11-03 label, and the size table, are earlier-phase measurements; see [Measurements](#measurements). Not run:
 
 - Linux and Windows (no run of any example there; CI was not run for Phase 11). Windows lifecycle and the job object are by code reading only.
 - Headed Chrome: no example was run with a visible browser (the interactive `.mcp.json` entry was started and listed its tools, but made no browser call).
