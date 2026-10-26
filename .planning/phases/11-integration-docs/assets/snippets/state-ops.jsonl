@@ -1,0 +1,3 @@
+{"op": "record-start", "name": "login-flow"}
+{"op": "record-stop"}
+{"op": "record-stop", "value": "FAIL: login button did nothing"}

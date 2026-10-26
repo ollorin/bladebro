@@ -1,6 +1,6 @@
 # Recording and launch configuration
 
-Single reference for every bladebro-fork option: session recording, the ffmpeg override and the managed browser's launch mode. The README only points here.
+Single reference for every bladebro-fork option: session recording, the ffmpeg override and the managed browser's launch mode. The README only points here. Every copy-paste block on this page was run against local fixtures in Phase 11 (headless, macOS); see [Not verified](#not-verified) for what was not.
 
 ## Quick answers
 
@@ -108,10 +108,10 @@ Stop result, from a real run:
 recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, duration 4.1 s, frames 41, dropped 0, segments [0.0 s tab A89A...])
 ```
 
-Stop result with a poster, a timeline and a marker (real MCP run, 10-02 evidence; paths shortened like the examples above):
+Stop result with a poster, a timeline and a marker (real MCP run, 11-01 evidence; paths shortened like the examples above):
 
 ```
-recording saved: /abs/path/ev-20261026T131204Z-9447e0.webm (bytes 36530, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 7688...]). Poster: /abs/path/ev-20261026T131204Z-9447e0.poster.png. Timeline: /abs/path/ev-20261026T131204Z-9447e0.timeline.json (1 actions). Marker at 3.7 s
+recording saved: /abs/path/ev-20261026T145211Z-af4af0.webm (bytes 36204, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab A61A...]). Poster: /abs/path/ev-20261026T145211Z-af4af0.poster.png. Timeline: /abs/path/ev-20261026T145211Z-af4af0.timeline.json (1 action). Marker at 3.7 s
 ```
 
 | Field | Meaning |
@@ -124,7 +124,7 @@ recording saved: /abs/path/ev-20261026T131204Z-9447e0.webm (bytes 36530, duratio
 | dropped | frames dropped by the encoder queue plus frames lost on the CDP connection |
 | segments | one entry per tab the video shows, `[<offset> s tab <id>]`; the offset is the time of that tab's first frame on the video clock (first frame of the video = 0.0), and the id is the full target id that `state tabs` prints. A tab with no frames is labelled `<id> (no frames)` |
 | poster | `. Poster: <abs path>.poster.png`: the last frame of the finished video as a PNG, next to it (see [Poster, marker and timeline](#poster-marker-and-timeline)). `. Poster: not made (<reason>)` when it could not be made; the recording is still saved |
-| timeline | `. Timeline: <abs path>.timeline.json (N actions)`, plus `, K not kept` when entries were dropped at the 1000-entry cap. `. Timeline: not written (<reason>)` when it could not be written. Only with `record-stop`, not the exit paths |
+| timeline | `. Timeline: <abs path>.timeline.json (N actions; 1 action for one)`, plus `, K not kept` when entries were dropped at the 1000-entry cap. `. Timeline: not written (<reason>)` when it could not be written. Only with `record-stop`, not the exit paths |
 | marker | `. Marker at T s` when `value` was placed (T on the video clock, clamped to the length); `. Marker not placed: <reason>` when it was not (empty note, not a string, no active recording). The note itself is never echoed |
 | notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced; `popup <P> closed at <T> s; back on opener <O>` when a followed popup closed; `N popup(s) not recorded (never in front)` for popups that never reached the front; `agent was on tab <A> at stop; video followed tab <B>` when they differ at stop (see [Tab following](#tab-following)) |
 
@@ -160,7 +160,7 @@ How it works:
 - Popups: a tab opened by a tab of the recording is followed by itself, without `switch-tab`, once it has stayed in front for 300 ms. This covers a `target=_blank` link, `window.open` with or without window features, and popups of popups. The recorder reads which tab opened each new tab with one `Target.getTargets` call when a new tab appears. While recording, bladebro skips the opener re-front after a popup click (one line in `src/page/mod.rs`, active only while a recording runs). That skip is what keeps a tab-style popup in front; without it the popup is hidden at once and never becomes a segment.
   - Follow delay, measured live (headless, macOS arm64, local fixtures, 3 runs per kind, no `switch-tab`; delay = seconds from the click returning until `state tabs` marks the popup `R`): blank link 0.05-0.06 s, `window.open` without features 0.06 s, cross-origin link 0.05-0.21 s, window-feature popup 0.20-0.21 s. The MCP lane measured 0.00-0.17 s on the same kinds. In the Phase 8.1 spike (click at about 1 s) the popup segment started at 1.8 s (blank link) and 2.0 s (`window.open`) on the video clock.
   - Return: the agent's next `act`, `vision` or `nav` re-fronts the opener, so for tab-style popups the video returns to the opener at that input. Measured with `act press Tab` on the opener, in every tab-style kind.
-  - Window-feature popup (`window.open(url, '', 'width=500,height=400')`): it is a separate window. Input on the opener does not re-front it (measured: `press Tab` did not return the video), so the video stays on the popup until the popup closes or the agent runs `switch-tab` back to the opener. The video does not return to the opener by itself in this case.
+  - Window-feature popup (`window.open(url, '', 'width=500,height=400')`): it is a separate window. Input on the opener does not re-front it (measured: `press Tab` did not return the video), so the video stays on the popup. The click leaves the agent on the opener, and `switch-tab` to the opener while the agent is already there does not bring the video back (measured in 11-01: the popup row kept ` R`). It returns when the popup is closed (`state close-tab <popup id>`; measured: the opener row became `*R`) or after `switch-tab` to another tab and then back to the opener (measured). It does not return by itself.
   - Closing a followed popup returns the video to its opener with the note `popup <P> closed at <T> s; back on opener <O>` (measured: segments opener, popup, opener). Closing the last tab leaves no tab: Chrome exits, and stop reports `no tab left at <T> s` as `recording not clean`. The file is kept and decodes in full (measured).
   - Bursts: a popup becomes a segment only if it stays in front for 300 ms. One that never does is not recorded and is named once in the stop note: `N popup(s) not recorded (never in front): <ids>; switch-tab to record one` (at most 3 ids named). Timing decides which popups of a burst are segments. A live burst of three clicks gave six segments and no note; an earlier live run named one popup in that note.
   - Blocked popups: a popup that Chrome blocks is never a tab, so it produces no segment. bladebro's Chrome runs with `--disable-popup-blocking`, so a `window.open` without a user gesture is a real tab and is followed (measured). A `rel=noopener` popup has no known opener: it is followed after the same 300 ms, but it is never counted into the popup family or the stop note.
@@ -305,7 +305,7 @@ Three extras that `record-stop` adds next to the video. They are made from what 
 | placed | `. Marker at 3.7 s` (clamped to 0..duration) |
 | empty after cleaning | `. Marker not placed: empty note` |
 | not a string | `. Marker not placed: value must be a string` |
-| no active recording | `. Marker not placed: no active recording` (after the usual no-recording text) |
+| no active recording | `. Marker not placed: no active recording` (full text: `no active recording; record-start <name> first. Marker not placed: no active recording`) |
 
 **Timeline.** `<video stem>.timeline.json` next to the video, 0600, created once. It lists what the agent did, in order, with the same clock as the marker:
 
@@ -320,23 +320,23 @@ Real file from the MCP run above (pretty-printed here; basenames only, no direct
 
 ```json
 {
-  "version": 1,
   "clock": "seconds from the first video frame",
-  "video": "ev-20261026T131204Z-9447e0.webm",
+  "dropped": 0,
   "duration_s": 3.8,
-  "files": [
-    {"file": "ev-20261026T131204Z-9447e0.webm", "start_s": 0.0, "duration_s": 3.8}
-  ],
   "entries": [
-    {"kind": "action", "at_s": 1.49, "end_s": 2.18, "tool": "act", "action": "click", "ok": true,
+    {"action": "click", "at_s": 1.49, "end_s": 2.19, "kind": "action", "ok": true, "tool": "act",
      "verdict": "outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking"},
-    {"kind": "marker", "at_s": 3.69, "note": "x"}
+    {"at_s": 3.69, "kind": "marker", "note": "x"}
   ],
-  "dropped": 0
+  "files": [
+    {"duration_s": 3.8, "file": "ev-20261026T145211Z-af4af0.webm", "start_s": 0.0}
+  ],
+  "version": 1,
+  "video": "ev-20261026T145211Z-af4af0.webm"
 }
 ```
 
-The example has two entries because that run made one action and one marker. A `run` with three steps is one entry (`"tool": "run", "action": "run", "steps": 3`), as the 10-02 timeline run showed.
+The example has two entries because that run made one action and one marker. Keys are in the order the file stores them (alphabetical). A `run` with three steps is one entry (`"tool": "run", "action": "run", "steps": 3`), as the 10-02 timeline run showed.
 
 **Clock and alignment.** `0 s` is the arrival of the first video frame, the same clock the existing notes (`tab X gone at T s`) use. An entry's `at_s`/`end_s` and the marker are on that clock, clamped to `[0, duration]`. If no frame arrived at all, the clock is the `record-start` instant and the JSON `clock` text says so. Measured in 10-02 (headless Chrome, local fixtures, five clicks over the webm, mp4 and per-tab runs, 0.1 s scan steps): the frame where a clicked button's colour changed appeared about 0.3 s before the entry's `end_s` (the same value for every click in the official run; exploratory runs gave -0.2 to -0.3 s on the same grid). So `end_s` + 0.4 s always showed the new colour, and `at_s` - 0.3 s showed the previous colour. Every first new-colour frame lay inside its own action's `[at_s, end_s]` window. The measured offset is the error bound to use: the scan step is 0.1 s, and a frame is 0.1 s at 10 fps, so read the offsets as good to about 0.1 s, not as exact frame times.
 
@@ -362,10 +362,10 @@ The example has two entries because that run made one action and one marker. A `
 
 ### Example: DSH plugin
 
-The plugin (`npm/bladebro/dsh-plugin.mjs`) runs `bladebro mcp` over stdio and accepts the options `binaryPath`, `env`, `cwd`, `toolCallTimeoutMs` (default 180000 ms, which covers the stop) and `reconnect`:
+The plugin (`npm/bladebro/dsh-plugin.mjs`) runs `bladebro mcp` over stdio and accepts the options `binaryPath`, `env`, `cwd`, `toolCallTimeoutMs` (default 180000 ms, which covers the stop) and `reconnect`. Without `binaryPath` the plugin looks for the npm platform package for this machine, and its source throws `bladebro: platform package "<pkg>" not installed` when that package is missing. Point `binaryPath` at this fork's build:
 
-```js
-{ env: { BLADE_RECORD: "1" }, cwd: "/path/to/project" }
+```json
+{ "binaryPath": "/abs/path/to/bladebro", "env": { "BLADE_RECORD": "1" }, "cwd": "/path/to/project" }
 ```
 
 `cwd` decides which `.bladebro.json` applies.
@@ -408,6 +408,17 @@ Every key each config file accepts. A test compares this table with the code's o
 | `.bladebro.json record` | `quality` | As `record.json` |
 | `.bladebro.json record` | `tabs` | As `record.json` |
 | `launch.json` | `headless` | Written by `bladebro headless on` / `off` (bool) |
+
+## Per-call parameters
+
+The only per-call inputs are the arguments of the two `state` ops (MCP `state` tool, CLI `bladebro state`, or a `batch`/`run` step). On/off, dir, format, fps, size, quality, tab mode and headless come from the environment and the config files.
+
+| Op | Parameter | Required | Values | Effect |
+|---|---|---|---|---|
+| `record-start` | `name` | yes | a non-empty string. Kept: `A-Z a-z 0-9 . _ -`; every other character becomes `_` (runs collapse to one), leading and trailing `. _ -` are trimmed, cut to 80 characters, `recording` when nothing is left, Windows device names (`con`, `nul`, `com1`, ...) get a `rec_` prefix | file name `<name>-<UTC>-<id>.<ext>` (per-tab: `<name>-tab<N>-<UTC>-<id>.<ext>`) |
+| `record-stop` | `value` | no | a string; see [Poster, marker and timeline](#poster-marker-and-timeline) for the cleaning (controls become spaces, zero-width and bidi characters dropped, 200 characters) | marker note at the stop moment; never echoed |
+
+Measured (11-01 `name-rules`): `../../evil name%d` became `evil_name_d-<UTC>-<id>.webm`, a 100-character name was cut to 80, `...` became `recording-<UTC>-<id>.webm`, `ok.name_1-2` was kept. An empty name is refused: `usage: record-start needs name (a string), e.g. state record-start login-flow.`
 
 ## Project file (.bladebro.json)
 
@@ -535,6 +546,47 @@ One-off, without touching any file:
 BLADE_HEADLESS=1 bladebro nav http://127.0.0.1:8000/
 ```
 
+### 5. Per-test recording from a shell (CLI daemon)
+
+One video per test case: the first command starts the daemon with recording on (the daemon reads the environment once), each test is wrapped in record-start / record-stop, and every stop prints the file path. The URL is this repo's fixture page (tools/record_sidecar/fixtures served on port 8765); use your app's URL.
+
+```bash
+export BLADE_HEADLESS=1 BLADE_RECORD=1
+bladebro nav http://127.0.0.1:8765/mark.html
+for t in t01-blue t02-green; do
+  bladebro state record-start "$t"
+  bladebro act click "turn ${t#*-}"
+  bladebro state record-stop --value "PASS: $t"
+done
+bladebro stop
+```
+
+Real stop line from that run (11-01 evidence; paths shortened):
+
+```
+recording saved: /abs/path/t01-blue-20261026T145222Z-1c9b50.webm (bytes 27424, duration 0.8 s, frames 8, dropped 0, segments [0.0 s tab D4E7...], captured 9). Poster: /abs/path/t01-blue-20261026T145222Z-1c9b50.poster.png. Timeline: /abs/path/t01-blue-20261026T145222Z-1c9b50.timeline.json (1 action). Marker at 0.7 s
+```
+
+On Windows the CLI has no daemon and refuses record-start; record through MCP there.
+
+## Known issues
+
+- **Recording inside one `run` gives an empty timeline.** A `run` that itself contains `record-start` ... `record-stop` produces a video, poster and marker, but the timeline lists no actions (`(0 actions)`): the timeline records whole tool calls, and that `run` call began before the recording existed. Measured in 11-01: the in-run timeline held only the marker; the same steps as separate calls gave an action and the marker. For a timeline, call `record-start` and `record-stop` as their own `state` calls and put the test steps between them.
+- **`act click` can report `clicked (no observable DOM change)` for a click that did change the page.** The verdict readback did not report a background-colour change (src/action, upstream). The video and the poster show the change (11-01: after `click "turn blue"` the poster's 1x1 pixel was rgb(2, 65, 252), blue). Check the effect with `see` or the poster, not the verdict, in that case.
+- **`switch-tab` to the tab the agent is already on does not move the video.** After a window-feature popup the agent is still on the opener; `switch-tab <opener>` reports success, but the video stays on the popup (11-01 `window-popup`: the popup row kept ` R`). Close the popup (`state close-tab <popup id>`) or switch to another tab and back (see [Tab following](#tab-following)).
+- **A short test gives a short video.** The clock starts at the first frame (see [Recording time](#recording-time)). In 11-01 a test that was only `record-start`, one click and `record-stop` on an already loaded page gave 0.8 s of video (`ffprobe` duration 0.800000 for both runs).
+
+## Not verified
+
+The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local fixtures. The result samples from earlier phases (the start result, the first stop result, tab following, the per-tab result with three files) were not re-run in Phase 11; the Phase 11 runs printed lines of the same shape (see `.planning/phases/11-integration-docs/evidence/`). Not run:
+
+- Linux and Windows (no run of any example there; CI was not run for Phase 11). Windows lifecycle and the job object are by code reading only.
+- Headed Chrome: no example was run with a visible browser (the interactive `.mcp.json` entry was started and listed its tools, but made no browser call).
+- The real-browser lane (`BLADE_LANE`): recording is refused there by design; the refusal was not run.
+- A DSH host: `dsh` is not installed here. The plugin file was loaded with a stub bridge and the options it hands DSH were started as the MCP server; DSH's own loading of the profile YAML and its MCP bridge were not run.
+- The Claude Code client itself: the `.mcp.json` entries were started exactly as a client starts them (command, args, env) and driven over stdio; a session inside Claude Code was not run (see Phase 11 evidence).
+- A real 2 h recording, a full disk and a 1 GiB file (see [Disk space and limits](#disk-space-and-limits)).
+
 ## Troubleshooting
 
 - `browser mode mismatch`: a daemon from another mode is running. Run `bladebro stop`, then retry.
@@ -544,3 +596,8 @@ BLADE_HEADLESS=1 bladebro nav http://127.0.0.1:8000/
 - `.bladebro.json` ignored with a warning: it is a symlink (replace it with a regular file), owned by another user, or group/other-writable (`chmod 644 .bladebro.json`).
 - `record.dir ... ignored`: the path resolves outside the project and `<data root>/recordings`. Use a path inside the project.
 - Old `BLADE_CHROME_FLAGS=--headless=new` workaround: remove it and use `BLADE_HEADLESS=1`.
+- `recording is off: the operator has not enabled it ...` although you set `BLADE_RECORD=1`: the daemon or MCP server was started before you set it and reads the environment once. Run `bladebro stop` (or restart the MCP server), then retry.
+- `recording unavailable: BLADE_FFMPEG=... is unusable`: fix or unset `BLADE_FFMPEG`; `bladebro doctor` shows which ffmpeg was found and its encoders.
+- `BLADE_RECORD_FPS: fps 20 out of range 5-15`, `BLADE_RECORD_SIZE: ... must be even`, `BLADE_RECORD_FORMAT: format "avi" is not supported`, `BLADE_RECORD_TABS: must be follow or per-tab`, `BLADE_RECORD: ... must be an absolute directory path`: the message names the variable and the valid values; fix it and run `bladebro stop` so the daemon re-reads it.
+- The timeline says `(0 actions)` although the test clicked: the recording was started inside the same `run` call (see [Known issues](#known-issues)).
+- The stop times out in your client: a stop can take about 21 s in the worst case; set the client's tool timeout above that (the DSH plugin's `toolCallTimeoutMs` default, 180000 ms, is enough).
