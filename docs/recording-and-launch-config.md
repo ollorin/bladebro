@@ -342,6 +342,8 @@ The example has two entries because that run made one action and one marker. A `
 
 **Per-tab files.** With `BLADE_RECORD_TABS=per-tab` the result has one poster and one timeline. The poster comes from the file of the tab followed at stop (else the first finalized file) and is named after it. The timeline is named after the `-tab1-` file, and all times are on the recording clock, which is the earliest file's first frame. `files[]` gives every file's `start_s` on that clock (null when a file got no frame), so a file-local time is `at_s - start_s`. A marker in per-tab mode is on the recording clock too, so it can be later than the end of file 1. Measured in 10-02: file 2 started at 3.91 s on the recording clock; a click at local 0.67 s of file 2 showed its colour at local 1.03 s.
 
+**Recording off.** With recording off the timeline hooks cost one atomic load and nothing else, and no poster, timeline or video file is created. Measured in 10-02 against the pre-phase binary (d18dae1, two runs each, the same fixed CLI session): the set of CDP methods is the same (11 distinct), every method except `Input.dispatchMouseEvent` has equal per-method counts, and the normalized stdout is byte-identical. `Input.dispatchMouseEvent` is not a stable count even for one binary (the base binary gave 23 and 30 in two runs, the new one 34 and 30), because the humanized mouse paths are random by design (`src/stealth/biometrics.rs`). Read that count as noise, not as a regression signal.
+
 ### Example: Claude Code (.mcp.json)
 
 ```json
