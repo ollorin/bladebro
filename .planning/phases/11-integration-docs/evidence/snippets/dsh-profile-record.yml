@@ -1,0 +1,6 @@
+- id: bladebro
+  config:
+    binaryPath: /abs/path/to/bladebro
+    env:
+      BLADE_HEADLESS: "1"
+      BLADE_RECORD: "1"

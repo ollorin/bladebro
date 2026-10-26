@@ -1,0 +1,4 @@
+{"op": "record-start", "name": "07-02-login-invalid-password"}
+{"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+{"action": "click", "text": "turn blue"}
+{"op": "record-stop", "value": "FAIL: error banner never appeared"}

@@ -107,6 +107,8 @@ Each sources `env.sh`, uses fresh scratch homes and tears down its own browser. 
 Runtimes were not timed except the stealth scenario (20 s to 2 min across my runs). The stealth scenario retries the audit-attached sidecar
 up to 8 times per variant because the attach races the audit's own startup; the attempt count is recorded.
 
+- `scenarios/mcp_drive.py, dsh_stub.mjs, doc_snippets.py`: Phase 11 doc-snippet runs (see .planning/phases/11-integration-docs/evidence/scripts/).
+
 ## Tests
 
 ```bash

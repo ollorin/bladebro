@@ -1,0 +1,4 @@
+{
+  "headless": true,
+  "record": { "enabled": true, "dir": "recordings", "fps": 8 }
+}
