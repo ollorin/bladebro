@@ -1,163 +1,124 @@
 ---
 phase: 09-finalization-on-every-exit-path
-verified: 2026-10-26T09:45:00Z
-status: gaps_found
-score: 3/4 success criteria verified (SC3 fails on G1)
+verified: 2026-10-26T09:50:00Z
+status: passed
+score: 4/4 success criteria verified (macOS arm64; see "Not verified")
 re_verification:
-  previous_status: gaps_found   # 09-VERIFICATION-sonnet.md (advisory pass)
+  previous_status: gaps_found   # opus adversarial pass on 9613f3b (G1 + ledger gap)
   previous_score: 3/4
-  gaps_closed: []
-  gaps_remaining:
-    - "G1 sweeper ppid==1 rule kills bladebro's own live encoder when bladebro is pid 1 (confirmed, see below)"
+  gaps_closed:
+    - "G1: orphan sweeper no longer kills bladebro's own live encoder when bladebro is pid 1 (classify_as with injected `me`; Keep when ppid == me)"
+    - "Ledger: daemon.rs post-loop hook no longer re-indents the two upstream comment lines; diff vs 9756923 is hook lines only and matches HOOKS.md"
+  gaps_remaining: []
   regressions: []
-gaps:
-  - truth: "The orphan sweeper never kills an ffmpeg whose bladebro is still running (LIFE-03b 'identified SAFELY'; docs: 'an ffmpeg whose bladebro is still running [is] never touched')"
-    status: failed
-    failure_type: semantic_stub
-    reason: "classify() treats ppid==1 as orphan unconditionally. When bladebro itself is pid 1 (container entrypoint without an init, e.g. `docker run -i img bladebro mcp`), every encoder it spawns has ppid 1, and the guard sweeps the recording's own dir right after every record-start (guard.rs:43-46). Reproduced with the product's own classify/sweep_in/kill_orphan against a LIVE ffmpeg child whose ps row was given ppid=1: verdict Orphan, SIGTERM ignored while blocked on stdin, SIGKILL after 2 s (child exit status signal 9). Real ppid -> Keep('parent alive'). Linux-container only; not runnable on macOS as pid 1."
-    artifacts:
-      - path: "src/record/orphans.rs"
-        issue: "line 124: `if p.ppid != 1 && alive(p.ppid)` -> ppid 1 always Orphan, even when pid 1 is this live process"
-      - path: "src/record/hub/guard.rs"
-        issue: "lines 43-46: sweep of the active recording's own dir at every record-start, after ffmpeg was spawned, so the PID-1 case kills the just-started encoder deterministically"
-      - path: "src/record/orphans_tests.rs"
-        issue: "no case for ppid == own pid / own pid == 1"
-      - path: "docs/recording-and-launch-config.md"
-        issue: "line 232 'its parent process is gone (or is pid 1) ... an ffmpeg whose bladebro is still running are never touched' is false when bladebro is pid 1"
-    missing:
-      - "In classify, Keep when p.ppid == std::process::id() (pass `me` into classify/sweep_in for testability); this also covers the pid-1 case. Optionally also skip the guard's record-start sweep entirely when std::process::id() == 1."
-      - "Unit test: ProcInfo{ppid: me} with me == 1 -> Keep; sweep_in with me=1 never kills a child"
-      - "Docs sentence adjusted"
-  - truth: "Every edit to a pre-existing upstream file is a listed tiny hook (SYNC-01 / HOOKS.md)"
-    status: failed
-    failure_type: regression
-    reason: "src/cli/daemon.rs post-loop: besides the moved hook line (listed as 'net 0 lines'), rustfmt re-indented the two upstream comment lines `// Cleanup: persist live logins...` and `// (Never on the real lane...)` into trailing-comment continuations (diff shows -2/+2 on upstream lines). Unlisted upstream-line change and a needless merge-conflict surface if upstream edits that comment. Minor."
-    artifacts:
-      - path: "src/cli/daemon.rs"
-        issue: "lines ~446-448: hook placed above the comment block with a trailing `// fork hook` comment, so rustfmt aligned the following comment lines under it"
-    missing:
-      - "Place the hook line after the two untouched upstream comment lines (or put `// fork hook ...` on its own line above the call) so the diff is exactly +1/-1 hook lines; update HOOKS.md row if needed"
 ---
 
-# Phase 9: Finalization on Every Exit Path - Verification Report (adversarial final pass)
+# Phase 9: Finalization on Every Exit Path - Verification Report (re-verification after c0ea00d)
 
 **Phase Goal:** However a session ends, the recording is finalized or honestly reported as interrupted, and no ffmpeg process is left behind.
-**Verified:** 2026-10-26 (macOS arm64, Chrome 154 headless, ffmpeg n9.0.2, release build of HEAD 9613f3b)
-**Status:** gaps_found
-**Re-verification:** After the advisory sonnet pass (09-VERIFICATION-sonnet.md). All probes below were RE-RUN by this verifier with its own harness (scratchpad, not exit_live.py); evidence files were not trusted.
+**Verified:** 2026-10-26 (macOS arm64, Chrome 154 headless, ffmpeg n9.0.2 at ~/.local/ffmpeg/bin, release build of HEAD c0ea00d)
+**Status:** passed (with the explicit "Not verified" list below)
+**Re-verification:** Yes, after gap-closure commit c0ea00d. Every check below was re-run by this verifier; the fix commit's claims were not trusted.
 
-Safety: every run used a fresh `mktemp -d` BLADE_HOME, BLADE_HEADLESS=1, BLADE_NO_UPDATE_CHECK=1, local fixtures on 127.0.0.1:8799 (tools/record_sidecar/fixtures). Only pids whose command line held the scratch home, or pids this verifier spawned, were signalled. No user Chrome/ffmpeg touched. Disk-low live run used a 560 MB scratch disk image (hdiutil, detached and deleted afterwards), not a real disk.
+Safety: fresh `mktemp -d` BLADE_HOME per run, BLADE_HEADLESS=1, BLADE_NO_UPDATE_CHECK=1, BLADE_RECORD=1, fixtures served by `python3 -m http.server 8799 --bind 127.0.0.1` (tools/record_sidecar/fixtures). Only processes this verifier started (or whose command line held its scratch home) were signalled. Final state: 0 bladebro / ffmpeg / scratch Chrome / fixture server left.
+
+## History (previous passes, summarized)
+
+- Sonnet advisory pass (09-VERIFICATION-sonnet.md): gaps_found, 3/4.
+- Opus adversarial pass on 9613f3b: gaps_found, 3/4. Every exit path on both lanes and both tab modes finalized (files decoded in full, 0 leftovers); browser crash gave an honest `interrupted` note; disk-low stop live on a scratch disk image; instruments at baseline (772/0/12 tests, audit 100/100, qol 120/122 baseline). Two gaps: **G1** `classify()` treated ppid==1 as orphan unconditionally, so a bladebro running as pid 1 (init-less container) would SIGTERM/SIGKILL its own encoder at every record-start sweep (reproduced with product code); **ledger** rustfmt re-indented two upstream comment lines in `src/cli/daemon.rs`.
+
+## Gap closure
+
+### G1 - CLOSED
+
+Code (src/record/orphans.rs:91-133): `classify` now delegates to `classify_as(p, dir, alive, std::process::id())`; the parent rule is `if p.ppid == me || (p.ppid != 1 && alive(p.ppid)) { Keep("parent alive") }`. New unit test `record::orphans_tests::bladebro_as_pid1_keeps_its_own_live_encoder` (ppid 1, me 1 -> Keep; ppid 1, me 777 -> Orphan) passes. Docs line 232 updated and now true.
+
+Live, real processes (scratch crate linking the bladebro lib, no repo edit; all ffmpeg started by the probe, stdin held open by a pipe / FIFO):
+
+| case | result |
+|---|---|
+| A: live ffmpeg child, real ps row (ppid = me) | `classify` -> Keep("parent alive") |
+| A, with `alive` forced to false | Keep("parent alive") (the new ppid==me branch alone protects it) |
+| A row rewritten to ppid=1, `classify_as(me=1)` (bladebro as pid 1) | Keep("parent alive") |
+| A row ppid=1, `classify_as(me=<real pid>)` (old bug shape) | Orphan (rule still reaps a real ppid-1 orphan) |
+| `sweep_in` on A's real row, alive=false, REAL killer (`kill_orphan`) | Keep; child still running afterwards |
+| B: genuine orphan (shell launched ffmpeg and exited; reparented to launchd, ppid 1), bladebro argv + recordings-dir name | `classify` -> Orphan; `sweep_in` over the full `ps` list with the real killer killed only B (A kept); B gone < 4 s |
+| End-to-end with the fixed binary (U1-U9 matrix: real orphan U3 + 8 near misses / live parent) | Chrome-launch sweep reaped U3 only; record-start sweep left all others; record-stop file saved; cleanup 0 left |
+
+Attempts to break the new rule:
+- pid reuse: `ppid == me` can only be true while this process is alive (our pid cannot be reused while we live), and a `ps` row with ppid == me is by definition our child at snapshot time. The SIGKILL path keeps its same-command-line re-check. No wrong protection found.
+- bladebro is not a subreaper (no `prctl`/`PR_SET_CHILD_SUBREAPER` in src), so on a normal host no foreign orphan is ever reparented to it.
+- Residual (safe direction, Info): when bladebro IS pid 1, any orphan in that container is reparented to it, so `ppid == me` also keeps a genuinely orphaned encoder left by a different bladebro process in the same container (shown: B with `classify_as(me=1)` -> Keep). The backstop is inert there, never destructive; ffmpeg's own stdin-EOF exit remains the primary mechanism. Docs say "keeps its own encoders", which slightly understates (it keeps all of them). Not a goal failure.
+- Test coverage note (Info): the gap's suggested `sweep_in` test with me=1 was not added (sweep_in uses the real pid); covered by this verifier's live sweep_in run above.
+
+### Ledger - CLOSED
+
+`git diff 9756923..HEAD -- src/cli/daemon.rs src/session_profile/reap.rs`: daemon.rs = three `+1` hook lines (lines 267, 363, 414) and the post-loop hook moved below the two untouched upstream comment lines (`+1/-1`, no upstream line altered); reap.rs = one `+1` hook line. Matches HOOKS.md rows 488c0e0 / b95e023 ("moved above the login snapshot block (net 0 lines)").
+All 29 changed non-.planning paths checked with `git cat-file -e upstream/main:<path>` (upstream/main 6b524d2): only `src/cli/daemon.rs` and `src/session_profile/reap.rs` exist upstream. Cargo.toml/lock, npm/, CHANGELOG.md, .github/, src/updater/, src/mcp/tools.rs: 0 diff.
 
 ## Success criteria
 
-| # | Criterion | Verdict | Evidence |
+| # | Criterion | Verdict | Evidence (this pass) |
 |---|---|---|---|
-| 1 | Finalized on record-stop, tab close, daemon shutdown/idle, `bladebro stop`, one-shot exit, SIGTERM/Ctrl-C, per path | VERIFIED | Live table below: every drivable path in both lanes, follow and per-tab, every produced file decoded in full (rc 0, 0 error lines); one-shot refused with no file and no process. Hooks: daemon.rs:267/363/414/446, boot.rs:185 (`shutdown_browser`, used by serve.rs:203/215/338/597/617). |
-| 2 | Browser crash/relaunch mid-recording -> interrupted/unfinalized result, partial file kept | VERIFIED | kill -9 of scratch Chrome main (mcp/daemon, follow/per-tab): next record-stop `previous recording interrupted: browser connection lost at 6.0 s; partial file kept: <path>. recording not clean: ...`; files 5.9-6.0 s decode in full; new start/stop saves. Idle relaunch: `previous recording ended with the browser: recording saved: ...` (30 s file decodes). |
-| 3 | No ffmpeg remains after normal exits and simulated crashes; reaper cleans orphaned encoders; orphan integration test | FAILED (G1) | Leftover ffmpeg = 0 in every scenario (ffmpeg gone 27-161 ms after the exit action). Real orphan reaped live (U3 below). BUT the identification rule kills a live encoder when bladebro is pid 1 (G1, reproduced with product code). |
-| 4 | Disk-low stop; size-per-minute documented | VERIFIED | Live on a scratch image: start at 546 MiB free OK; 60 MiB ballast -> 486 MiB; guard stopped and finalized in 1.46-1.65 s (follow and per-tab, all encoders); next op `previous recording stopped: disk low (486 MiB free); saved: <path> (bytes 49573, duration 4.1 s, ...)` (decodes); record-start refused `recording not started: disk low (486 MiB free in <dir>, need 500 MiB)`; after ballast removal start works. 2 h / 1 GiB: injected seam only (guard_tests max_duration_stops_and_finalizes, max_size_stops_and_finalizes, per_tab_size_finalizes_every_file pass); no env/config knob exists (consts, D9-13), so not drivable live. Sizes table in docs ("File size per minute"). |
+| 1 | Finalized on record-stop, tab close, daemon shutdown/idle, `bladebro stop`, one-shot, SIGTERM/Ctrl-C | VERIFIED | Smoke below (MCP EOF, MCP SIGTERM follow + per-tab, daemon `stop` follow + per-tab, daemon SIGTERM): every file ffprobe ok, full decode rc 0 / 0 error lines; full matrix from the previous pass unchanged by c0ea00d (changes touch only the orphan rule and a hook line position). |
+| 2 | Browser crash mid-recording -> interrupted result, partial file kept | VERIFIED | kill -9 scratch Chrome, MCP and daemon: `previous recording interrupted: browser connection lost at 6.0 s; partial file kept: <path>` ; 5.9 s files decode; restart + stop saves a 2.0 s file that decodes. |
+| 3 | No ffmpeg remains; reaper cleans orphaned encoders; orphan test | VERIFIED | Leftovers 0 in every smoke run (ffmpeg gone 30-64 ms after the exit action); real orphan reaped live; G1 closed (above). |
+| 4 | Disk-low stop; size-per-minute documented | VERIFIED (previous pass, untouched by c0ea00d) | Live scratch-disk run in the previous pass; guard_tests seams for 2 h / 1 GiB pass in this run's suite. |
 
-**Score:** 3/4
+**Score:** 4/4
 
-## Live probe results (this verifier's harness)
+## Live smoke (this pass, release build of c0ea00d)
 
-All files: ffprobe duration + `ffmpeg -v error -i f -f null -`. Leftovers = ffmpeg/bladebro/Chrome under the scratch home, polled up to 10 s.
-
-| id | exit action | bladebro exit | ffmpeg gone | files (decode) | leftovers |
+| id | exit action | bladebro exit | ffmpeg gone | files (ffprobe / decode) | leftovers |
 |---|---|---|---|---|---|
-| m-eof | MCP stdin EOF | 871 ms | 31 ms | 4.1 s ok | 0 (55 ms) |
-| m-eof-pt | same, per-tab | 801 ms | 55 ms | tab2 2.4 s ok; tab1 **0 bytes** (tab left before its first frame; see O3) | 0 |
-| m-sigterm / -pt | SIGTERM MCP | 854 / 808 ms | 27 / 56 ms | 4.1 s ok / 4.3 s + 2.3 s ok | 0 |
-| m-sigint / -pt | SIGINT MCP | 866 / 882 ms | 28 / 59 ms | 4.1 s ok / 4.3 + 2.3 s ok | 0 |
-| m-kill9 / -pt | kill -9 MCP | 36 / 46 ms | 118 / 158 ms | 4.0 s ok / 4.0 + 2.2 s ok | ffmpeg/bladebro 0; 8/12 scratch Chrome left (pre-existing, also with recording OFF: re-run here, 9 left; deferred-items.md) |
-| m-kill_chrome / -pt | kill -9 Chrome | - | - | 5.9 s ok / 6.0 + 3.9 s ok; text `interrupted: browser connection lost` | 0 |
-| m-kill_ffmpeg | SIGKILL ffmpeg | - | - | 0 bytes; text `interrupted: encoder exited at 6.0 s; file is empty, nothing playable` | 0 |
-| m-kill_ffmpeg-pt | SIGKILL tab1 ffmpeg | - | - | tab1 0 bytes reported at stop as `recording failed: no frames reached the encoder`; tab2 6.3 s ok | 0 |
-| m-term_ffmpeg | SIGTERM ffmpeg | - | - | 4.3 s ok; `interrupted: encoder exited ...; partial file kept` | 0 |
-| m-idle / -pt | BLADE_IDLE_TIMEOUT=20 | Chrome+ffmpeg gone 26.5 / 26.4 s | | 30.0 s ok / 29.9 + 28.0 s ok; `previous recording ended with the browser: recording saved` | 0 |
-| d-stop / -pt | `bladebro stop` | returned 847 / 949 ms `daemon stopped` | 29 / 70 ms | 4.2 s ok / 4.3 + 2.4 s ok | 0 |
-| d-sigterm / -pt | SIGTERM daemon | 851 / 794 ms | 38 / 53 ms | ok / ok | 0 |
-| d-sigint / -pt | SIGINT daemon | 796 / 790 ms | 28 / 54 ms | ok / ok | 0 |
-| d-kill9 / -pt / -mp4 | kill -9 daemon | 36-50 ms | 33-161 ms | 4.0 s ok / 4.0 + 2.2 s ok / mp4 3.9 s ok | 0 after next launch (daemon reaper removes Chrome) |
-| d-kill_chrome / -pt | kill -9 Chrome | - | - | 6.0 s ok / 6.0 + 3.9 s ok; `interrupted: browser connection lost` | 0 |
-| d-kill_ffmpeg / -pt / -mp4 | SIGKILL ffmpeg | - | - | 0 bytes (webm and mp4), honest `file is empty` / per-tab `ffmpeg exited with signal: 9 ... may be incomplete`; other tab 6.4 s ok | 0 |
-| d-idle / -pt | idle 20 s | 26.3 / 25.9 s | | 29.3 s / 29.2 + 27.2 s ok | 0 |
-| tab close per-tab | close-tab tab2 | - | tab2 encoder exited at close, tab1 kept recording | 7.4 s + 1.8 s ok, note `tab ... gone at 5.3 s` | 0 |
-| tab close follow | close-tab current | - | single encoder continues | 7.5 s ok, 3 segments | 0 |
-| one-shot | `--no-daemon state record-start` | rc 1 | none started | no recordings dir | 0 |
-| disk-low follow / per-tab | ballast on scratch image | - | 1.65 s / 1.46 s (both encoders) | 4.1 s / 6.0 + 2.4 s ok | 0 |
+| m-eof | MCP stdin EOF | 830 ms | 30 ms | 4.1 s ok | 0 (57 ms) |
+| m-sigterm | SIGTERM MCP | 839 ms | 31 ms | 4.1 s ok | 0 |
+| m-sigterm-pt | SIGTERM MCP, per-tab | 833 ms | 57 ms | 4.3 s + 2.4 s ok | 0 |
+| m-kill_chrome | kill -9 Chrome | - | - | 5.9 s ok + 2.0 s restart ok; interrupted note | 0 |
+| d-stop | `bladebro stop` | returned 836 ms | 33 ms | 4.1 s ok | 0 |
+| d-stop-pt | `bladebro stop`, per-tab | returned 838 ms | 64 ms | 4.3 s + 2.4 s ok | 0 |
+| d-sigterm | SIGTERM daemon | 827 ms | 30 ms | 4.1 s ok | 0 |
+| d-kill_chrome | kill -9 Chrome | - | - | 5.9 s ok + 2.0 s restart ok; interrupted note | 0 |
 
-Per-tab: every encoder that existed finalized on every exit path. Observation: with two `open-tab` calls ~0.5 s apart only 2 of 3 tabs got a file (the briefly visited middle tab is never "visited" by the follower); Phase 8 behavior, outside Phase 9.
-
-## Orphan sweeper (B) - live, real processes
-
-Real ffmpeg processes started by the verifier, stdin held open via FIFOs so they cannot EOF; trigger = Chrome launch (`bladebro nav`, reap hook) then `record-start` (guard sweep):
-
-| proc | description | after launch sweep | after record-start sweep |
-|---|---|---|---|
-| U1 | exact bladebro argv, other dir, orphaned (ppid 1) | alive | alive |
-| U2 | exact argv in recordings dir, parent alive | alive | alive |
-| U3 | exact argv in recordings dir, bladebro name, orphaned (REAL orphan) | **reaped** | gone |
-| U4 | orphan in rec dir, non-bladebro name | alive | alive |
-| U5 | orphan, bladebro name, `-f mjpeg -i pipe:0` | alive | alive |
-| U6 | bladebro argv + trailing `-y` | alive | alive |
-| U7 | relative mp4 output | alive | alive |
-| U8 | output in rec subdir | alive | alive |
-| U9 | `-f rawvideo -i pipe:0` | alive | alive |
-
-No false positive on any user-style or near-miss ffmpeg on macOS. A real orphaned ffmpeg is reaped (refutes sonnet gap 2 "fakes only" as a product gap; the in-repo test still uses fakes, which CONTEXT explicitly allowed).
-Attempt to create a bladebro-spawned orphan: SIGSTOP the encoder then kill -9 the daemon -> the kernel sends SIGHUP+SIGCONT to the now-orphaned stopped process group and ffmpeg finalizes on its own (file decodes, 0 left). So a SIGSTOPped encoder does not produce an orphan on macOS.
-**G1 confirmed** (scratch crate linking the bladebro lib, no repo edit): live ffmpeg child, real row -> `Keep("parent alive")`; same row with ppid=1 -> `Orphan`; `sweep_in` + `kill_orphan` -> child exit status signal 9.
-Also (non-blocking, reasoned, Linux not run): on Linux desktops with a child subreaper (systemd --user) orphans are reparented to a live subreaper, so the rule returns `parent alive` and the sweeper is inert there (safe direction); minimal images without procps `ps` also make it inert.
-
-## Hooks ledger (D)
-
-`git diff 9756923..HEAD -- . ':!.planning'`: 29 files; paths existing on upstream/main (6b524d2): only `src/cli/daemon.rs` and `src/session_profile/reap.rs`. reap.rs +1 (HOOKS row b95e023). daemon.rs: 3 one-line hooks + moved post-loop hook (HOOKS rows 488c0e0), plus 2 upstream comment lines re-indented by rustfmt (gap 2). Cargo.toml/lock, npm/, CHANGELOG.md, .github/, src/updater/, src/mcp/tools.rs: 0 diff.
-
-## Instruments (E)
+## Instruments
 
 | instrument | result | baseline |
 |---|---|---|
 | `cargo fmt --check` | rc 0 | clean |
 | `cargo clippy --release --all-targets -- -D warnings` | rc 0 | clean |
-| `cargo test --release --no-fail-fast` | 772 passed / 0 failed / 12 ignored (flake did not fire; no live race daemon left) | 772/0/12 |
+| `cargo test --release --no-fail-fast` | 772 passed / 1 failed / 12 ignored; sole failure = known flake `concurrent_cold_starts_have_one_owner` (NotFound at daemon_lifecycle.rs:204); leaked race daemon stopped via `BLADE_HOME=<race dir> bladebro stop`; rerun `--test daemon_lifecycle`: 5/5 pass. Net: 773 tests, all green (one new test vs 772). | 772/0/12 |
 | `BLADE_HEADLESS=1 bladebro audit` (scratch home) | 100/100, VERDICT PASS | 100/100 |
-| `BLADE_HEADLESS=1 tools/qol_probe/run.py` | 120 passed, 2 failed: exactly 'chord cleared the live editor', 'nested scroller movement is reported as such' | 120/122 |
-| lane_matrix_local.py x5, BLADE_RECORD=0 | daemon 1.1-1.2 s, oneshot 0.6, mcp 0.7, mcp-pipe 0.7; all rc 0 | |
-| same, BLADE_RECORD=1 | daemon 1.1-1.3, oneshot 0.6, mcp 0.7, mcp-pipe 0.7; all rc 0 | |
-| Layer-1 gates (scripts/fp-gate.ts etc.) | not present in this repo (N/A) | |
-| diff_oracle, `real` lane | not run (cannot run here / out of scope) | |
+| Layer-1 gates (scripts/fp-gate.ts, migration-security-gate, cve-scan-gate, check-p0-tier-delta) | not present in this repo (N/A) | |
+| qol_probe, lane_matrix, diff_oracle | not re-run (c0ea00d touches no input/stealth/launch code; previous pass at baseline) | |
 
-Charlotte QA / E2E plan: not applicable (CLI/MCP binary, no web UI). New impl files have test counterparts (orphans_tests, disk_tests, guard_tests, exit_tests, process_group_tests). No migrations.
+Charlotte QA / E2E plan: not applicable (CLI/MCP binary, no web UI). New/changed impl files have test counterparts. No migrations. No deferral of this phase's tests.
 
 ## Anti-patterns / observations
 
 | File | Line | Pattern | Severity | Impact |
 |---|---|---|---|---|
-| src/record/orphans.rs | 124 | ppid==1 treated as orphan unconditionally | Blocker (G1) | kills own live encoder when bladebro is pid 1 |
-| src/cli/daemon.rs | 446-448 | upstream comment lines re-indented | Minor (gap 2) | unlisted upstream edit, merge surface |
-| src/record/exit_tests.rs | 150-175 | row_signal_*/row_idle_* are source-text pins + a generic orphan_cycle, not exercising the signal/idle path | Info | compensated by the live runs above (all green) |
-| src/record/hub/machine.rs | ~245 | interrupted `at <T> s` is guard detection time (6.0 s) while the same message says `browser connection lost at 4.7 s` | Info | two times for one event; consider using the source's loss time |
-| per-tab, exit paths | - | a tab left before its first frame leaves a 0-byte file and, on EOF/signal exits, nobody reports it (record-stop does report `no frames reached the encoder`) | Info (O3) | docs "file plays in full" overclaims for that edge |
-| MCP lane kill -9 | - | scratch Chrome not reaped by the next MCP launch | Info, pre-existing (re-proven with recording OFF) | deferred-items.md carve-out |
+| src/record/orphans.rs | 130 | ppid==me also keeps foreign orphans when bladebro is pid 1 (it is their reaper) | Info | backstop inert in that environment; safe direction |
+| src/record/orphans_tests.rs | 409 | no sweep_in-level test with me=1 (classify_as only) | Info | covered live by this verifier |
+| src/record/exit_tests.rs | 150-175 | source-text pins for signal/idle rows (from previous pass) | Info | compensated by live runs |
+| src/record/hub/machine.rs | ~245 | two times for one event (`at 6.0 s` vs `lost at 4.7 s`) (from previous pass; reconfirmed in smoke text) | Info | cosmetic |
+| per-tab exit paths | - | a tab left before its first frame leaves an unreported 0-byte file on EOF/signal exits (previous pass O3) | Info | docs "plays in full" overclaims for that edge |
+| MCP lane kill -9 | - | scratch Chrome not reaped by next MCP launch (pre-existing, also with recording off) | Info | deferred-items.md carve-out |
 
-Logical cohesion: orphans.rs (rule + ps lister + killer), disk.rs, guard.rs are single-responsibility; no re-tangling found.
-
-## Sonnet-pass gaps: confirm/refute
-
-1. G1 PID-1 false positive: CONFIRMED, now concrete (guard sweeps own dir at every record-start, so it is deterministic in that environment, not just "could").
-2. Orphan test uses fakes only: REFUTED as a product gap. A real orphaned ffmpeg with bladebro's exact argv is reaped live; non-matching real processes survive. In-repo test with fakes was the agreed method.
-3. Killed ffmpeg leaves 0-byte file: REFUTED as a gap. SC2 is about browser crash/relaunch, where the partial file is kept and plays. For a SIGKILLed encoder the text says `file is empty, nothing playable` (honest); SIGTERMed encoder gives `partial file kept` and the file plays (4.3 s).
+Logical cohesion: orphans.rs remains rule + lister + killer for one concern; no re-tangling.
 
 ## Not verified
 
-Linux and Windows (the G1 scenario itself is Linux-container only; reproduced via product code, not as real pid 1); headed mode; `real` lane; diff_oracle; a real 2 h or 1 GiB recording (seam only, no knob); per-tab with the 8-file cap at exit; SIGHUP paths; Windows job-object reasoning.
+- Real pid 1: the G1 fix is verified with the injected `me` (unit test + live real-process probe) and by reasoning that `std::process::id()` returns 1 there; no actual init-less Linux container run (not possible on this macOS host).
+- Linux and Windows entirely (sweeper on Linux incl. subreaper desktops; Windows job-object reasoning).
+- A real 2 h or 1 GiB recording (seam tests only; no knob by design, D9-13).
+- Headed mode, `real` lane, diff_oracle, SIGHUP paths, per-tab 8-file cap at exit.
+- This pass re-ran a smoke subset; the full exit matrix, disk-low live run and qol/lane_matrix are from the previous pass (on 9613f3b), not re-run here.
 
 ## Gaps Summary
 
-Everything on macOS works as documented across both lanes, both tab modes and every drivable exit path; instruments match baselines. One real defect blocks SC3: the orphan rule's "ppid 1 means orphan" is unsafe when bladebro is pid 1, and the guard runs that sweep right after every record-start, so recordings would be killed at once in an init-less container. Fix is surgical (Keep when ppid == own pid, plus a test and a doc line). A second, minor ledger gap: two upstream comment lines in daemon.rs were re-indented.
+Both gaps from the previous pass are closed. G1: the rule now keeps any encoder whose parent is this process, which covers bladebro-as-pid-1, while a real ppid-1 orphan is still reaped (shown live with real ffmpeg processes and with the fixed binary end to end). Ledger: the daemon.rs diff is hook lines only and matches HOOKS.md; no other upstream file changed. No regressions: fmt/clippy clean, the suite is green apart from the known flake (green on rerun), audit 100/100, smoke on both lanes finalizes or honestly reports interruption with 0 leftovers. Remaining items are platform/environment coverage, listed above.
 
 ---
 
-_Verified: 2026-10-26T09:45:00Z_
-_Verifier: Claude (gsd-verifier, adversarial final pass, opus)_
+_Verified: 2026-10-26T09:50:00Z_
+_Verifier: Claude (gsd-verifier, adversarial re-verification of c0ea00d, opus)_

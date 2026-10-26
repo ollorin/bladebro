@@ -41,5 +41,7 @@ Phase 8: no new hooks (zero edits to upstream files; verified by the opus verifi
 | 9 | src/cli/daemon.rs | drift/lost relaunch branch: `crate::record::hub::finish_best_effort().await;` before `b.shutdown()` (1 line) | finalize an active recording before Chrome is relaunched; report goes to the next record op (LIFE-01) | 488c0e0 |
 | 9 | src/cli/daemon.rs | `Err(BladeError::Closed)` relaunch: same one-line hook before `b.shutdown()` | same (LIFE-01) | 488c0e0 |
 | 9 | src/cli/daemon.rs | idle timeout block: same one-line hook directly above `b.shutdown()`, after the login snapshot | a recording idle for BLADE_IDLE_TIMEOUT is finalized, not dropped with Chrome (LIFE-01) | 488c0e0 |
-| 9 | src/cli/daemon.rs | post-loop: the Phase 7 hook line moved above the login snapshot block (net 0 lines) | finalize before anything that talks to Chrome, so a dead Chrome cannot delay the finalize (LIFE-01) | 488c0e0 |
+| 9 | src/cli/daemon.rs | post-loop: the Phase 7 hook line moved above the login snapshot block, below the upstream comment (net 0 lines, no upstream line changed) | finalize before anything that talks to Chrome, so a dead Chrome cannot delay the finalize (LIFE-01) | 488c0e0 |
 | 9 | src/session_profile/reap.rs | first line of `reap_orphans()`: `crate::record::orphans::sweep();` (1 line) | sweep orphaned bladebro ffmpeg on every Chrome launch (LIFE-03); logic in src/record/orphans.rs (4-part safety rule) | b95e023 |
+
+Phase 9 ledger verified by the opus verifier (2026-10-26) against `git diff 9756923..HEAD` and `git cat-file -e upstream/main:<path>`: only src/cli/daemon.rs and src/session_profile/reap.rs touch upstream files.

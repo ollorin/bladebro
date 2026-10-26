@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
 - [ ] **Phase 8.1: Follow Every Popup (INSERTED)** - A click-opened or script-opened popup becomes a segment without `switch-tab`; the video returns to the opener when it closes; `state tabs` and the segments agree (user decision 2026-10-26; runs after Phase 9 is verified)
-- [ ] **Phase 9: Finalization on Every Exit Path** (EXECUTED, NOT VERIFIED) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
+- [x] **Phase 9: Finalization on Every Exit Path** (verified 2026-10-26, macOS) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [ ] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
 - [ ] **Phase 12: Full Instrument Gate** - Test-suite completeness plus the full stealth, cross-platform and regression gate with recording on
@@ -272,7 +272,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 7. RecordHub and state Ops | 3/3 | Complete (macOS headless; opus verified, +07-04 gap fix) | 2026-10-22 |
 | 8. Tab Following | 2/2 | Executed (macOS headless; opus verifier: human_needed on popup wording; 720 tests; 0 upstream hooks) | 2026-10-23 |
 | 8.1 Follow Every Popup (INSERTED) | 0/2 | Not started (runs after Phase 9 verification) | - |
-| 9. Finalization on Every Exit Path | 3/3 | EXECUTED, NOT VERIFIED (verification resumes 2026-10-26) | - |
+| 9. Finalization on Every Exit Path | 3/3 | Complete (opus passed 2026-10-26, macOS only) | 2026-10-26 |
 | 10. Evidence Extras | 0/2 | Not started | - |
 | 11. Integration Docs | 0/2 | Not started | - |
 | 12. Full Instrument Gate | 0/2 | Not started | - |
