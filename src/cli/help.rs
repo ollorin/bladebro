@@ -665,7 +665,8 @@ SESSIONS / CONTROL
 
 RECORDING (needs ffmpeg + BLADE_RECORD; daemon or MCP only)
   record-start <name>                  video of the active tab
-  record-stop                          path, bytes, duration, frames, drops
+  record-stop [--value <note>]         path, bytes, duration, frames, drops
+  (writes <video>.poster.png and <video>.timeline.json next to the video)
 
 EXAMPLES
   bladebro state cookies

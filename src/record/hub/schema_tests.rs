@@ -1,13 +1,17 @@
-//! The `state` tool schema gained exactly two enum values and two text
-//! deltas for recording. Guards the five-tool budget (non-negotiable 1) and
-//! the added-token ceiling (Phase 1 D-01: 232 chars / ~58 tokens).
+//! The `state` tool schema gained exactly two enum values and text deltas
+//! for recording (10-02 added the record-stop marker `value` and the poster /
+//! timeline words). Guards the five-tool budget (non-negotiable 1) and the
+//! added-text ceiling (Phase 1 D-01 232 chars; 10-PLAN-NOTES D10-6 <= 330).
 
 use crate::mcp::tools::all_tools;
 
 const ENUM_ADD: &str = r#", "record-start", "record-stop""#;
-const LINE_ADD: &str = "RECORDING: record-start <name> (video of the active tab at start), record-stop (returns path, bytes, duration, frames, drops, segments). Needs ffmpeg; off unless BLADE_RECORD is set.";
+const LINE_ADD: &str = "RECORDING: record-start <name> (video of the active tab at start), record-stop [value=<marker note>] (returns path, bytes, duration, frames, drops, segments, poster PNG, timeline JSON). Needs ffmpeg; off unless BLADE_RECORD is set.";
 const NAME_NEW: &str = "Cookie name, storage key, session name, or recording name.";
 const NAME_OLD: &str = "Cookie name, storage key, or session name.";
+const VALUE_NEW: &str = "Cookie or storage value, or record-stop marker note.";
+const VALUE_OLD: &str = "Cookie or storage value.";
+const DOCS: &str = include_str!("../../../docs/recording-and-launch-config.md");
 const OLD_ENUM: &[&str] = &[
     "cookies",
     "set-cookie",
@@ -61,6 +65,22 @@ fn enum_has_both_ops_once_and_keeps_the_old_ones() {
 }
 
 #[test]
+fn description_mentions_poster_timeline_marker() {
+    let s = state();
+    assert!(
+        s.description.contains(
+            "record-stop [value=<marker note>] (returns path, bytes, duration, frames, drops, segments, poster PNG, timeline JSON)"
+        ),
+        "RECORDING line lacks the marker/poster/timeline wording"
+    );
+    let value = s.input_schema["properties"]["value"]["description"]
+        .as_str()
+        .expect("value description");
+    assert_eq!(value, VALUE_NEW);
+    assert!(value.contains("record-stop marker note"));
+}
+
+#[test]
 fn description_text_and_no_tab_following_claim() {
     let s = state();
     assert!(s.description.contains("RECORDING: record-start <name>"));
@@ -104,15 +124,31 @@ fn added_text_stays_within_the_budget() {
     for part in [ENUM_ADD.trim_start_matches(", "), LINE_ADD, NAME_NEW] {
         assert!(collapsed.contains(part), "missing in tools.rs: {part}");
     }
+    assert!(
+        collapsed.contains(VALUE_NEW),
+        "missing in tools.rs: {VALUE_NEW}"
+    );
     let name_delta = NAME_NEW.len() - NAME_OLD.len();
+    let value_delta = VALUE_NEW.len() - VALUE_OLD.len();
     // The description line also carries a trailing "\n\" in the source (3 chars).
-    let total = ENUM_ADD.len() + LINE_ADD.len() + 1 + name_delta;
+    let total = ENUM_ADD.len() + LINE_ADD.len() + 1 + name_delta + value_delta;
     eprintln!(
-        "schema added chars: enum {} + line {} + name delta {} = {total} (~{} tokens)",
+        "schema added chars: enum {} + line {} + name delta {} + value delta {} = {total} (~{} tokens)",
         ENUM_ADD.len(),
         LINE_ADD.len() + 1,
         name_delta,
+        value_delta,
         total / 4
     );
-    assert!(total <= 240, "added {total} chars, budget 240");
+    assert!(total <= 330, "added {total} chars, budget 330");
+}
+
+#[test]
+fn docs_mention_poster_marker_timeline() {
+    assert!(DOCS.contains("### Poster, marker and timeline"));
+    for word in ["Poster:", "Marker at", "Timeline:", "value"] {
+        assert!(DOCS.contains(word), "docs lack {word}");
+    }
+    assert!(DOCS.contains(r#""op": "record-stop", "value""#));
+    assert!(DOCS.contains(".timeline.json"));
 }

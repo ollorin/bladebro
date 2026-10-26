@@ -69,7 +69,7 @@ The video clock starts at the first frame, not at the `record-start` call, and e
 - ffmpeg is run directly with an argument list (no shell); JPEG frames go to its stdin, its stdout is discarded and the last 4 KiB of its error output is kept for the result.
 - WebM uses VP9 (`libvpx-vp9`, realtime, crf 40); MP4 uses H.264 (`libx264`, veryfast, crf 28, faststart). Output is always the configured size (default 1280x720), letterboxed, with even dimensions.
 - Timing: frames are written at a constant rate equal to the configured fps; a frame is repeated for as long as it stayed on screen (from the capture timestamps), and the last frame is held until the stop, so video length matches the recording time.
-- Stop: bladebro closes ffmpeg's input and waits for it to finish: normally well under 10 s, at most about 18 s in the worst case (10 s drain, 2 s minimum wait for ffmpeg, 5 s to reap after a kill, 1 s for its error output). Success is reported only when ffmpeg exits 0, the file is non-empty and every accepted frame was written. If ffmpeg does not finish in time it is killed, the result says "unfinalized", and the partial file is kept. If frames were still unwritten at the 10 s deadline, the result says "truncated" with the number of frames not written.
+- Stop: bladebro closes ffmpeg's input and waits for it to finish: normally well under 10 s, at most about 18 s in the worst case (10 s drain, 2 s minimum wait for ffmpeg, 5 s to reap after a kill, 1 s for its error output). After a finished video, the poster frame adds at most 3 s (see [Poster, marker and timeline](#poster-marker-and-timeline)). Success is reported only when ffmpeg exits 0, the file is non-empty and every accepted frame was written. If ffmpeg does not finish in time it is killed, the result says "unfinalized", and the partial file is kept. If frames were still unwritten at the 10 s deadline, the result says "truncated" with the number of frames not written.
 - Errors name the cause and the fix: ffmpeg missing, `BLADE_FFMPEG` unusable, encoder missing for the format (switch with `BLADE_RECORD_FORMAT`), or the ffmpeg exit code with its last error lines. Browsing continues either way.
 - Requires ffmpeg 4.3 or newer (`bladebro doctor` shows the version and encoders); this is not checked in code, so an older ffmpeg fails when encoding starts and the result carries its exit error. These limits are fixed; there is no setting for them.
 
@@ -86,14 +86,15 @@ The video clock starts at the first frame, not at the `record-start` call, and e
 Two ops on the existing `state` tool (there is no sixth tool):
 
 - `record-start` with `name` (required): starts a video of the tab the agent is on; the video follows the agent's tab (see [Tab following](#tab-following)). The file is `<sanitized name>-<UTC>-<id>.<ext>` in the recordings dir.
-- `record-stop`: finalizes the file and reports it.
+- `record-stop`: finalizes the file and reports it. An optional `value` is a marker note (what went wrong or right, at the moment of the stop); it is placed on the timeline (see [Poster, marker and timeline](#poster-marker-and-timeline)).
 
 ```json
 {"op": "record-start", "name": "login-flow"}
 {"op": "record-stop"}
+{"op": "record-stop", "value": "FAIL: login button did nothing"}
 ```
 
-CLI: `bladebro state record-start login-flow` and `bladebro state record-stop`. In a `batch` or `run` step: `{"action": "state", "op": "record-start", "name": "x"}`. Recording is off unless enabled (for example `BLADE_RECORD=1`), and it needs ffmpeg (`bladebro doctor` shows what was found).
+CLI: `bladebro state record-start login-flow`, `bladebro state record-stop` and `bladebro state record-stop --value "FAIL: login button did nothing"`. In a `batch` or `run` step: `{"action": "state", "op": "record-start", "name": "x"}` and `{"action": "state", "op": "record-stop", "value": "FAIL: ..."}`. Recording is off unless enabled (for example `BLADE_RECORD=1`), and it needs ffmpeg (`bladebro doctor` shows what was found).
 
 Start result (the first frame is not awaited):
 
@@ -107,6 +108,12 @@ Stop result, from a real run:
 recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, duration 4.1 s, frames 41, dropped 0, segments [0.0 s tab A89A...])
 ```
 
+Stop result with a poster, a timeline and a marker (real MCP run, 10-02 evidence; paths shortened like the examples above):
+
+```
+recording saved: /abs/path/ev-20261026T131204Z-9447e0.webm (bytes 36530, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 7688...]). Poster: /abs/path/ev-20261026T131204Z-9447e0.poster.png. Timeline: /abs/path/ev-20261026T131204Z-9447e0.timeline.json (1 actions). Marker at 3.7 s
+```
+
 | Field | Meaning |
 |---|---|
 | path | absolute path of the file |
@@ -116,11 +123,14 @@ recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, dura
 | captured | frames passed to the encoder after the fps cap (Chrome may send many more); shown only when different from `frames`. It can exceed `frames`, because a frame on screen for less than one 1/fps slot gets no video slot, and it can be lower, because a held frame is repeated to fill its time |
 | dropped | frames dropped by the encoder queue plus frames lost on the CDP connection |
 | segments | one entry per tab the video shows, `[<offset> s tab <id>]`; the offset is the time of that tab's first frame on the video clock (first frame of the video = 0.0), and the id is the full target id that `state tabs` prints. A tab with no frames is labelled `<id> (no frames)` |
+| poster | `. Poster: <abs path>.poster.png`: the last frame of the finished video as a PNG, next to it (see [Poster, marker and timeline](#poster-marker-and-timeline)). `. Poster: not made (<reason>)` when it could not be made; the recording is still saved |
+| timeline | `. Timeline: <abs path>.timeline.json (N actions)`, plus `, K not kept` when entries were dropped at the 1000-entry cap. `. Timeline: not written (<reason>)` when it could not be written. Only with `record-stop`, not the exit paths |
+| marker | `. Marker at T s` when `value` was placed (T on the video clock, clamped to the length); `. Marker not placed: <reason>` when it was not (empty note, not a string, no active recording). The note itself is never echoed |
 | notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced; `popup <P> closed at <T> s; back on opener <O>` when a followed popup closed; `N popup(s) not recorded (never in front)` for popups that never reached the front; `agent was on tab <A> at stop; video followed tab <B>` when they differ at stop (see [Tab following](#tab-following)) |
 
 The stop is `ok` only when capture and encoder both finished cleanly. Otherwise it is an error (MCP `isError`, CLI exit 1; in `batch`/`run` an error step stops the batch) whose text starts with `recording not clean:` and still carries the path and numbers.
 
-A stop can take up to about 18 s in the worst case (500 ms capture grace, up to 10 s encoder drain, then the trailer). Set your client's tool timeout above that.
+A stop can take up to about 21 s in the worst case: about 18 s for the video (500 ms capture grace, up to 10 s encoder drain, then the trailer) plus the 3 s poster budget. Set your client's tool timeout above that.
 
 Refusals (nothing is recorded, an error is returned):
 
@@ -224,6 +234,7 @@ Details:
 - The idle timeout is not paused by a recording: a recording that sees no tool call for `BLADE_IDLE_TIMEOUT` seconds is finalized with Chrome and reported at the next record op.
 - `bladebro stop` waits for the finalize (the client waits up to 30 s, the finalize is bounded by about 16 s for one file).
 - On macOS and Linux ffmpeg runs in its own process group. A terminal Ctrl-C reaches bladebro only, which then closes ffmpeg's input and finalizes; ffmpeg is not interrupted halfway through writing its trailer. A second signal while finalizing is ignored until the bounded finalize ends. If bladebro itself is killed (SIGKILL), ffmpeg sees its input close and finalizes the file on its own.
+- Only `record-stop` writes the poster and the timeline. Every exit, interrupt, limit and disk-low finalize above writes the video only: no ffmpeg poster run, no timeline file, no `Poster:` or `Timeline:` text, and no new file in the recordings folder. Their results are the same as before the poster and timeline existed.
 - Live proof (headless Chrome, local fixtures, both lanes, every path above that can be driven): `tools/record_sidecar/scenarios/exit_live.sh`, output kept in `.planning/phases/09-finalization-on-every-exit-path/evidence/09-03-live.txt`. After each exit the file was decoded in full and no ffmpeg, bladebro or scratch Chrome was left within 10 s (they were gone within 0.1 s). One exception, not caused by recording: after `kill -9` of an MCP server its Chrome is not reaped by the next MCP launch (the same happens with no recording; the daemon lane does reap it).
 - SIGHUP: the MCP server treats it like SIGTERM; the daemon ignores it on purpose.
 - The one-shot CLI cannot hold a recording because it exits after one command, so `record-start` is refused there with a message to use MCP or the daemon.
@@ -281,6 +292,56 @@ How it works:
 - `record-stop` finishes all files at the same time, each bounded; a file that cannot be finished in time is listed as `not finalized`. A second `record-start` is refused and names the first file.
 - A followed popup gets its own file, numbered like any tab; a popup that never reaches the front gets none. When the popup closes its file is finished and the opener's file continues, with the note `popup <P> closed at <T> s; back on opener <O>` (measured: a popup closed at 4.1 s got a 2.4 s file of its own). The cap of 8 open files applies to popups too.
 
+### Poster, marker and timeline
+
+Three extras that `record-stop` adds next to the video. They are made from what the tools already returned and from one ffmpeg run on the finished file; no page is queried for them and no CDP call is added.
+
+**Poster frame.** One short ffmpeg run reads the finished video and writes its last frame as `<video stem>.poster.png` next to the video. It decodes at most the last second and succeeds only when ffmpeg exits 0 and the file starts with the PNG signature; otherwise the file is removed and the result says `. Poster: not made (<reason>)`. The poster never changes `ok` or `err`. The run has a 3 s budget (one retry without the seek when the container cannot seek from the end, inside the same budget). Measured in 10-01: the ffmpeg run takes about 0.07 s (15 runs, max 0.074 s), and the wall time of `record-stop` moved from a median of 0.632 s to 0.654 s over 3 runs each on the same scenario, inside run-to-run noise. The poster file is created new with mode 0600 (a planted symlink is never followed; on a name collision it is numbered), and it is removed again when the run fails. In per-tab mode it comes from the file of the tab the video followed at stop, named after that file (see below).
+
+**Marker.** `record-stop` with `value` places a labelled point on the timeline at the moment the stop was received, on the video clock. The text is cleaned first: every control character (tab, newline included) becomes a space, zero-width and bidi-control characters are dropped (they can disguise text for a reviewer), whitespace runs collapse, and it is cut to 200 characters with `...` when longer. The result says `. Marker at T s` and does not echo the note (the agent wrote it). A marker never costs the recording:
+
+| Case | Result text |
+|---|---|
+| placed | `. Marker at 3.7 s` (clamped to 0..duration) |
+| empty after cleaning | `. Marker not placed: empty note` |
+| not a string | `. Marker not placed: value must be a string` |
+| no active recording | `. Marker not placed: no active recording` (after the usual no-recording text) |
+
+**Timeline.** `<video stem>.timeline.json` next to the video, 0600, created once. It lists what the agent did, in order, with the same clock as the marker:
+
+- Listed: every `act` call; every `run` call (one entry per call, with `steps` = the number of top-level steps, and the first line of the result as its verdict); `state` only for `open-tab`, `close-tab` and `switch-tab`.
+- Not listed: `see`, `vision`, other `state` ops, `record-start`, `record-stop`. A navigation made by `see url=` is not an entry.
+- Each entry: `at_s` (call start), `end_s` (result produced), `tool`, `action`, `ok` (false for an error result), and `verdict` (the first non-empty line of the result or error text, cleaned and cut to 200 characters). A failed action keeps its verdict.
+- At most 1000 entries. Later ones are counted in `dropped` and reported as `K not kept`.
+- Written only by `record-stop`. The exit, interrupt, limit and disk-low finalizes do not write it (see the note under [When a session ends](#when-a-session-ends)).
+- The file holds verdict lines, which can contain text the agent typed or text from the page, and the marker note. Treat it with the same care as the video: a recording folder can hold sensitive content.
+
+Real file from the MCP run above (pretty-printed here; basenames only, no directories):
+
+```json
+{
+  "version": 1,
+  "clock": "seconds from the first video frame",
+  "video": "ev-20261026T131204Z-9447e0.webm",
+  "duration_s": 3.8,
+  "files": [
+    {"file": "ev-20261026T131204Z-9447e0.webm", "start_s": 0.0, "duration_s": 3.8}
+  ],
+  "entries": [
+    {"kind": "action", "at_s": 1.49, "end_s": 2.18, "tool": "act", "action": "click", "ok": true,
+     "verdict": "outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking"},
+    {"kind": "marker", "at_s": 3.69, "note": "x"}
+  ],
+  "dropped": 0
+}
+```
+
+The example has two entries because that run made one action and one marker. A `run` with three steps is one entry (`"tool": "run", "action": "run", "steps": 3`), as the 10-02 timeline run showed.
+
+**Clock and alignment.** `0 s` is the arrival of the first video frame, the same clock the existing notes (`tab X gone at T s`) use. An entry's `at_s`/`end_s` and the marker are on that clock, clamped to `[0, duration]`. If no frame arrived at all, the clock is the `record-start` instant and the JSON `clock` text says so. Measured in 10-02 (headless Chrome, local fixtures, five clicks over the webm, mp4 and per-tab runs, 0.1 s scan steps): the frame where a clicked button's colour changed appeared about 0.3 s before the entry's `end_s` (the same value for every click in the official run; exploratory runs gave -0.2 to -0.3 s on the same grid). So `end_s` + 0.4 s always showed the new colour, and `at_s` - 0.3 s showed the previous colour. Every first new-colour frame lay inside its own action's `[at_s, end_s]` window. The measured offset is the error bound to use: the scan step is 0.1 s, and a frame is 0.1 s at 10 fps, so read the offsets as good to about 0.1 s, not as exact frame times.
+
+**Per-tab files.** With `BLADE_RECORD_TABS=per-tab` the result has one poster and one timeline. The poster comes from the file of the tab followed at stop (else the first finalized file) and is named after it. The timeline is named after the `-tab1-` file, and all times are on the recording clock, which is the earliest file's first frame. `files[]` gives every file's `start_s` on that clock (null when a file got no frame), so a file-local time is `at_s - start_s`. A marker in per-tab mode is on the recording clock too, so it can be later than the end of file 1. Measured in 10-02: file 2 started at 3.91 s on the recording clock; a click at local 0.67 s of file 2 showed its colour at local 1.03 s.
+
 ### Example: Claude Code (.mcp.json)
 
 ```json
@@ -295,7 +356,7 @@ How it works:
 }
 ```
 
-`record-stop` can take about 18 s, so your client's MCP tool timeout must be longer than that.
+`record-stop` can take about 21 s (18 s for the video plus the 3 s poster budget), so your client's MCP tool timeout must be longer than that.
 
 ### Example: DSH plugin
 
