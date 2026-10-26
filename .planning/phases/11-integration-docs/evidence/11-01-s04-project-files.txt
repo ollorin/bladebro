@@ -1,0 +1,39 @@
+# 2026-10-26T14:53:50Z git 5a83604 bladebro v4.6.5 (9d20e81-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.NXRVHAtxgq BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET project-file
+--- text (project.bladebro.json):
+{
+  "headless": true,
+  "record": { "enabled": true, "dir": "recordings", "fps": 8 }
+}
+--- run:
+$ cd /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f && bladebro headless status
+browser mode: headless (source: project file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f/.bladebro.json)
+[bladebro] browser mode: headless (source: project file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f/.bladebro.json)
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f/recordings/proj-20261026T145351Z-01dd18.webm (tab 5FFEE50A57DF4C853F816EDC58F6F66C); first frame not awaited. record-stop saves it.
+outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f/recordings/proj-20261026T145351Z-01dd18.webm (bytes 31395, duration 2.9 s, frames 23, dropped 0, segments [0.0 s tab 5FFEE50A57DF4C853F816EDC58F6F66C]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f/recordings/proj-20261026T145351Z-01dd18.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.oSjnrK7i5f/recordings/proj-20261026T145351Z-01dd18.timeline.json (1 action)
+recordings in the project: proj-20261026T145351Z-01dd18.poster.png proj-20261026T145351Z-01dd18.timeline.json proj-20261026T145351Z-01dd18.webm 
+ffprobe proj-20261026T145351Z-01dd18.webm: vp9,1280,720,8/1 duration=2.875000
+dir mode: 700
+daemon stopped
+
+SNIPPET suite-file
+--- text (suite.bladebro.json):
+{ "headless": true, "record": { "format": "webm", "fps": 10 } }
+--- run:
+$ cd /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.mTEejCLyjV && bladebro headless status
+browser mode: headless (source: project file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.mTEejCLyjV/.bladebro.json)
+$ BLADE_RECORD unset: the suite file does not enable recording
+[bladebro] browser mode: headless (source: project file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.mTEejCLyjV/.bladebro.json)
+✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+daemon stopped
+$ BLADE_RECORD=1 (env enables it; format/fps come from the file)
+[bladebro] browser mode: headless (source: project file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.mTEejCLyjV/.bladebro.json)
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.NXRVHAtxgq/recordings/suite-20261026T145357Z-e5ceb0.webm (tab CEA03497D1DF2D7C25D4EBC757616118); first frame not awaited. record-stop saves it.
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.NXRVHAtxgq/recordings/suite-20261026T145357Z-e5ceb0.webm (bytes 12568, duration 1.6 s, frames 16, dropped 0, segments [0.0 s tab CEA03497D1DF2D7C25D4EBC757616118]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.NXRVHAtxgq/recordings/suite-20261026T145357Z-e5ceb0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.NXRVHAtxgq/recordings/suite-20261026T145357Z-e5ceb0.timeline.json (0 actions)
+ffprobe suite-20261026T145357Z-e5ceb0.webm: vp9,1280,720,10/1 duration=1.600000
+daemon stopped
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 90570 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.NXRVHAtxgq

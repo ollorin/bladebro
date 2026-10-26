@@ -1,0 +1,35 @@
+# 2026-10-26T14:54:27Z git 5a83604 bladebro v4.6.5 (9d20e81-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.GjoAJRqWXV BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET env-errors
+$ BLADE_RECORD=relative/dir bladebro state record-start x   (BLADE_RECORD=1)
+✗ error: BLADE_RECORD: "relative/dir" must be an absolute directory path, or on/off; relative paths are ambiguous because the daemon's working directory differs from the CLI's
+$ BLADE_RECORD_FORMAT=avi bladebro state record-start x   (BLADE_RECORD=1)
+✗ error: BLADE_RECORD_FORMAT: format "avi" is not supported; use webm or mp4 (default webm)
+$ BLADE_RECORD_FPS=20 bladebro state record-start x   (BLADE_RECORD=1)
+✗ error: BLADE_RECORD_FPS: fps 20 out of range 5-15 (default 10)
+$ BLADE_RECORD_SIZE=161x120 bladebro state record-start x   (BLADE_RECORD=1)
+✗ error: BLADE_RECORD_SIZE: size 161x120: width and height must be even (try 160x120)
+$ BLADE_RECORD_TABS=both bladebro state record-start x   (BLADE_RECORD=1)
+✗ error: BLADE_RECORD_TABS: must be follow or per-tab (got "both")
+$ BLADE_FFMPEG=/nonexistent/ffmpeg bladebro state record-start x   (BLADE_RECORD=1)
+✗ error: recording unavailable: BLADE_FFMPEG=/nonexistent/ffmpeg is unusable (not found); PATH was not searched. Fix or unset BLADE_FFMPEG. Browsing is unaffected.
+$ BLADE_RECORD_FPS=15 bladebro state record-start x   (BLADE_RECORD=1)
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.GjoAJRqWXV/recordings/x-20261026T145437Z-595b70.webm (tab 842479939EB5FF79FADC1569808A5F0F); first frame not awaited. record-stop saves it.
+
+SNIPPET troubleshooting
+$ (BLADE_RECORD unset) bladebro state record-start x
+✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+$ export BLADE_RECORD=1 without restarting the daemon, then record-start
+✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+$ BLADE_HEADLESS=maybe bladebro nav ...
+bladebro: BLADE_HEADLESS: "maybe" is not valid; use 1/on/true/yes (hidden browser) or 0/off/false/no (visible browser), or unset it for the platform default
+exit=1
+$ group-writable .bladebro.json: bladebro headless status
+[bladebro] warning: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.rogyTrXVbT/.bladebro.json: project file ignored: it is group/other-writable (chmod go-w to trust it)
+browser mode: platform default (source: default)
+$ record.dir outside the project: record-start from the project dir
+[bladebro] warning: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.rogyTrXVbT/.bladebro.json: record.dir ../outside ignored: must be inside the project (/private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.rogyTrXVbT) or /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.GjoAJRqWXV/recordings
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.GjoAJRqWXV/recordings/x-20261026T145440Z-87c828.webm (tab 2868100D8B91BEC8561145E90C5080AF); first frame not awaited. record-stop saves it.
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 91239 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.GjoAJRqWXV

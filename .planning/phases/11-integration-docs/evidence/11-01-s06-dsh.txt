@@ -1,0 +1,43 @@
+# 2026-10-26T14:54:15Z git 5a83604 bladebro v4.6.5 (9d20e81-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.mYdLehOMD7 BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET dsh-options
+--- text (dsh-plugin-options.json):
+{ "binaryPath": "/abs/path/to/bladebro", "env": { "BLADE_RECORD": "1" }, "cwd": "/path/to/project" }
+--- run:
+--- substituted: { "binaryPath": "/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro", "env": { "BLADE_RECORD": "1" }, "cwd": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.5Yt7hQurhN" }
+PLUGIN bladebro inject ["tools"]
+BRIDGE OPTIONS {"toolCallTimeoutMs":180000,"env":{"BLADE_RECORD":"1"},"cwd":"/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.5Yt7hQurhN","transport":"stdio","serverName":"bladebro","command":"/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro","args":["mcp"],"failOnStartupError":true}
+stub exit=0
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.5Yt7hQurhN
+TOOLS mcp__bladebro__act,mcp__bladebro__see,mcp__bladebro__state,mcp__bladebro__run,mcp__bladebro__vision
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "dsh"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.mYdLehOMD7/recordings/dsh-20261026T145417Z-73f860.webm (tab 2695CDACA26C860C066ED45E8BF88866); first frame not awaited. record-stop saves it.
+CALL act {"action": "click", "text": "turn blue"}
+RESULT isError=false outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+CALL state {"op": "record-stop", "value": "PASS: dsh"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.mYdLehOMD7/recordings/dsh-20261026T145417Z-73f860.webm (bytes 37659, duration 3.2 s, frames 32, dropped 0, segments [0.0 s tab 2695CDACA26C860C066ED45E8BF88866]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.mYdLehOMD7/recordings/dsh-20261026T145417Z-73f860.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.mYdLehOMD7/recordings/dsh-20261026T145417Z-73f860.timeline.json (1 action). Marker at 3.1 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+--- without binaryPath the plugin looks for the npm platform package (the published upstream binary, which has no recording):
+      throw new Error(`bladebro: platform package "${pkg}" not installed. Reinstall bladebro with optional dependencies enabled.`);
+
+SNIPPET dsh-profile-headless
+--- text (dsh-profile-headless.yml):
+- id: bladebro
+  config:
+    env:
+      BLADE_HEADLESS: "1"
+--- run:
+--- a DSH host is not installed (dsh not on PATH), so this YAML is not loaded by DSH here. The config object it sets, {"env":{"BLADE_HEADLESS":"1"}}, plus binaryPath, is run through the plugin:
+PLUGIN bladebro inject ["tools"]
+BRIDGE OPTIONS {"toolCallTimeoutMs":180000,"env":{"BLADE_HEADLESS":"1"},"transport":"stdio","serverName":"bladebro","command":"/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro","args":["mcp"],"failOnStartupError":true}
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_HEADLESS": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro
+TOOLS mcp__bladebro__act,mcp__bladebro__see,mcp__bladebro__state,mcp__bladebro__run,mcp__bladebro__vision
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 91072 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.mYdLehOMD7
