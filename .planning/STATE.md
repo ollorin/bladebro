@@ -1,7 +1,7 @@
 # Project State
 
 > **Phase 8.1 verified (2026-10-26, macOS headless; opus passed 5/5; 820 tests; audit 100/100; qol 120/122; hooks: src/page/mod.rs 1 line, src/state.rs +2/-6, both in HOOKS.md).** Next: Phase 10.
-> **HOLD (user, 2026-10-26):** finish and verify Phase 10, then stop. Do not start Phase 11 until the user says continue.
+> **HOLD LIFTED (user "limits reset, you can continue", 2026-10-26):** finish Phase 10, then Phases 11 and 12.
 
 > **RESUMED (user, 2026-10-26):** Phase 9 verified; order now: Phase 8.1 (follow every popup, user decision) -> Phases 10, 11, 12. Hold note of 2026-10-23 superseded.
 
