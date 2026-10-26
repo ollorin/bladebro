@@ -52,7 +52,7 @@ seg_inner() { sed -nE 's/.*segments \[([^]]*)\].*/\1/p' <<<"$1" | head -1; }
 seg_ids() { seg_inner "$1" | tr ',' '\n' | sed -E 's/^ *[0-9.]+ s tab //; s/ \(no frames\)//'; }
 seg_offs() { seg_inner "$1" | tr ',' '\n' | sed -E 's/^ *([0-9.]+) s tab .*/\1/'; }
 rgb_at() { "$FFMPEG" -nostdin -v error -ss "$2" -i "$1" -frames:v 1 -vf scale=1:1 -f rawvideo -pix_fmt rgb24 - 2>/dev/null | od -An -tu1 | tr -s ' ' | sed 's/^ //'; }
-tone() { awk -v r="$1" -v g="$2" -v b="$3" 'BEGIN{ if(r>200&&g<60&&b<60)print "red"; else if(b>200&&r<60&&g<60)print "blue"; else if(g>120&&r<60&&b<60)print "green"; else if(r>200&&g>160&&b<60)print "yellow"; else print "other(" r "," g "," b ")"}'; }
+tone() { awk -v r="$1" -v g="$2" -v b="$3" 'BEGIN{ if(r>200&&g<60&&b<60)print "red"; else if(b>200&&r<60&&g<100)print "blue"; else if(g>120&&r<60&&b<60)print "green"; else if(r>200&&g>160&&b<60)print "yellow"; else print "other(" r "," g "," b ")"}'; }
 tone_at() { local c; c=$(rgb_at "$1" "$2"); tone $c; }
 # mid_of TEXT K TOTAL: midpoint (s) of segment K (0-based) on the video clock
 mid_of() { python3 -I -c "

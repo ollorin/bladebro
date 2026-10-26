@@ -94,38 +94,42 @@ import sys; sys.exit(0 if o[0]==0.0 and all(b>a for a,b in zip(o,o[1:])) else 1)
 }
 
 sc_popup() {
-  say "== popup: link popup is not a segment; a window.open popup is read as the new front tab"
+  say "== popup: (08.1) a link popup and a window.open popup are both segments, no switch-tab"
   new_home; export BLADE_RECORD=1
   "$BB" nav "$FIX/popup.html" >/dev/null 2>&1
-  local O stop1 stop2 before after P path1 path2
+  local O stop1 stop2 before after P1 P path1 path2 total
   O=$(cur_id)
+  before=$("$BB" state tabs 2>&1 | tab_ids | sort)
   "$BB" state record-start p1 >/dev/null 2>&1
+  sleep 1
   "$BB" act click "open c" 2>&1 | head -1 | sed 's/^/[popup] click link: /' | tee -a "$EVIDENCE"
-  sleep 2
+  sleep 3
   stop1=$("$BB" state record-stop 2>&1); say "[popup] stop 1: $stop1"
-  check popup "link popup: exactly one segment, the opener" test "$(seg_ids "$stop1" | tr '\n' ' ')" = "$O "
+  P1=$(seg_ids "$stop1" | sed -n 2p)
+  check popup "link popup: two segments, the opener then the popup" test "$(seg_ids "$stop1" | wc -l | tr -d ' ')" = 2 -a "$(seg_ids "$stop1" | head -1)" = "$O" -a -n "$P1"
   path1=$(saved_path "$stop1"); analyse popup "$path1" "$stop1"
-  check popup "opener-only video is yellow" test "$(tone_at "$path1" 1.0)" = "yellow"
+  total=$(num_after "$stop1" duration)
+  check popup "opener yellow, popup green" test "$(tone_at "$path1" "$(mid_of "$stop1" 0 "$total")") $(tone_at "$path1" "$(mid_of "$stop1" 1 "$total")")" = "yellow green"
+  "$BB" state close-tab "$P1" >/dev/null 2>&1
   before=$("$BB" state tabs 2>&1 | tab_ids | sort)
   "$BB" state record-start p2 >/dev/null 2>&1
+  sleep 1
   "$BB" act click "window" 2>&1 | head -1 | sed 's/^/[popup] click window: /' | tee -a "$EVIDENCE"
-  sleep 1.5
+  sleep 3
   after=$("$BB" state tabs 2>&1 | tab_ids | sort)
   P=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
   say "[popup] popup tab: $P"
-  "$BB" state switch-tab "$P" >/dev/null 2>&1
-  sleep 2
   stop2=$("$BB" state record-stop 2>&1); say "[popup] stop 2: $stop2"
   local first last cnt
   first=$(seg_ids "$stop2" | head -1); last=$(seg_ids "$stop2" | tail -1); cnt=$(seg_ids "$stop2" | wc -l | tr -d ' ')
-  check popup "window popup: >= 2 segments ($cnt), first the opener, last the popup" test "$first" = "$O" -a "$last" = "$P" -a "$cnt" -ge 2
+  check popup "window popup without switch-tab: >= 2 segments ($cnt), first the opener, last the popup" test "$first" = "$O" -a "$last" = "$P" -a "$cnt" -ge 2
   path2=$(saved_path "$stop2"); analyse popup "$path2" "$stop2"
   unset BLADE_RECORD
   end_scn popup
 }
 
 sc_popup_measure() {
-  say "== popup-measure: window-features popup, agent never runs switch-tab (measurement, no verdict asserted)"
+  say "== popup-measure: window-features popup, agent never runs switch-tab (measurement, no verdict asserted; since 08.1 the popup is followed)"
   new_home; export BLADE_RECORD=1
   "$BB" nav "$FIX/popup.html" >/dev/null 2>&1
   local O before after P stop T0

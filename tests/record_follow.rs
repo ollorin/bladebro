@@ -205,37 +205,47 @@ fn follow_popup() {
     let mut mcp = Mcp::spawn("fpop", &live_env(&[("BLADE_RECORD", "1")], &ff));
     assert!(!mcp.nav(&format!("{fix}/popup.html")).0);
     let opener = current_id(&mut mcp);
-    // 1. A target=_blank link: the opener stays the agent's page and stays first.
+    // 1. A target=_blank link: since 08.1 it is a segment without switch-tab (the popup stays in
+    // front while recording, the agent's page stays the opener).
     let (e, t) = mcp.state(json!({"op":"record-start","name":"p1"}));
     assert!(!e, "{t}");
+    sleep(1.0);
     let (e, t) = mcp.call("act", json!({"action":"click","text":"open c"}));
     assert!(!e && t.contains("new tab opened"), "{t}");
-    sleep(2.0);
+    sleep(3.0);
     let (e, stop) = mcp.state(json!({"op":"record-stop"}));
     eprintln!("RESULT popup link stop: {stop}");
     assert!(!e, "{stop}");
     let segs = segments(&stop);
-    assert_eq!(segs.len(), 1, "a link popup is not a segment: {stop}");
+    assert_eq!(segs.len(), 2, "a link popup is a segment: {stop}");
     assert_eq!(segs[0].1, opener);
     let path = saved_path(&stop);
-    assert_eq!(color_at(&path, 1.0), Tone::Yellow, "opener only: {stop}");
+    let total = field_after(&stop, "duration ");
+    assert_eq!(
+        color_at(&path, mid(&segs, 0, total)),
+        Tone::Yellow,
+        "{stop}"
+    );
+    assert_eq!(color_at(&path, mid(&segs, 1, total)), Tone::Green, "{stop}");
     assert_video(&path, &stop);
+    let first_popup = segs[1].1.clone();
+    let (e, t) = mcp.state(json!({"op":"close-tab","target_id":first_popup}));
+    assert!(!e, "{t}");
 
-    // 2. window.open with window features (a differently sized popup window).
+    // 2. window.open with window features (a differently sized popup window): followed as well,
+    // no switch-tab needed.
     let before: Vec<String> = tabs(&mut mcp).into_iter().map(|t| t.1).collect();
     let (e, t) = mcp.state(json!({"op":"record-start","name":"p2"}));
     assert!(!e, "{t}");
+    sleep(1.0);
     let (e, t) = mcp.call("act", json!({"action":"click","text":"window"}));
     assert!(!e, "{t}");
-    sleep(1.5);
+    sleep(3.0);
     let popup = tabs(&mut mcp)
         .into_iter()
         .map(|t| t.1)
         .find(|id| !before.contains(id))
         .expect("a new popup tab");
-    let (e, t) = mcp.state(json!({"op":"switch-tab","target_id":popup}));
-    assert!(!e, "{t}");
-    sleep(2.0);
     let (e, stop) = mcp.state(json!({"op":"record-stop"}));
     eprintln!("RESULT popup window stop: {stop}");
     assert!(!e, "{stop}");
