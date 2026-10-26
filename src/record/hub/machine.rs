@@ -15,6 +15,7 @@ use super::follow::{
 use super::msg::{self, scrub};
 use crate::record::disk::{self, FreeFn};
 use crate::record::marker::MarkerIn;
+use crate::record::timeline::Log;
 use crate::record::{
     create_recording_file, tab_stem, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource,
     ResolvedFfmpeg, SourceConfig, Tabs,
@@ -105,6 +106,8 @@ struct Active {
     free: FreeFn,
     /// The ffmpeg that wrote the video; the stop's poster run uses it (D10-1).
     ffmpeg: ResolvedFfmpeg,
+    /// Action log of this recording (OUT-07). Closed by the first finish.
+    log: Arc<Log>,
 }
 
 /// Extras of an agent `record-stop` (OUT-06): the stop instant and the marker.
@@ -168,6 +171,12 @@ impl Hub {
 
     pub fn is_active(&self) -> bool {
         self.active.is_some()
+    }
+
+    /// The action log of the active recording (None when idle). Published to
+    /// the timeline hooks by `hub::publish_active`.
+    pub fn timeline_log(&self) -> Option<Arc<Log>> {
+        self.active.as_ref().map(|a| a.log.clone())
     }
 
     /// Generation of the active recording (None when idle).
@@ -426,6 +435,7 @@ impl Hub {
             fps: cfg.fps,
             free,
             ffmpeg: poster_ff,
+            log: Log::new(),
         });
         let text = match self.orphaned.take() {
             Some((_, t)) => format!("{}\n{text}", msg::orphan_text(&t)),

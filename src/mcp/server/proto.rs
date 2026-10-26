@@ -92,6 +92,8 @@ pub async fn handle_tools_call(
         return handle_vision(id, &args, page).await;
     }
 
+    // fork hook (record): see .planning/HOOKS.md
+    let tl = crate::record::timeline::begin(name, &args);
     let result = match name {
         "act" => handle_act(&args, page).await,
         "see" => handle_see(&args, page).await,
@@ -101,6 +103,7 @@ pub async fn handle_tools_call(
             "unknown tool: {name}"
         ))),
     };
+    crate::record::timeline::end(tl, &result);
 
     match result {
         Ok(mut text) => {

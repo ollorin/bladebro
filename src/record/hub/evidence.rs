@@ -16,6 +16,13 @@ use super::follow_report::PerTabResult;
 use crate::record::encoder::{EncoderReport, ResolvedFfmpeg};
 use crate::record::marker::MarkerIn;
 use crate::record::poster::make_poster;
+use crate::record::sidecar::write_sidecar;
+use crate::record::timeline::{
+    place, to_json, Entry, FileClock, Placed, CLOCK_FIRST_FRAME, CLOCK_START,
+};
+
+/// Suffix of the timeline sidecar, named after the first video (D10-3).
+pub const TIMELINE_SUFFIX: &str = ".timeline.json";
 
 /// One video of the recording, as the stop saw it.
 #[derive(Debug, Clone)]
@@ -135,17 +142,99 @@ pub fn videos_per_tab(r: &PerTabResult, fps: u32) -> Vec<VideoFile> {
         .collect()
 }
 
-/// The poster (one bounded ffmpeg run on the picked file) and the marker
-/// offset, as result text. Runs after the encoders are finished, so the files
-/// are final. Never fails: every problem is a `not made` / `not placed` note.
-pub async fn finish_extras(s: &Stopped, ff: &ResolvedFfmpeg, marker: &MarkerIn) -> String {
+/// The timeline's result text (D10-3): the path and the kept action count, or
+/// why it was not written. Never changes the stop's ok/err.
+pub fn timeline_text(r: &Result<(PathBuf, usize, u64), String>) -> String {
+    match r {
+        Ok((p, n, 0)) => format!(". Timeline: {} ({n} actions)", p.display()),
+        Ok((p, n, k)) => format!(". Timeline: {} ({n} actions, {k} not kept)", p.display()),
+        Err(why) => format!(". Timeline: not written ({why})"),
+    }
+}
+
+/// The timeline sidecar (OUT-07, D10-3/5): the action entries and the marker on
+/// the recording clock, written beside the first video (the -tab1- file in
+/// per-tab mode). `files[]` gives each video's start on that clock.
+fn write_timeline(
+    s: &Stopped,
+    clock: Instant,
+    span: f64,
+    entries: &[Entry],
+    dropped: u64,
+    marker: &MarkerIn,
+    marker_s: f64,
+) -> String {
+    let Some(primary) = s.videos.first() else {
+        return timeline_text(&Err("no video file".to_string()));
+    };
+    let mut placed = place(entries, clock, span);
+    if let MarkerIn::Note(note) = marker {
+        placed.push(Placed::Marker {
+            at_s: marker_s,
+            note: note.clone(),
+        });
+    }
+    let actions = placed
+        .iter()
+        .filter(|p| matches!(p, Placed::Action { .. }))
+        .count();
+    let files: Vec<FileClock> = s
+        .videos
+        .iter()
+        .map(|v| FileClock {
+            file: v.path.display().to_string(),
+            start_s: v.t0_at.map(|t| offset_s(t, clock, span)),
+            duration_s: v.duration_s,
+        })
+        .collect();
+    let clock_text = if s.videos.iter().any(|v| v.t0_at.is_some()) {
+        CLOCK_FIRST_FRAME
+    } else {
+        CLOCK_START
+    };
+    let json = to_json(
+        &primary.path.display().to_string(),
+        span,
+        &files,
+        &placed,
+        dropped,
+        clock_text,
+    );
+    let bytes = match serde_json::to_vec_pretty(&json) {
+        Ok(b) => b,
+        Err(e) => return timeline_text(&Err(format!("cannot encode: {e}"))),
+    };
+    match write_sidecar(&primary.path, TIMELINE_SUFFIX, &bytes) {
+        Ok(p) => timeline_text(&Ok((p, actions, dropped))),
+        Err(why) => timeline_text(&Err(why)),
+    }
+}
+
+/// The poster (one bounded ffmpeg run on the picked file), the timeline
+/// sidecar and the marker offset, as result text, in that order. Runs after the
+/// encoders are finished, so the files are final. Never fails: every problem is
+/// a `not made` / `not written` / `not placed` note.
+pub async fn finish_extras(
+    s: &Stopped,
+    ff: &ResolvedFfmpeg,
+    marker: &MarkerIn,
+    entries: Vec<Entry>,
+    dropped: u64,
+) -> String {
     let poster = match pick_poster(&s.videos, s.poster_from) {
         Some(i) => make_poster(ff, &s.videos[i].path).await,
         None => Err("no finalized file".to_string()),
     };
     let clock = clock(s);
-    let at_s = offset_s(s.stop_at, clock, span_s(&s.videos, clock));
-    format!("{}{}", poster_text(&poster), marker_text(marker, at_s))
+    let span = span_s(&s.videos, clock);
+    let at_s = offset_s(s.stop_at, clock, span);
+    let timeline = write_timeline(s, clock, span, &entries, dropped, marker, at_s);
+    format!(
+        "{}{}{}",
+        poster_text(&poster),
+        timeline,
+        marker_text(marker, at_s)
+    )
 }
 
 #[cfg(test)]

@@ -84,6 +84,8 @@ pub fn recording_active() -> bool {
 /// global hub (start/stop, orphan finish, guard finalize).
 pub(crate) fn publish_active(h: &Hub) {
     RECORDING.store(h.is_active(), Ordering::Relaxed);
+    // The timeline hooks read the current log through this, never the hub.
+    crate::record::timeline::publish(h.timeline_log());
 }
 
 /// Decision of the opener re-front after a click opened a tab: while recording

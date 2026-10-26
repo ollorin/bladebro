@@ -324,3 +324,65 @@ fn global_off_begin_is_none() {
     assert!(!crate::record::hub::recording_active());
     assert!(begin("act", &json!({"action": "click"})).is_none());
 }
+
+/// The two dispatch hooks are exactly three lines each (HOOKS.md rows): the
+/// comment, `begin` right above the handler match, `end` right after it.
+/// Pinned from source so a reformat or a moved hook fails here.
+#[test]
+fn hooks_are_three_lines_each() {
+    let hooks = [
+        ("proto", include_str!("../mcp/server/proto.rs")),
+        ("cli", include_str!("../cli.rs")),
+    ];
+    for (name, src) in hooks {
+        assert_eq!(
+            src.matches("crate::record::timeline::begin(").count(),
+            1,
+            "{name}: one begin"
+        );
+        assert_eq!(
+            src.matches("crate::record::timeline::end(tl, &result);")
+                .count(),
+            1,
+            "{name}: one end"
+        );
+        let lines: Vec<&str> = src.lines().collect();
+        let b = lines
+            .iter()
+            .position(|l| l.contains("crate::record::timeline::begin("))
+            .expect("begin line");
+        assert_eq!(
+            lines[b - 1].trim(),
+            "// fork hook (record): see .planning/HOOKS.md",
+            "{name}: comment directly above begin"
+        );
+        assert!(lines[b].trim_start().starts_with("let tl = "), "{name}");
+        assert!(
+            lines[b + 1].trim_start().starts_with("let result = match"),
+            "{name}: begin directly above the handler match"
+        );
+        let e = lines
+            .iter()
+            .position(|l| l.contains("crate::record::timeline::end(tl, &result);"))
+            .expect("end line");
+        assert_eq!(
+            lines[e - 1].trim(),
+            "};",
+            "{name}: end right after the match"
+        );
+    }
+}
+
+/// Recording off: every tool the hooks see gets None from `begin`, so the
+/// hooks do no work (one atomic load) and the output stays byte-identical.
+#[test]
+fn recording_off_hook_is_inert() {
+    assert!(!crate::record::hub::recording_active());
+    for tool in ["act", "see", "state", "run", "vision"] {
+        let args = json!({ "action": "click", "op": "open-tab", "steps": [{}] });
+        assert!(begin(tool, &args).is_none(), "{tool}");
+        let log = Log::new();
+        assert!(begin_with(false, Some(log.clone()), tool, &args).is_none());
+        assert_eq!(log.len(), 0, "{tool}: nothing logged while off");
+    }
+}

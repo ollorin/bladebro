@@ -86,8 +86,13 @@ impl Hub {
             fps,
             ffmpeg,
             started,
+            log,
             ..
         } = a;
+        // Close the action log first: an action that ends after the stop began
+        // is not in this recording's timeline, and it never reaches a later one.
+        // Exit paths (extras None) drop the entries here, as before.
+        let (entries, dropped) = log.take();
         // Follower first: it ends the video, drains every source's acks and
         // releases every sink so the encoder can be taken back.
         let (ok, text) = match rec.stop(hint.clone()).await {
@@ -111,7 +116,9 @@ impl Hub {
                         fallback_clock: started,
                         stop_at: x.at,
                     };
-                    text.push_str(&finish_extras(&stopped, &ffmpeg, &x.marker).await);
+                    text.push_str(
+                        &finish_extras(&stopped, &ffmpeg, &x.marker, entries, dropped).await,
+                    );
                 }
                 (ok, text)
             }
@@ -135,7 +142,9 @@ impl Hub {
                         fallback_clock: started,
                         stop_at: x.at,
                     };
-                    text.push_str(&finish_extras(&stopped, &ffmpeg, &x.marker).await);
+                    text.push_str(
+                        &finish_extras(&stopped, &ffmpeg, &x.marker, entries, dropped).await,
+                    );
                 }
                 (ok, text)
             }

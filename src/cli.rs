@@ -179,6 +179,8 @@ pub async fn dispatch(
         });
     }
 
+    // fork hook (record): see .planning/HOOKS.md
+    let tl = crate::record::timeline::begin(tool, args);
     let result = match tool {
         "act" => server::handle_act(args, page).await,
         "see" => server::handle_see(args, page).await,
@@ -186,6 +188,7 @@ pub async fn dispatch(
         "run" => server::handle_run(args, page).await,
         _ => return Err(BladeError::Other(format!("unknown tool: {tool}"))),
     };
+    crate::record::timeline::end(tl, &result);
 
     match result {
         Ok(mut text) => {
