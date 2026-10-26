@@ -51,5 +51,9 @@ Phase 9 ledger verified by the opus verifier (2026-10-26) against `git diff 9756
 | 10 | src/cli.rs | dispatch: same 3 lines with `begin(tool, args)` above `let result = match tool {` and `end` after it | same for the daemon lane (one-shot cannot record) (OUT-07) | 6f01bb1 |
 | 10 | src/mcp/tools.rs | state RECORDING line (`record-stop [value=<marker note>] ... poster PNG, timeline JSON`) + `value` description (`... or record-stop marker note.`); no new property or op | tells agents the marker, poster and timeline exist; +77 chars (~19 tokens; recording total 307 chars, budget 330, D10-6) (OUT-06/07) | 14d6f61 |
 | 10 | src/cli/help.rs | RECORDING block: `record-stop [--value <note>]` line (changed) + one `(writes <video>.poster.png and <video>.timeline.json ...)` line (added) | help text for the marker and the two sidecar files; help_json and other blocks untouched (OUT-06) | 14d6f61 |
+| 11 | README.md | "Gotchas & limits" table: the `**Session video recording**` row (1 line changed) | the row said "Not supported"; recording exists in this fork, the row now points to docs/recording-and-launch-config.md | b709ead |
+| 11 | README.md | fork-owned block (Phase 3 row): "## Recording (in development)" retitled "## Recording", body rewritten as a short pointer (no upstream line touched) | the "Not functional yet" note was false after Phases 5-10 (DOC-02 pointer rule) | b709ead |
+
+Phase 11: the only upstream line changed is the README Gotchas row above; no source file changed besides fork-owned src/record/hub/** (11-01).
 
 Phase 8.1 ledger verified (2026-10-26, gate run) against `git diff 62cb476..HEAD -- src Cargo.toml Cargo.lock npm CHANGELOG.md .github` and `git cat-file -e upstream/main:<path>`: exactly two upstream files changed (src/page/mod.rs 1 line, src/state.rs 2 added + 6 removed); all other changed src paths are src/record/** (fork-owned). Cargo, npm, CHANGELOG, .github and src/updater, src/mcp, src/cli: no diff.
