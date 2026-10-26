@@ -13,6 +13,7 @@ use super::sink::FrameSink;
 mod flow;
 mod lifecycle;
 mod limits;
+mod targets;
 
 /// Every scenario runs under a hard 20 s ceiling.
 async fn guard<F: Future>(f: F) -> F::Output {

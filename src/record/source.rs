@@ -8,6 +8,7 @@
 //!
 //! Module map:
 //! - `capture`: public API (Source, SourceConfig, Endpoint), connection, ack-first loop, start/stop.
+//! - `targets`: `Target.getTargets` reply parsing (page rows with their opener).
 //! - `wire`: RecMethod closed method set + the single send path (SAFE-01).
 //! - `sink`: FrameSink bounded hand-off, impl for Encoder.
 //! - `handler`: per-event logic and counters (sync, unit-testable).
@@ -36,6 +37,7 @@ mod gate;
 mod handler;
 mod report;
 mod sink;
+mod targets;
 mod watch;
 mod wire;
 
@@ -44,5 +46,6 @@ pub use frame::{decode_jpeg, parse_frame, parse_frame_owned, ts_ms_from_metadata
 pub use gate::{FpsGate, GateStep};
 pub use report::{SourceError, SourceOutcome, SourceReport, SourceStats};
 pub use sink::FrameSink;
+pub use targets::TargetRow;
 pub use watch::{Health, Liveness, NO_FRAMES_AFTER};
 pub use wire::RecMethod;

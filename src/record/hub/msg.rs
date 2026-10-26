@@ -120,6 +120,25 @@ pub fn tab_gone(from: &str, at_s: f64, to: &str) -> String {
     format!("tab {from} gone at {at_s:.1} s; following tab {to}")
 }
 
+/// A followed popup closed and the video went back to the tab that opened it.
+pub fn popup_closed(popup: &str, at_s: f64, opener: &str) -> String {
+    format!("popup {popup} closed at {at_s:.1} s; back on opener {opener}")
+}
+
+/// Popups of the recording that never stayed in front (at most 3 ids named).
+pub fn popups_unfollowed(n: usize, ids: &[String]) -> String {
+    let shown: Vec<&str> = ids.iter().take(3).map(String::as_str).collect();
+    let more = if n > shown.len() {
+        format!(", +{} more", n - shown.len())
+    } else {
+        String::new()
+    };
+    format!(
+        "{n} popup(s) not recorded (never in front): {}{more}; switch-tab to record one",
+        shown.join(", ")
+    )
+}
+
 /// The recorded tab is still listed but its recorder connection ended.
 pub fn tab_reconnected(tab: &str, at_s: f64) -> String {
     format!("recorder connection to tab {tab} ended at {at_s:.1} s; reconnected")

@@ -11,6 +11,7 @@ use tokio::time::Instant;
 use super::handler::{lock, Handler, SharedLive, SharedStats};
 use super::report::{SourceError, SourceOutcome, SourceReport, SourceStats};
 use super::sink::FrameSink;
+use super::targets::{parse_targets, TargetRow};
 use super::watch::{Health, NO_FRAMES_AFTER};
 use super::wire::{RecMethod, Wire};
 use crate::cdp::discovery::list_page_targets;
@@ -207,6 +208,20 @@ impl Source {
     /// follower reads this to notice a recorded tab that went away.
     pub fn is_finished(&self) -> bool {
         self.task.as_ref().is_none_or(|t| t.is_finished())
+    }
+
+    /// Which tab opened which, read on THIS source's own connection
+    /// (`Target.getTargets`, read-only). Never called on a retiring source.
+    pub async fn targets(&self, deadline: Duration) -> Result<Vec<TargetRow>, SourceError> {
+        let v = self
+            .wire
+            .send(RecMethod::TargetGetTargets, None, deadline)
+            .await
+            .map_err(|e| SourceError::Cdp {
+                method: RecMethod::TargetGetTargets.as_str(),
+                error: e.to_string(),
+            })?;
+        Ok(parse_targets(&v))
     }
 
     /// The recorder's own connection (tests prove it stays responsive).

@@ -3,8 +3,10 @@
 //! so tests script the list without a new dependency.
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::cdp::discovery::list_page_targets;
+use crate::record::source::{Source, TargetRow};
 
 /// One page-type target from Chrome's list, in Chrome's order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +38,53 @@ pub struct Scripted {
     pub fail: bool,
     /// Number of `list` calls (tests prove the follower polls at all).
     pub calls: u64,
+    /// child tab id -> the tab that opened it (what `Target.getTargets` says).
+    pub openers: std::collections::HashMap<String, String>,
+    /// Number of opener lookups (tests prove a steady state asks nothing).
+    pub target_calls: u64,
+    /// Script a `Target.getTargets` failure.
+    pub targets_fail: bool,
+}
+
+/// Where opener facts come from: the current source's own connection, or a
+/// scripted table in tests.
+#[derive(Debug, Clone)]
+pub enum OpenerFeed {
+    Source,
+    Scripted(Arc<Mutex<Scripted>>),
+}
+
+impl OpenerFeed {
+    /// Rows for every page Chrome knows. `src` is the current source (None in
+    /// tests and for a retiring one: never asked).
+    pub async fn rows(
+        &self,
+        src: Option<&Source>,
+        deadline: Duration,
+    ) -> Result<Vec<TargetRow>, String> {
+        match self {
+            OpenerFeed::Source => match src {
+                Some(s) => s.targets(deadline).await.map_err(|e| e.to_string()),
+                None => Err("no live source to ask".to_string()),
+            },
+            OpenerFeed::Scripted(s) => {
+                let mut g = s.lock().unwrap_or_else(|e| e.into_inner());
+                g.target_calls += 1;
+                if g.targets_fail {
+                    return Err("getTargets failed".to_string());
+                }
+                Ok(g.tabs
+                    .iter()
+                    .map(|t| TargetRow {
+                        id: t.id.clone(),
+                        opener: g.openers.get(&t.id).cloned(),
+                        kind_page: true,
+                        url: t.url.clone(),
+                    })
+                    .collect())
+            }
+        }
+    }
 }
 
 impl TabProbe {

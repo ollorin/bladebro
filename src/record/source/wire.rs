@@ -18,14 +18,18 @@ pub enum RecMethod {
     StartScreencast,
     ScreencastFrameAck,
     StopScreencast,
+    /// Read-only: which tab opened which (`openerId`); sent only on the
+    /// recorder's own page connection when a new tab appears (CAPT-06).
+    TargetGetTargets,
 }
 
 impl RecMethod {
-    pub const ALL: [RecMethod; 4] = [
+    pub const ALL: [RecMethod; 5] = [
         RecMethod::PageEnable,
         RecMethod::StartScreencast,
         RecMethod::ScreencastFrameAck,
         RecMethod::StopScreencast,
+        RecMethod::TargetGetTargets,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -34,6 +38,7 @@ impl RecMethod {
             RecMethod::StartScreencast => "Page.startScreencast",
             RecMethod::ScreencastFrameAck => "Page.screencastFrameAck",
             RecMethod::StopScreencast => "Page.stopScreencast",
+            RecMethod::TargetGetTargets => "Target.getTargets",
         }
     }
 
@@ -45,14 +50,14 @@ impl RecMethod {
 /// The recorder's own connection plus a per-method send counter.
 pub(super) struct Wire {
     session: CdpSession,
-    counts: Mutex<[u64; 4]>,
+    counts: Mutex<[u64; 5]>,
 }
 
 impl Wire {
     pub fn new(session: CdpSession) -> Self {
         Self {
             session,
-            counts: Mutex::new([0; 4]),
+            counts: Mutex::new([0; 5]),
         }
     }
 
@@ -78,7 +83,7 @@ impl Wire {
 
     /// Non-zero counts in `RecMethod::ALL` order.
     pub fn methods_sent(&self) -> Vec<(&'static str, u64)> {
-        let c = self.counts.lock().map(|c| *c).unwrap_or([0; 4]);
+        let c = self.counts.lock().map(|c| *c).unwrap_or([0; 5]);
         RecMethod::ALL
             .iter()
             .filter(|m| c[m.idx()] > 0)
@@ -100,11 +105,53 @@ mod tests {
                 "Page.enable",
                 "Page.startScreencast",
                 "Page.screencastFrameAck",
-                "Page.stopScreencast"
+                "Page.stopScreencast",
+                "Target.getTargets"
             ]
         );
         for (i, m) in RecMethod::ALL.iter().enumerate() {
             assert_eq!(m.idx(), i);
+        }
+    }
+
+    /// SAFE-01: no page-visible or input-driving method exists anywhere in
+    /// the recorder (string literals of non-test code).
+    #[test]
+    fn no_forbidden_method_in_src_record() {
+        let forbidden = [
+            "Runtime.",
+            "Emulation.",
+            "Input.",
+            "Page.bringToFront",
+            "Target.activateTarget",
+            "Target.setDiscoverTargets",
+        ];
+        let mut stack =
+            vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/record")];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).expect("dir").flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !name.ends_with(".rs") || name.contains("test") || name == "fake_cdp.rs" {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&p).expect("read");
+                // Drop inline `#[cfg(test)] mod tests` (this file's own list).
+                let body = text.split("#[cfg(test)]").next().unwrap_or("");
+                for line in body.lines().filter(|l| !l.trim_start().starts_with("//")) {
+                    for f in forbidden {
+                        assert!(
+                            !line.contains(&format!("\"{f}")),
+                            "{} uses forbidden method {f}: {line}",
+                            p.display()
+                        );
+                    }
+                }
+            }
         }
     }
 }

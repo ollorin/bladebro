@@ -33,6 +33,8 @@ pub(crate) struct FakeOpts {
     /// Epoch seconds of frame 0 (Chrome's clock is shared by all tabs, so two
     /// fakes modelling two tabs get bases on one timeline).
     pub ts_base: f64,
+    /// `(method, result)`: canned success result for that method (default `{}`).
+    pub replies: Vec<(&'static str, Value)>,
 }
 
 impl Default for FakeOpts {
@@ -47,6 +49,7 @@ impl Default for FakeOpts {
             frames_after_stop: 0,
             garbage_every: None,
             ts_base: 1.7e9,
+            replies: Vec::new(),
         }
     }
 }
@@ -111,7 +114,14 @@ impl FakeCdp {
                             Some((m, e)) if m == method => {
                                 json!({"id": id, "error": {"code": -32000, "message": e}})
                             }
-                            _ => json!({"id": id, "result": {}}),
+                            _ => {
+                                let result = opts
+                                    .replies
+                                    .iter()
+                                    .find(|(m, _)| *m == method)
+                                    .map_or_else(|| json!({}), |(_, v)| v.clone());
+                                json!({"id": id, "result": result})
+                            }
                         };
                         if sink.send(Message::Text(resp.to_string().into())).await.is_err() {
                             break;
@@ -122,7 +132,7 @@ impl FakeCdp {
                                     .push(req["params"]["sessionId"].as_i64().unwrap_or(-1));
                             }
                             "Page.stopScreencast" => state2.stopped.store(true, Ordering::SeqCst),
-                            "Page.startScreencast" if opts.fail.is_none() => {
+                            "Page.startScreencast" if opts.fail.is_none_or(|(m, _)| m == "Target.getTargets") => {
                                 tokio::spawn(emit(opts.clone(), state2.clone(), tx2.clone()));
                             }
                             _ => {}

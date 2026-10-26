@@ -3,12 +3,14 @@
 //!
 //! Module map:
 //! - `probe`: `TabProbe` (HTTP `/json`, Fixed, Scripted) and `TabView`; no CDP method.
+//! - `opener`: pure popup rules (Family, Kind, settle, return_to, unfollowed note) and the opener cache.
 //! - `pick`: pure `agent_tab` rules, `Confirm` debounce, `Baseline` (lingering popup at start).
 //! - `sink`: `FollowShared` + `SegmentSink` (generation and monotonic filters, no-op mark_end).
 //! - `merge`: pure merge of per-segment reports and `compose_follow`.
 //! - `files`: sink policy (one encoder, or one file per tab with a cap of 8) and the per-tab lifecycle.
 //! - `run`: the follower task (poll, rebind, gone/lost handling, catch-up stop).
 //! - `unit_tests` (tests only): tables for pick, sink, merge, msg.
+//! - `opener_tests` (tests only): tables for the opener rules.
 //!
 //! Rules: the follower reads only `GET /json` on the debugging port (live: the
 //! `attached` flag is absent, so the agent's tab is the first page in Chrome's
@@ -19,6 +21,9 @@
 
 mod files;
 mod merge;
+mod opener;
+#[cfg(test)]
+mod opener_tests;
 mod pick;
 mod probe;
 mod run;
@@ -35,7 +40,7 @@ use tokio::task::JoinHandle;
 pub use files::{Entered, Files, Policy, Skip, MAX_TAB_FILES};
 pub use merge::{compose_follow, merge, MergeIn, Merged as FollowResult, SegIn};
 pub use pick::{agent_tab, Baseline, Confirm, Rule};
-pub use probe::{Scripted, TabProbe, TabView};
+pub use probe::{OpenerFeed, Scripted, TabProbe, TabView};
 pub use sink::{FollowShared, SegmentSink};
 
 use super::follow_report::PerTabResult;
@@ -59,6 +64,12 @@ pub const CONFIRM: Duration = Duration::from_millis(50);
 /// A tab that just appeared in front must stay there this long (popups are
 /// re-fronted by their opener within about a second; see `run.rs`).
 pub const NEW_TAB_CONFIRM: Duration = Duration::from_millis(1500);
+
+/// A popup of the recording (opener in its family) must stay in front this
+/// long before it is followed. Spike (08.1-01-spike.txt, option A): the
+/// opener is no longer re-fronted while recording, so a real popup stays in
+/// front; a script flashing a tab and closing it does not reach 300 ms.
+pub const POPUP_SETTLE: Duration = Duration::from_millis(300);
 
 /// Live view for `msg::active` and the hub.
 pub(super) struct Snap {
