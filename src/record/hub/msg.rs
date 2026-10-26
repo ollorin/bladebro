@@ -52,6 +52,15 @@ pub fn none() -> String {
     "no active recording; record-start <name> first.".to_string()
 }
 
+/// Append a marker note (`. Marker ...`) to a stop text that may already end with a
+/// period, so an agent never reads `first.. Marker` (Phase 10 finding).
+pub fn join_note(text: &str, note: &str) -> String {
+    match (text.strip_suffix('.'), note.starts_with(". ")) {
+        (Some(head), true) => format!("{head}{note}"),
+        _ => format!("{text}{note}"),
+    }
+}
+
 /// Operator-facing label of the live capture state.
 pub fn health_label(h: &Health) -> String {
     match h {

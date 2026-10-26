@@ -45,14 +45,14 @@ impl Hub {
             let note = idle_marker_text(&marker);
             return match self.orphaned.take() {
                 Some((ok, t)) => {
-                    let t = scrub(&format!("{}{note}", msg::orphan_text(&t)));
+                    let t = scrub(&msg::join_note(&msg::orphan_text(&t), &note));
                     if ok {
                         Ok(t)
                     } else {
                         Err(HubError::Failed(t))
                     }
                 }
-                None => Err(failed(format!("{}{note}", msg::none()))),
+                None => Err(failed(msg::join_note(&msg::none(), &note))),
             };
         };
         // The agent's current tab, for the follower's catch-up of a switch

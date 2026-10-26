@@ -52,7 +52,7 @@ absent() { ! grep -q -- "$1" <<<"$2"; }   # absent NEEDLE TEXT
 poster_path() { sed -nE 's/.*Poster: ([^ ]+\.png).*/\1/p' <<<"$1" | head -1; }
 marker_at() { sed -nE 's/.*\. Marker at ([0-9.]+) s.*/\1/p' <<<"$1" | head -1; }
 timeline_path() { sed -nE 's/.*Timeline: ([^ ]+\.timeline\.json).*/\1/p' <<<"$1" | head -1; }
-timeline_n() { sed -nE 's/.*Timeline: [^ ]+\.timeline\.json \(([0-9]+) actions.*/\1/p' <<<"$1" | head -1; }
+timeline_n() { sed -nE 's/.*Timeline: [^ ]+\.timeline\.json \(([0-9]+) actions?.*/\1/p' <<<"$1" | head -1; }
 # tl_is FILE EXPR: exit 0 when the Python expression over the parsed timeline `d` is true
 tl_is() { python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if ($2) else 1)" "$1"; }
 # tl_py FILE EXPR: print the value of EXPR over the parsed timeline `d`
@@ -237,7 +237,7 @@ sc_timeline_fmt() { # ID FORMAT: the three-click timeline on one finished video;
     say "FAIL [$id] timeline or video missing"; FAILS=$((FAILS + 1)); end_scn "$id"; return
   fi
   stem=$(basename "$v"); stem="${stem%.*}"
-  check "$id" "timeline path printed: '. Timeline: <abs>.timeline.json (N actions)'" grep -qE '\. Timeline: /[^ ]+\.timeline\.json \([0-9]+ actions\)' <<<"$STOP"
+  check "$id" "timeline path printed: '. Timeline: <abs>.timeline.json (N actions)'" grep -qE '\. Timeline: /[^ ]+\.timeline\.json \([0-9]+ actions?\)' <<<"$STOP"
   check "$id" "timeline mode 600 (is $(mode_of "$tl"))" test "$(mode_of "$tl")" = 600
   check "$id" "timeline named <video stem>.timeline.json next to the video" test "$(dirname "$tl")" = "$(dirname "$v")" -a "$(basename "$tl")" = "$stem.timeline.json"
   check "$id" "JSON version 1, basenames only, dropped 0" tl_is "$tl" "d['version']==1 and d['video']=='$(basename "$v")' and '/' not in d['video'] and all('/' not in f['file'] for f in d['files']) and d['dropped']==0"

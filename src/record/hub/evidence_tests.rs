@@ -211,8 +211,9 @@ async fn marker_without_recording() {
         let r = err(h.stop_marked(&e, MarkerIn::Note("x".into())).await);
         assert_eq!(
             r,
-            format!("{}. Marker not placed: no active recording", msg::none())
+            "no active recording; record-start <name> first. Marker not placed: no active recording"
         );
+        assert!(!r.contains(".."), "{r}");
     })
     .await;
 }
@@ -554,7 +555,7 @@ async fn per_tab_timeline_lists_files_with_start() {
         assert!(tab1.contains("-tab1-") && tab1.ends_with(".webm"), "{tab1}");
         let tl = timeline_of(&first);
         assert!(
-            t.contains(&format!(". Timeline: {} (1 actions)", tl.display())),
+            t.contains(&format!(". Timeline: {} (1 action)", tl.display())),
             "{t}"
         );
         let v = read_json(&tl);
@@ -673,4 +674,45 @@ async fn timeline_log_tracks_the_active_recording() {
         assert!(h.timeline_log().is_none(), "no log after stop");
     })
     .await;
+}
+
+#[test]
+fn timeline_text_counts_one_action_singular() {
+    use super::evidence::timeline_text;
+    let p = PathBuf::from("/r/v.timeline.json");
+    let t = |n: usize, k: u64| timeline_text(&Ok((p.clone(), n, k)));
+    assert_eq!(t(1, 0), ". Timeline: /r/v.timeline.json (1 action)");
+    assert_eq!(t(0, 0), ". Timeline: /r/v.timeline.json (0 actions)");
+    assert_eq!(t(2, 0), ". Timeline: /r/v.timeline.json (2 actions)");
+    assert_eq!(
+        t(1, 3),
+        ". Timeline: /r/v.timeline.json (1 action, 3 not kept)"
+    );
+    assert_eq!(
+        t(1000, 2),
+        ". Timeline: /r/v.timeline.json (1000 actions, 2 not kept)"
+    );
+    assert_eq!(
+        timeline_text(&Err("disk full".into())),
+        ". Timeline: not written (disk full)"
+    );
+}
+
+#[test]
+fn join_note_never_doubles_the_period() {
+    let note = ". Marker not placed: no active recording";
+    assert_eq!(
+        msg::join_note("first.", note),
+        "first. Marker not placed: no active recording"
+    );
+    assert_eq!(
+        msg::join_note(&msg::none(), note),
+        "no active recording; record-start <name> first. Marker not placed: no active recording"
+    );
+    assert_eq!(
+        msg::join_note("saved: /p (bytes 1)", ". Marker at 1.0 s"),
+        "saved: /p (bytes 1). Marker at 1.0 s"
+    );
+    assert_eq!(msg::join_note("first.", ""), "first.");
+    assert_eq!(msg::join_note("first.", "x"), "first.x");
 }

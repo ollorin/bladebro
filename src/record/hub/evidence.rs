@@ -146,9 +146,22 @@ pub fn videos_per_tab(r: &PerTabResult, fps: u32) -> Vec<VideoFile> {
 /// why it was not written. Never changes the stop's ok/err.
 pub fn timeline_text(r: &Result<(PathBuf, usize, u64), String>) -> String {
     match r {
-        Ok((p, n, 0)) => format!(". Timeline: {} ({n} actions)", p.display()),
-        Ok((p, n, k)) => format!(". Timeline: {} ({n} actions, {k} not kept)", p.display()),
+        Ok((p, n, 0)) => format!(". Timeline: {} ({n} {})", p.display(), actions_word(*n)),
+        Ok((p, n, k)) => format!(
+            ". Timeline: {} ({n} {}, {k} not kept)",
+            p.display(),
+            actions_word(*n)
+        ),
         Err(why) => format!(". Timeline: not written ({why})"),
+    }
+}
+
+/// "1 action", "0 actions", "2 actions": the stop text is read by agents.
+fn actions_word(n: usize) -> &'static str {
+    if n == 1 {
+        "action"
+    } else {
+        "actions"
     }
 }
 
