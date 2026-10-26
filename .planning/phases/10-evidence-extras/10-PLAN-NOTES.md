@@ -105,7 +105,7 @@ docs/recording-and-launch-config.md.
   schema_tests.rs (old 240 chars -> new <= 330 chars total added since Phase 7; report chars and ~tokens).
 
 ## D10-7 Upstream hooks (all listed in HOOKS.md with commit sha, checked with `git cat-file -e upstream/main:<path>`)
-- 10-01: none (marker parsing, poster and stop wiring are all in src/record/**; `--value` already parses).
+- 10-01: none (marker parsing, poster and stop wiring are all in src/record/**; `--value` already parses). machine.rs (491 lines) is kept <= 500 by moving stop/finish code into the child module hub/finish.rs (10-01 Task 3); 10-02 hub additions go there or into evidence.rs.
 - 10-02: src/mcp/server/proto.rs (+3 lines), src/cli.rs (+3 lines), src/mcp/tools.rs (2 description strings),
   src/cli/help.rs (RECORDING block: 1 changed + 1 added line). rustfmt must not re-indent any upstream line:
   `git diff -U0 <file>` shows only the hook lines.
