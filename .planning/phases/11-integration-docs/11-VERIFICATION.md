@@ -1,40 +1,47 @@
 ---
 phase: 11-integration-docs
-verified: 2026-10-26T15:25:00Z
+verified: 2026-10-26T15:40:00Z
 verifier: opus
 status: gaps_found
-score: 3/5 success criteria verified (SC1, SC2, SC3 verified; SC4 partial; SC5 failed on accuracy)
+score: 4/5 success criteria verified (SC1-SC4 verified; SC5 failed on accuracy, 2 small doc defects)
+re_verification:
+  previous_status: gaps_found
+  previous_score: 3/5
+  gaps_closed:
+    - "Zero-frame short test case is now documented (QA-flows subsection, No-frames bullet, Known issues, Troubleshooting) with two recipes; verifier reproduced the failure and both recipes live"
+    - "The state tabs mid-popup sample is now the Phase 11 output (EE14/0848/B425, matches 11-01-s03-tabs.txt lines 20-25); stale 'not re-run in Phase 11' line removed"
+    - "MCP content[0] first-run note is documented (text matches src/mcp/server/serve.rs:280)"
+  gaps_remaining:
+    - "Per-tab no-frames stop text is misquoted (the gap-1 fix said it quotes the text each mode prints)"
+    - "Not verified line claims a single historical measurement on the page"
+  regressions: []
 gaps:
-  - truth: "A QA test case recorded by following the docs (record-start, test steps, record-stop) produces a recording at the documented path"
+  - truth: "The docs quote the stop text each mode actually prints for a zero-frame recording"
     status: failed
     failure_type: semantic_stub
-    reason: "A test case that ends within about 0.5 s of record-start without a repaint (an assertion-only case: record-start, see, record-stop) gets no frame and returns an error, `recording not clean: recording failed: no frames reached the encoder, so there is no video; <path> left in place` with a 0-byte file, no poster and `Marker at 0.0 s`. Reproduced by the verifier: MCP lane 7/7 failures with no wait (5/5 saved once the case lasted 1 s or more); CLI daemon lane 4/12 failures. The QA-flow section and Known issues do not mention this. Known issues says only that 'a short test gives a short video'. The docs' 'No frames' bullet (line 81) gives the failure text as `no frames for N s since recording start`, but follow mode (the default) prints the encoder text above instead."
+    reason: "Line 81 says the text 'the default follow mode and per-tab mode print at stop is `recording not clean: recording failed: no frames reached the encoder, ...`'. Line 371 says the per-tab session failed 'all with the text below' (the follow-mode sample). Line 693 (Known issues) gives the same text with 'per-tab mode 1 of 1'. Per-tab mode actually prints `recording not clean (per-tab, 1 file): tab <id>: recording failed: no frames reached the encoder, ...`. This is in the phase's own evidence (11-03-no-frames.txt line 57) and was reproduced by the verifier at 15:35Z. A harness that matches the documented full string `recording not clean: recording failed: no frames` (troubleshooting line 720 uses that string) misses the per-tab failure. Line 292 documents the per-tab not-clean shape correctly, so the page contradicts itself."
     artifacts:
       - path: "docs/recording-and-launch-config.md"
-        issue: "The QA flows section (lines 347-366), Known issues (lines 653-658) and the 'No frames' bullet (line 81) do not describe the observed no-frame failure of short, non-painting test cases, and they quote a failure text that the default mode does not print"
-      - path: "src/record/hub/msg.rs"
-        issue: "agent_vs_video compares the agent id with the video label `<id> (no frames)`, so the stop text says `agent was on tab X at stop; video followed tab X (no frames)` when the agent and the video are on the same tab. The doc (line 130) says this note appears only when they differ"
+        issue: "lines 81, 371 and 693 attribute the follow-mode text to per-tab mode; line 720 gives only the follow-mode string"
     missing:
-      - "Document the zero-frame failure for test cases that end in under about 1 s without a repaint, with the exact text, and give QA flows a recipe that avoids it, or fix it in fork-owned src/record (for example, await or force a first frame before the stop on a static page)"
-      - "Correct the 'No frames' bullet so it quotes the text each mode actually prints"
-      - "Fix the agent/video note (compare ids, not labels) in src/record/hub, or document it; add a regression test either way"
-  - truth: "The Not verified section and the sample provenance are honest"
+      - "Quote the per-tab form (`recording not clean (per-tab, N files): tab <id>: recording failed: no frames reached the encoder, ...`) next to the follow form, or tell harnesses to match the substring `no frames reached the encoder`"
+  - truth: "The Not verified provenance statement is honest"
     status: failed
-    failure_type: regression
-    reason: "Commit d3af2db replaced the start, stop, follow and per-tab samples with Phase 11 run lines and states that no earlier-phase output samples remain. Line 662 still says the result samples from earlier phases (the start result, the first stop result, tab following, 'the per-tab result with three files') were not re-run in Phase 11. That statement is now false: those samples are Phase 11 output and the per-tab sample has 2 files. The `state tabs` mid-popup sample (lines 185-190, ids 9EF9/0A7E) is still Phase 8.1 output (it appears only in .planning/phases/08.1-follow-every-popup/evidence/08.1-02-live.txt). It is not in the Phase 11 evidence that snippet-map.tsv points to (11-01-s03-tabs.txt shows ids 0848/B425 for this output), and nothing marks it as earlier-phase output. doc_snippets.py checks only the `SNIPPET <label>` line for output rows, so this mismatch passes the check."
+    failure_type: semantic_stub
+    reason: "Line 698 says 'The one historical measurement, the Phase 8.1 popup spike in Tab following, is labelled as such where it appears.' The page has other pre-Phase-11 measurements: the Phase 2 and Phase 9 size table (lines 261-270, labelled), the Phase 10 measurements (lines 300, 342, 344, 346, labelled 10-01/10-02), and several that carry no phase label and only say 'in testing' (line 80: 60 frames/s, 1200 frames in 20 s; line 81: background tab with 0 frames in 8 s; line 82: the 37 s silence and the -0.74 % to +0.16 % length figures; line 195: cross-site navigation). The result-sample part of the sentence is now true (every output block traces to Phase 11 evidence). The 'one historical measurement ... labelled' part is false."
     artifacts:
       - path: "docs/recording-and-launch-config.md"
-        issue: "line 662 is stale; the sample at lines 185-190 is from Phase 8.1 and is presented as Phase 11-era real output"
+        issue: "line 698 states that one historical measurement exists; there are several, some unlabelled"
     missing:
-      - "Rewrite line 662 to match the current samples; either replace the tabs-popup sample with the 11-01-s03-tabs.txt lines or label it as Phase 8.1 output"
+      - "Reword line 698 so it covers result samples only, or say that the prose measurements on lines 80-82 and 195 are from earlier phases (and label them)"
 ---
 
-# Phase 11: Integration Docs Verification Report (opus, adversarial)
+# Phase 11: Integration Docs Re-verification Report (opus, adversarial)
 
 **Phase Goal:** The QA flows that consume Bladebro can turn recording on per test case by following the docs, with no extra model effort
-**Verified:** 2026-10-26T15:25:00Z
+**Verified:** 2026-10-26T15:40:00Z
 **Status:** gaps_found
-**Re-verification:** No. An independent sonnet report exists (`11-VERIFICATION-sonnet.md`, status passed). This report does not rely on it, and two of its conclusions do not hold (see Gaps).
+**Re-verification:** Yes, after gap-fix commit 3b040cd (previous: gaps_found 3/5, commit c026563)
 
 ## Goal Achievement
 
@@ -42,67 +49,74 @@ gaps:
 
 | # | Truth | Status | Evidence |
 |---|---|---|---|
-| 1 | Docs show the Claude Code GSD flow (gsd-charlotte-qa, gsd-test-writer) with BLADE_RECORD, record-start/stop and where the path appears | VERIFIED | Doc lines 347-427. Claims checked in ~/claude/get-shit-done (73f7629, clean tree): gsd-charlotte-qa `tools:` lists only Charlotte tools; gsd-test-writer has no MCP tools; `test_flows` / `e2e_flows` exist (lines 23, 110, 264). Verifier re-ran the extract-path snippet: video, poster and timeline paths were extracted and the files exist (0600); the poster pixel is blue (00 41 ff) |
-| 2 | Docs show the DSH plugin flow (mcp__bladebro__*) doing the same | VERIFIED (static plus stub) | Doc lines 429-452. Checked: `npm/bladebro/dsh-plugin.mjs` accepts the options binaryPath/env/cwd/toolCallTimeoutMs/reconnect, with a default of 180000; the `binary.cjs` error text matches the doc; the npm README has `dsh plugin --profile web add bladebro` and says DSH refuses a duplicate namespace. In ~/claude/gsd-dsh, `tool-map.ts` maps the charlotte tools to `drop` and has no bladebro entry, and `config/gsd-headless.patch.cordis.yml:31` says a patch row REPLACES the whole config. A DSH host was not run; the docs disclose this |
-| 3 | README replaces "Session video recording: Not supported" with a short pointer (per the brief) | VERIFIED | `git diff upstream/main -- README.md`: one Gotchas row changed, plus the fork-owned "## Recording" block (ops, BLADE_RECORD, WebM/MP4, ffmpeg 4.3+, ~0.7 MB/min, sensitivity warning, link). Both are in HOOKS.md (Phase 11 rows, b709ead). Every commit hash in HOOKS.md resolves |
-| 4 | Following each snippet against a fixture produces a recording at the documented path | PARTIAL, counted as FAILED | The verifier re-ran 5 snippets headless with a scratch BLADE_HOME, BLADE_HEADLESS=1 and ffmpeg from ~/.local/ffmpeg/bin. All 5 matched: Example 5 per-test CLI (2 webm files in <BLADE_HOME>/recordings, dir 0700 and files 0600, vp9 1280x720, 0.9/0.8 s); extract-path; MCP qa-per-test with the `.mcp.json` env (webm 1.5 s plus poster and timeline); the project file `.bladebro.json` (recording in <project>/recordings at 8 fps; nothing in BLADE_HOME); the Known issue for record-start/stop inside a run (timeline held only the marker). But the same flow for an assertion-only test case fails with 0 frames (gap 1) |
-| 5 | docs/recording-and-launch-config.md is complete and accurate (DOC-01), every example run, drift tests pass | FAILED (accuracy) | Complete: every env var (BLADE_HEADLESS, BLADE_RECORD, _FORMAT, _FPS, _SIZE, _TABS, BLADE_FFMPEG), config keys, per-call params, precedence, defaults and ranges (matching values.rs/config.rs), examples, troubleshooting, Known issues, Not verified. Drift: `launch_mode::registry` 7/7 pass; doc_snippets.py check: 26 blocks, 0 failing. Inaccurate: the no-frames text and the stale provenance statement (gaps 1 and 2) |
+| 1 | Docs show the Claude Code GSD flow with BLADE_RECORD, record-start/stop and where the path appears | VERIFIED | Unchanged since the previous run, apart from the content[0] addition (line 354), which was checked against src/mcp/server/serve.rs:280 (the warm note goes through relaunch_note). ~/claude/get-shit-done is still clean at 73f7629 |
+| 2 | Docs show the DSH plugin flow doing the same | VERIFIED (static plus stub, as before) | DSH section unchanged since c026563 |
+| 3 | README replaces "Not supported" with a short pointer | VERIFIED | `git diff c026563..HEAD -- README.md .planning/HOOKS.md` is empty. The upstream diff is still one Gotchas row plus the fork-owned "## Recording" block, and HOOKS rows 54-57 still describe it. Still correct: no README claim conflicts with the new no-frame section |
+| 4 | Following each snippet against a fixture produces a recording at the documented path | VERIFIED | Verifier re-ran headless (scratch BLADE_HOME, BLADE_HEADLESS=1, ffmpeg from ~/.local/ffmpeg/bin, fixtures on 127.0.0.1:8765, the doc's `.mcp.json`). no-frames-short: 3/3 follow sessions failed with exactly the documented text (`✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; <path> left in place; ... (no frames)]). Note: agent was on tab X at stop; video followed tab X (no frames). Poster: not made (no finalized file). Timeline: ... (0 actions). Marker at 0.0 s`), and each left a 0-byte webm. Per-tab: 1/1 failed, also 0 bytes, but with a different prefix (gap 1). no-frames-wait: 3/3 follow plus 1/1 per-tab saved, 11 frames, 1.1 s, ffprobe vp9 1280x720 10 fps duration 1.100000, poster present; the wait step reported `failed — ... wait timeout` exactly as documented. no-frames-repaint: 2/2 saved, 8 frames, ffprobe 0.800000. Other snippets: per-test-cli.sh (2 webm, 0.9/0.8 s, 0600), extract-path.sh (video/poster/timeline extracted), qa-per-test.jsonl over MCP (webm 1.1 s plus poster and timeline) |
+| 5 | docs/recording-and-launch-config.md is complete and accurate; examples run; drift tests pass | FAILED (accuracy) | Complete. doc_snippets check: 30 blocks, 0 failing. Drift tests: `launch_mode::registry` 7/7, `record::hub::schema_tests` 7/7. Every one of the 10 output blocks was traced by content (not only the SNIPPET label) to Phase 11 evidence: 6c82d8/af4af0 (s01), b64fd0/a03e19/0901e8+2389e9 and the tabs ids (s03), 1c9b50 (s02), 2505f0/2f3988 (q01), fe93a8/0824b8 (11-03). Two inaccuracies remain (gaps 1 and 2) |
 
-**Score:** 3/5
+**Score:** 4/5
+
+### Previous gaps
+
+| Previous gap | Result |
+|---|---|
+| 1. Zero-frame short test case undocumented; No-frames bullet quoted the wrong text; agent/video note | Mostly closed. The new subsection "A test case that ends before its first frame", the Known issues bullets and the Troubleshooting entry are accurate for follow mode, and both recipes work (verifier-reproduced). The agent_vs_video wording bug is documented as a Known issue and logged in deferred-items.md as a pre-existing Phase 8.1 src item. That is the sanctioned channel for a docs-only phase, and no code fix means there is nothing to regression-test. Residual: the per-tab text is misquoted (new gap 1) |
+| 2. Stale Not-verified line; Phase 8.1 tabs sample | Closed for samples: the tabs block now matches 11-01-s03-tabs.txt lines 21-25 verbatim (ids shortened), and the stale sentence is gone. Residual: the replacement sentence overclaims "the one historical measurement" (new gap 2) |
 
 ### Required Artifacts
 
 | Artifact | Status | Details |
 |---|---|---|
-| `docs/recording-and-launch-config.md` | EXISTS, SUBSTANTIVE, 2 accuracy gaps | 684 lines |
-| `README.md` (pointer + row) | VERIFIED | additive except for the one Gotchas row, listed in HOOKS |
-| `.planning/HOOKS.md` Phase 11 rows | VERIFIED | b709ead exists and touches only README.md |
-| `src/record/hub/{evidence,finish,msg}.rs` wording fix (9d20e81) | VERIFIED | "1 action" singular; join_note avoids `..`; covered by tests `timeline_text_counts_one_action_singular` and `join_note_never_doubles_the_period` |
-| `.planning/phases/11-integration-docs/evidence/*` | VERIFIED with one caveat | tabs-popup output row is not backed by matching evidence content (gap 2) |
+| `docs/recording-and-launch-config.md` | SUBSTANTIVE, 2 small accuracy gaps | 721 lines |
+| `.planning/phases/11-integration-docs/evidence/11-03-no-frames.txt` + `scripts/q03-no-frames.sh` + 3 snippets | VERIFIED | The script reproduces. Its numbers match the doc (3/3, 1 per-tab, 11 frames 1.1 s, 8/9 frames) |
+| `evidence/snippet-map.tsv` | VERIFIED | 4 new rows; the tabs-popup hash was updated |
+| `deferred-items.md` | VERIFIED | Two DEFERRED entries, both pre-existing src behaviour outside the scope of a docs phase, with fix sketches |
 
 ### Key Link Verification
 
 | From | To | Via | Status |
 |---|---|---|---|
-| `.mcp.json` env BLADE_RECORD=1 | recording on in the MCP server | process env | WIRED (verifier run) |
-| `state record-stop` text | the test report paths | text parse (sed) | WIRED (verifier run) |
-| `.bladebro.json` record.dir | <project>/recordings | project-file discovery from cwd | WIRED (verifier run) |
-| DSH profile env | `bladebro mcp` env | dsh-plugin.mjs spreads options to the bridge | WIRED (code read; stub evidence) |
+| `.mcp.json` env BLADE_RECORD=1 | recording on in the MCP server | process env | WIRED (re-run) |
+| `state record-stop` text | report paths | sed extract | WIRED (re-run) |
+| no-frames recipe (run wait / repaint) | first frame reaches the encoder before stop | timing | WIRED (re-run 4/4 and 2/2) |
 
 ### Scope checks
 
-- `git diff 42ca29b..HEAD --name-only`: the only src changes are src/record/hub/{evidence,evidence_tests,finish,msg}.rs. No stealth, upstream or src change outside src/record/**.
-- Read-only repos: ~/claude/get-shit-done has a clean tree. ~/claude/gsd-dsh has one modified file (docs/browser-automation-research/README.md) and one untracked file (upstream-updates.md), both with mtime 2026-10-20 10:43, before Phase 11 (2026-10-26). They were not made by this phase.
-- Phase 10 open items: documented under Known issues (the empty timeline for a run that contains both record-start and record-stop, which the verifier re-confirmed live; the click verdict miss; switch-tab to the current tab). deferred-items.md entries are pre-existing behavior items, which is the sanctioned channel.
-- Phase 8.1 popup semantics (300 ms in front, re-front skip in src/page/mod.rs, window-feature popup, burst note, noopener): documented. The Not verified section covers Linux, Windows, headed Chrome, the real lane, the DSH host and the Claude client, but contains the stale statement in gap 2.
+- `git diff 42ca29b..HEAD --name-only -- src`: only src/record/hub/{evidence,evidence_tests,finish,msg}.rs (9d20e81). `git log 9d20e81..HEAD -- src` is empty, so 3b040cd touched no src.
+- 3b040cd touches only docs/recording-and-launch-config.md and .planning/phases/11-integration-docs/**.
+- Read-only repos: ~/claude/get-shit-done is clean at 73f7629. ~/claude/gsd-dsh has the same pre-existing modified and untracked files as before (mtime 2026-10-20 10:43, before Phase 11). There are no new edits.
 
 ### Test suite (Step 8b)
 
-- `cargo build --release` OK; `cargo fmt --check` OK; `cargo clippy --release -- -D warnings` clean.
-- `cargo test --release`: the first run failed `daemon_lifecycle::concurrent_cold_starts_have_one_owner` (a 500 ms timing race under the parallel load of the full run, in an upstream test the phase did not change; the panic leaked one scratch daemon, which the verifier killed). The test passed 3/3 when rerun alone. A full `--no-fail-fast` rerun was all green (lib 847 passed, every integration binary ok). This is the same flake as recorded in 11-02-gate.txt.
-- Layer-1 gates (scripts/fp-gate.ts and the others): not present in this repo (scripts/ holds only publish-npm.sh), so N/A. Charlotte QA and E2E: not a web project and no UI files, so N/A.
+- `cargo build --release` OK, `cargo fmt --check` OK, `cargo clippy --release -- -D warnings` clean.
+- `cargo test --release --no-fail-fast`: exit 0, lib 847 passed, and every integration binary is ok. The daemon_lifecycle flake did not recur on this run.
+- Layer-1 gates (scripts/fp-gate.ts and the others): not present (scripts/ has only publish-npm.sh), so N/A. Charlotte QA and E2E: not a web project and no UI files, so N/A.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |---|---|---|---|---|
-| src/record/hub/msg.rs | 138-143 | agent_vs_video compares an id with the label `<id> (no frames)` | Warning (pre-existing, Phase 8.1) | a false "agent was on tab X; video followed tab X" note in the zero-frame error |
-| docs/recording-and-launch-config.md | 662 | stale provenance claim | Blocker for doc honesty | gap 2 |
-| docs/recording-and-launch-config.md | 353, 358 | "The result starts `recording started:`" | Info | on the first MCP call against a fresh profile, content[0] is the upstream `note: first run ... warmed` block and `recording started:` is content[1]. A parser that reads only content[0] misses the path |
-| tools/record_sidecar/scenarios/doc_snippets.py | n/a | output rows check only the SNIPPET label | Info | the doc_snippets check cannot catch sample-provenance drift, as in gap 2 |
+| docs/recording-and-launch-config.md | 81, 371, 693, 720 | per-tab stop text misquoted | Blocker (doc accuracy) | gap 1 |
+| docs/recording-and-launch-config.md | 698 | overclaimed provenance ("the one historical measurement") | Blocker (doc honesty) | gap 2 |
+| docs/recording-and-launch-config.md | 80-82, 195 | measurements labelled only "in testing", with no phase | Info | feeds gap 2 |
+| src/record/hub/msg.rs | 138-143 | agent_vs_video compares an id with a `(no frames)` label | Warning (pre-existing, documented, deferred) | wrong note on a zero-frame stop |
+| tools/record_sidecar/scenarios/doc_snippets.py | n/a | output rows check only the SNIPPET label | Info | the verifier matched content by hand this time |
 
-No logical_cohesion findings: the 9d20e81 change stays inside msg/evidence helpers.
+No logical_cohesion findings.
 
 ### Human Verification Required
 
-None beyond the disclosed Not-verified items (Linux, Windows, headed Chrome, a DSH host, a Claude Code session). These do not affect the status.
+None beyond the disclosed Not-verified items (Linux, Windows, headed Chrome, DSH host, Claude Code session).
 
 ### Gaps Summary
 
-The docs are extensive. The configuration, precedence, examples and both integration flows match the code and the read-only repos, and the verifier reproduced the happy-path snippets. Two gaps block a pass:
+3b040cd closes the substance of both previous gaps. A QA flow that follows the docs now learns about the zero-frame stop and gets two recipes that work, and every output sample on the page is Phase 11 output. Two narrow text defects remain, each a sentence-level fix:
 
-1. The per-test-case QA flow fails in a common case the docs do not cover. An assertion-only test case that lasts under about 1 s on a static page gets no frame, and the stop is an error (`recording not clean: recording failed: no frames reached the encoder`), with a 0-byte file and a self-contradictory agent/video note. The doc quotes a different no-frames text.
-2. The Not verified provenance line (662) became false after d3af2db, and one output sample (`state tabs` mid-popup) is still Phase 8.1 output that the Phase 11 evidence does not back.
+1. Per-tab mode prints `recording not clean (per-tab, 1 file): tab <id>: recording failed: no frames reached the encoder, ...`, but lines 81, 371 and 693 say it prints the follow-mode text, and the troubleshooting key (line 720) gives only the follow-mode string.
+2. Line 698 claims the Phase 8.1 spike is "the one historical measurement" on the page. The page also has Phase 2, 9 and 10 measurements, plus several "in testing" figures with no phase label (lines 80-82, 195).
 
-_Verified: 2026-10-26T15:25:00Z_
+Note: `gsd-tools.js eval-candidate` is not installed at ~/.claude/get-shit-done/bin, so no regression candidates were written.
+
+_Verified: 2026-10-26T15:40:00Z_
 _Verifier: Claude (gsd-verifier, opus)_
