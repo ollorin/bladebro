@@ -1,0 +1,61 @@
+# 10-02 Task 4 final gate (Darwin 25.6.0, arm64, Chrome 154.0.8037.58, headless where stated)
+# Code under test: Rust unchanged since 8ce4399 except the schema test file and the two upstream description strings
+# (commit 14d6f61). The release binary was built after 14d6f61's text edits; its build stamp reads 8ce4399-dirty
+# because the stamp was taken before the commit. Fixtures: python3 -m http.server on 127.0.0.1:8765 over
+# tools/record_sidecar/fixtures (stopped after the lane runs). Scratch homes: mktemp -d (under $TMPDIR; the
+# daemon socket path must stay under SUN_LEN, see the deviation note in 10-02-SUMMARY.md).
+# BLADE_FFMPEG=$HOME/.local/ffmpeg/bin/ffmpeg (ffmpeg n9.0.2).
+
+## Static gates
+cargo fmt --check                                   -> PASS (exit 0)
+cargo clippy --release --all-targets -- -D warnings -> PASS (exit 0, no warning or error lines)
+git diff --name-only d18dae1..HEAD | (upstream/main cat-file check)
+  -> src/cli.rs, src/cli/help.rs, src/mcp/server/proto.rs, src/mcp/tools.rs (exactly the four; each has a HOOKS.md Phase 10 row)
+git diff --stat d18dae1..HEAD -- Cargo.toml Cargo.lock npm CHANGELOG.md .github src/page src/state.rs src/action src/stealth -> empty
+RecMethod variants (src/record/source/wire.rs): 5 (PageEnable, StartScreencast, ScreencastFrameAck, StopScreencast, TargetGetTargets)
+git diff -U0 d18dae1 -- src/mcp/tools.rs src/cli/help.rs: the 2 changed lines in tools.rs (RECORDING line, value description) and
+  the 1 changed + 1 added line in help.rs (RECORDING block); no other upstream line changed; no `"#` added inside a raw string
+
+## Tests
+cargo test --release --no-fail-fast -> 891 passed, 0 failed, 18 ignored (exit 0)
+  baseline 820 (08.1-02), 864 (10-01). The 18 ignored: 2 more than 10-01 = mcp_stop_has_poster_timeline_marker and
+  mcp_recording_off_has_no_sidecars (live, run by evidence_live.sh). concurrent_cold_starts_have_one_owner passed in this run
+  (known flake; did not fail).
+cargo test --release --lib -- record::hub::schema_tests launch_mode -> 73 passed, 0 failed
+  includes description_mentions_poster_timeline_marker, added_text_stays_within_the_budget,
+  docs_mention_poster_marker_timeline, and the launch_mode drift tests (registry, env consts, documented vars)
+  schema added chars: enum 31 + line 232 + name delta 16 + value delta 28 = 307 chars (~76 tokens); HEAD before this
+  task = 230 chars; budget 330 (D10-6). The +77 chars (~19 tokens) are the marker/poster/timeline wording.
+
+## Instruments
+BLADE_HEADLESS=1 bladeebro audit (scratch BLADE_HOME) -> SCORE 100/100 pass, VERDICT: PASS
+  (after the run, `bladebro stop` said "daemon not running" and no process still carried that scratch home)
+BLADE_HEADLESS=1 python3 tools/qol_probe/run.py (QOL_PROBE_HOME=mktemp -d) -> 120 PASS, 2 FAIL:
+  - chord cleared the live editor ('via wrappe')
+  - nested scroller movement is reported as such (outcome: scrolled page delta+1769)
+  These are the two known pre-existing failures (08-opus-qol.txt, 08.1-02, 09-03 reports); no other failure.
+  First attempt with a home under /private/tmp/claude-501/... gave 17 PASS / 58 FAIL / crash: the daemon could not bind
+  its socket (path longer than SUN_LEN) and every check fell back to one-shot Chrome, so the state was lost. Not a product
+  result; the rerun with a short home is the one recorded here.
+
+Lane matrix: tools/record_sidecar/lib/lane_matrix_local.py (wraps tools/lane_matrix.py unchanged in memory; `python3 -I`,
+  REC_HUB_FIX=http://127.0.0.1:8765), 5 rounds per lane, exit code and per-round time (s).
+| lane | recording off (BLADE_RECORD unset) | BLADE_RECORD=1 |
+|---|---|---|
+| daemon | rc 0; 1.1 1.2 1.3 1.3 1.3 | rc 0; 0.9 1.2 1.3 1.4 1.4 |
+| oneshot | rc 0; 0.7 0.7 0.7 0.7 0.7 | rc 0; 0.6 0.7 0.7 0.7 0.7 |
+| mcp | rc 0; 0.8 0.8 0.8 0.8 0.8 | rc 0; 0.8 0.8 0.8 0.8 0.8 |
+| mcp-pipe | rc 0; 0.8 0.8 0.8 0.8 0.8 | rc 0; 0.7 0.8 0.8 0.8 0.8 |
+  All inside the 09-03 range (0.6-2.1 s, recording off). The matrix starts each lane with the env set; it does not itself
+  call record-start. The "on" column proves the lanes start and run with BLADE_RECORD=1 set.
+  `real` lane not run (not part of the plan's matrix). Matrix runs (5 rounds) are only the lane start-up, not a recording.
+
+diff_oracle: NOT RUN (websockets missing: `python3 -c "import websockets"` -> ModuleNotFoundError)
+
+## Recording off (from evidence/10-02-live.txt, Task 3, base d18dae1 vs HEAD, 2 runs each)
+- distinct CDP method sets equal (11 both); every method except Input.dispatchMouseEvent has equal counts in both runs
+- Input.dispatchMouseEvent (accepted as noise, see the decision in 10-02-SUMMARY.md): base 23 / 30, new 34 / 30 (base vs
+  itself differs by 7). The strict per-method check fails for base run 1 vs new run 1 and passes for run 2 vs run 2
+- normalized stdout byte-identical base vs new (both runs) and base vs base
+- no timeline, poster or video file in any off home (recordings dir absent or empty, counts 0 0 0 0)
+- no screencast method in the off trace
