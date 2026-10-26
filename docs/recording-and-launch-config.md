@@ -78,7 +78,7 @@ The video clock starts at the first frame, not at the `record-start` call, and e
 
 - The recorder opens its own connection to the recorded tab and sends only `Page.enable`, `Page.startScreencast` (JPEG, quality 70, at most the configured size), `Page.screencastFrameAck`, `Page.stopScreencast`, and `Target.getTargets` (only when a new tab appears, to read which tab opened it). It injects no script, changes no viewport or emulation, draws no overlay and adds no launch flag.
 - Every frame is acknowledged as soon as it arrives. Headless Chrome sent about 60 frames/s on an animated page in testing (1200 frames in 20 s) and about 100 headed; the recorder keeps at most the configured fps (newest frame wins, the last one is never lost; 200 frames reached the encoder in those 20 s at 10 fps) and hands frames to the encoder through a queue of 16. When the encoder falls behind, the newest frame is dropped and counted. The report gives frames received, acknowledged, sent to the encoder, skipped by the fps cap, dropped and lost.
-- No frames: if not a single frame arrives, the result is "no frames for N s since recording start", never a finished video, however short the recording. After 5 s without a first frame a warning is logged and recording continues. A background tab behaved this way in testing: 0 frames in 8 s, and Chrome reported the tab hidden.
+- No frames: if not a single frame reaches the encoder, there is no video, however short the recording, and the stop is `recording not clean`. The text the default follow mode and per-tab mode print at stop is `recording not clean: recording failed: no frames reached the encoder, so there is no video; <path> left in place` (the file is 0 bytes; measured in 11-03, see [Known issues](#known-issues)). The capture-side wording, `no frames for N s since recording start`, is the source's own verdict in the code and is not the one a stop prints in these modes. After 5 s without a first frame a warning is logged and recording continues. A background tab behaved this way in testing: 0 frames in 8 s, and Chrome reported the tab hidden.
 - Limits: a background tab, a minimized window (about 0.3 frames/s) or a covered window delivers no new frames. A static page sends about one frame and then nothing (a 20 s recording of a still page received 1 frame), which looks the same as a stalled capture, so after the first frame silence is reported (time since the last frame, longest gap), not treated as failure, and the video holds the last frame. A one-off 37 s silence was once seen in testing (cause unknown). The video used to come out about 0.4 to 0.5 s longer than the recording time (the last frame was held through the 0.5 s stop grace); it now ends at the stop request. Measured on 8 s recordings (8 runs, including stops off a whole second) the video length differed from the recording time by -0.74 % to +0.16 % (about 60 ms at most on that slow-ticking page, since the video is built from whole frame slots at the chosen fps). On animated pages the video ran about 100 ms long (+0.6 % to +1.2 % on 8 to 12 s recordings): frames that arrive during the stop grace are still added, and the last frame is always written at least once. The theoretical worst case is about 0.5 s plus one frame slot. Recording needs the default WebSocket transport: with `BLADE_TRANSPORT=pipe` it reports that it cannot record (unset it and run `bladebro stop`).
 - These limits are fixed; there is no setting for them.
 
@@ -127,7 +127,7 @@ recording saved: /abs/path/ev-20261026T145211Z-af4af0.webm (bytes 36204, duratio
 | poster | `. Poster: <abs path>.poster.png`: the last frame of the finished video as a PNG, next to it (see [Poster, marker and timeline](#poster-marker-and-timeline)). `. Poster: not made (<reason>)` when it could not be made; the recording is still saved |
 | timeline | `. Timeline: <abs path>.timeline.json (N actions; 1 action for one)`, plus `, K not kept` when entries were dropped at the 1000-entry cap. `. Timeline: not written (<reason>)` when it could not be written. Only with `record-stop`, not the exit paths |
 | marker | `. Marker at T s` when `value` was placed (T on the video clock, clamped to the length); `. Marker not placed: <reason>` when it was not (empty note, not a string, no active recording). The note itself is never echoed |
-| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced; `popup <P> closed at <T> s; back on opener <O>` when a followed popup closed; `N popup(s) not recorded (never in front)` for popups that never reached the front; `agent was on tab <A> at stop; video followed tab <B>` when they differ at stop (see [Tab following](#tab-following)) |
+| notes | "no new frames for N s" (static page or stalled tab; the video holds the last frame); `tab <A> gone at <T> s; following tab <B>` when the recorded tab was closed or replaced; `popup <P> closed at <T> s; back on opener <O>` when a followed popup closed; `N popup(s) not recorded (never in front)` for popups that never reached the front; `agent was on tab <A> at stop; video followed tab <B>` when they differ at stop (see [Tab following](#tab-following)); a zero-frame video can show this note on the same tab (a known wording bug, see [Known issues](#known-issues)) |
 
 The stop is `ok` only when capture and encoder both finished cleanly. Otherwise it is an error (MCP `isError`, CLI exit 1; in `batch`/`run` an error step stops the batch) whose text starts with `recording not clean:` and still carries the path and numbers.
 
@@ -180,11 +180,12 @@ While a recording runs, each `state tabs` row has two marker columns: `*` for th
 | ` R` | video only (the agent is on another tab) |
 | `  ` | neither |
 
-The footer line `(* agent, R video: differ; switch-tab to move the agent)` appears only when the agent and the video are on different tabs. Without a recording the output is unchanged: `*` marks the attached tab, a space otherwise, and there is no differ footer. Real output, mid-popup (ids shortened):
+The footer line `(* agent, R video: differ; switch-tab to move the agent)` appears only when the agent and the video are on different tabs. Without a recording the output is unchanged: `*` marks the attached tab, a space otherwise, and there is no differ footer. Real output from the Phase 11 window-popup run (11-01 evidence, the `state tabs` after `act click "open window"`; ids shortened):
 
 ```
-*  9EF9...  Popper — http://127.0.0.1:8765/popper.html
- R 0A7E...  B — http://127.0.0.1:8765/b.html
+   EE14...  A — http://127.0.0.1:8765/a.html
+*  0848...  Popper — http://127.0.0.1:8765/popper.html
+ R B425...  B — http://127.0.0.1:8765/b.html
 (* agent, R video: differ; switch-tab to move the agent)
 (* = current tab; switch-tab <target_id> to change)
 ```
@@ -350,12 +351,12 @@ A QA agent records one video per test case with two extra `state` calls; nothing
 
 Per test case:
 
-1. `state` with `{"op": "record-start", "name": "<test id>"}`. The result starts `recording started: <path>`.
+1. `state` with `{"op": "record-start", "name": "<test id>"}`. The result's text starts `recording started: <path>`. Over MCP read every content item, not only the first: on a fresh profile the first item can be a `note: first run — the profile was warmed (...) before this call.` block (the upstream first-run note, from the server's content[0]), and `recording started:` is then content[1]. That note was not seen in the Phase 11 runs, which used scratch profiles.
 2. The test steps, as their own `act` / `see` / `vision` / `run` calls. Do not put `record-start` or `record-stop` inside a `run`: the timeline would be empty (see [Known issues](#known-issues)).
 3. `state` with `{"op": "record-stop", "value": "PASS: <test id>"}` or `{"op": "record-stop", "value": "FAIL: <what went wrong>"}`. The note becomes the marker on the timeline.
 4. Copy the paths from the stop result into the test report.
 
-Where the paths appear: the stop result is text (MCP: the tool result's text content; CLI: stdout; CLI `--json`: the `text` field of `{"is_error":false,"ok":true,"text":"..."}`) of the form `recording saved: <video> (bytes ..., duration ... s, ...). Poster: <stem>.poster.png. Timeline: <stem>.timeline.json (N actions). Marker at T s`. The video path is the text between `recording saved: ` and ` (bytes`; the poster and timeline paths follow `Poster: ` and `Timeline: `. If a poster or timeline could not be made the text says `not made` or `not written` instead, and the video is still saved. A recording with a problem starts `recording not clean:` and still names the file; per-tab mode starts `recording saved (per-tab, N files):` and lists each file, separated by `; `.
+Where the paths appear: the stop result is text (MCP: the tool result's text content, every item of it, since a first-run note can come before the recording text; CLI: stdout; CLI `--json`: the `text` field of `{"is_error":false,"ok":true,"text":"..."}`) of the form `recording saved: <video> (bytes ..., duration ... s, ...). Poster: <stem>.poster.png. Timeline: <stem>.timeline.json (N actions). Marker at T s`. The video path is the text between `recording saved: ` and ` (bytes`; the poster and timeline paths follow `Poster: ` and `Timeline: `. If a poster or timeline could not be made the text says `not made` or `not written` instead, and the video is still saved. A recording with a problem starts `recording not clean:` and still names the file; per-tab mode starts `recording saved (per-tab, N files):` and lists each file, separated by `; `.
 
 Rules that keep one video per test case:
 
@@ -364,6 +365,39 @@ Rules that keep one video per test case:
 - A stop can take up to about 21 s; the client's tool timeout must be longer.
 - Use the test id as `name`: it is sanitized (see [Per-call parameters](#per-call-parameters)) and gets a UTC stamp, so reruns never overwrite.
 - Recordings are sensitive (see [Recording settings](#recording-settings)): use test accounts, and delete recordings in your harness.
+
+### A test case that ends before its first frame
+
+An assertion-only case (`record-start`, a `see`, `record-stop`, with no wait and no repaint) on a static page can end before Chrome has sent a first frame. The stop then fails and the file is a 0-byte placeholder. Measured in 11-03 over MCP: 3 of 3 sessions failed, and one more in per-tab mode, all with the text below. The stop reports the file as a failure, not as a short video (see [Known issues](#known-issues)).
+
+```jsonl
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"op": "record-stop", "value": "PASS: assertion-only case"}
+```
+
+```output
+✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; .../07-03-assert-only-20261026T153106Z-fe93a8.webm left in place; .../07-03-assert-only-20261026T153106Z-fe93a8.webm (bytes 0, duration 0.0 s, frames 0, dropped 0, segments [0.0 s tab 06F8... (no frames)]). Note: agent was on tab 06F8... at stop; video followed tab 06F8... (no frames). Poster: not made (no finalized file). Timeline: .../07-03-assert-only-20261026T153106Z-fe93a8.timeline.json (0 actions). Marker at 0.0 s
+```
+
+What decides it is whether a frame has reached the encoder by the stop, not how long the case ran. Two recipes worked when measured, on the same fixture:
+
+- A deliberate 1 s wait before the stop: a `run` with one `wait` step whose condition never holds, marked `optional` so the run goes on. The step reports `failed` with `wait timeout` on purpose; that is the wait ending. 3 of 3 sessions saved, 11 frames, 1.1 s:
+
+```jsonl
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"tool": "run", "arguments": {"steps": [{"action": "wait", "condition": "js", "js": "false", "timeout": 1, "optional": true}]}}
+{"op": "record-stop", "value": "PASS: assertion-only case"}
+```
+
+```output
+recording saved: .../07-03-assert-only-20261026T153114Z-0824b8.webm (bytes 11924, duration 1.1 s, frames 11, dropped 0, segments [0.0 s tab A5EA...], captured 12). Poster: .../07-03-assert-only-20261026T153114Z-0824b8.poster.png. Timeline: .../07-03-assert-only-20261026T153114Z-0824b8.timeline.json (1 action). Marker at 1.1 s
+```
+
+- A repaint before the stop: an `act` that changes the page, for example `act click "turn blue"` on a fixture button. 2 of 2 sessions saved (8 and 9 frames, 0.8 and 0.9 s). It works only where the click visibly changes the page, and the verdict says `clicked (no observable DOM change)` even when it does (see [Known issues](#known-issues)). Check the change with `see` or the poster, not the verdict.
+
+Neither recipe changes the recorder: each one only gives the first frame time to arrive before the stop.
 
 ### Claude Code GSD flow (gsd-charlotte-qa, gsd-test-writer)
 
@@ -656,10 +690,12 @@ On Windows the CLI has no daemon and refuses record-start; record through MCP th
 - **`act click` can report `clicked (no observable DOM change)` for a click that did change the page.** The verdict readback did not report a background-colour change (src/action, upstream). The video and the poster show the change (11-01: after `click "turn blue"` the poster's 1x1 pixel was rgb(2, 65, 252), blue). Check the effect with `see` or the poster, not the verdict, in that case.
 - **`switch-tab` to the tab the agent is already on does not move the video.** After a window-feature popup the agent is still on the opener; `switch-tab <opener>` reports success, but the video stays on the popup (11-01 `window-popup`: the popup row kept ` R`). Close the popup (`state close-tab <popup id>`) or switch to another tab and back (see [Tab following](#tab-following)).
 - **A short test gives a short video.** The clock starts at the first frame (see [Recording time](#recording-time)). In 11-01 a test that was only `record-start`, one click and `record-stop` on an already loaded page gave 0.8 s of video (`ffprobe` duration 0.800000 for both runs).
+- **A test with no frame fails at stop, not as a short video.** A case that ends before Chrome sends its first frame (for example `record-start`, `see`, `record-stop` with no wait and no repaint) stops with `recording not clean: recording failed: no frames reached the encoder, so there is no video; <path> left in place`, a 0-byte file, and `Marker at 0.0 s`. Measured in 11-03 over MCP: 3 of 3 sessions, and per-tab mode 1 of 1. The fix for the harness is a 1 s wait or a repaint before the stop (recipes in [A test case that ends before its first frame](#a-test-case-that-ends-before-its-first-frame)). The recorder itself was not changed: a fix there would make the stop wait for a first frame (tracked in `deferred-items.md`).
+- **The stop note can name the same tab as both the agent's and the video's.** A zero-frame video's segment is labelled `<id> (no frames)`, and `src/record/hub/msg.rs` (`agent_vs_video`) compares that label with the agent's id, so the stop says `agent was on tab X at stop; video followed tab X (no frames)`. The note is wrong in that case: the agent and the video are on the same tab, and the failure above is the real problem. Ignore the note on a zero-frame stop (a wording fix is tracked in `deferred-items.md`).
 
 ## Not verified
 
-The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local fixtures. The result samples from earlier phases (the start result, the first stop result, tab following, the per-tab result with three files) were not re-run in Phase 11; the Phase 11 runs printed lines of the same shape (see `.planning/phases/11-integration-docs/evidence/`). Not run:
+The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local fixtures. Every result sample on this page is output from the Phase 11 runs (11-01, 11-02 and 11-03 evidence in `.planning/phases/11-integration-docs/evidence/`, as mapped in `snippet-map.tsv`), not output carried over from earlier phases. The one historical measurement, the Phase 8.1 popup spike in [Tab following](#tab-following), is labelled as such where it appears. Not run:
 
 - Linux and Windows (no run of any example there; CI was not run for Phase 11). Windows lifecycle and the job object are by code reading only.
 - Headed Chrome: no example was run with a visible browser (the interactive `.mcp.json` entry was started and listed its tools, but made no browser call).
@@ -681,4 +717,5 @@ The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local f
 - `recording unavailable: BLADE_FFMPEG=... is unusable`: fix or unset `BLADE_FFMPEG`; `bladebro doctor` shows which ffmpeg was found and its encoders.
 - `BLADE_RECORD_FPS: fps 20 out of range 5-15`, `BLADE_RECORD_SIZE: ... must be even`, `BLADE_RECORD_FORMAT: format "avi" is not supported`, `BLADE_RECORD_TABS: must be follow or per-tab`, `BLADE_RECORD: ... must be an absolute directory path`: the message names the variable and the valid values; fix it and run `bladebro stop` so the daemon re-reads it.
 - The timeline says `(0 actions)` although the test clicked: the recording was started inside the same `run` call (see [Known issues](#known-issues)).
+- `recording not clean: recording failed: no frames reached the encoder`: the test case ended before the first frame arrived, and the file is 0 bytes. Add a 1 s wait or a repaint before `record-stop` (see [A test case that ends before its first frame](#a-test-case-that-ends-before-its-first-frame)).
 - The stop times out in your client: a stop can take about 21 s in the worst case; set the client's tool timeout above that (the DSH plugin's `toolCallTimeoutMs` default, 180000 ms, is enough).

@@ -1,0 +1,4 @@
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"tool": "run", "arguments": {"steps": [{"action": "wait", "condition": "js", "js": "false", "timeout": 1, "optional": true}]}}
+{"op": "record-stop", "value": "PASS: assertion-only case"}

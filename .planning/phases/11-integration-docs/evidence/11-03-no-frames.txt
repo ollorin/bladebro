@@ -1,0 +1,152 @@
+# 2026-10-26T15:31:05Z git c026563 bladebro v4.6.5 (d3af2db-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET no-frames-short
+--- text (no-frames-short.jsonl):
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"op": "record-stop", "value": "PASS: assertion-only case"}
+--- run:
+
+SNIPPET no-frames-error
+# session 1 (no wait)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153106Z-fe93a8.webm (tab 06F8BF031D4597E6A821E7B16C1A46C0); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153106Z-fe93a8.webm left in place; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153106Z-fe93a8.webm (bytes 0, duration 0.0 s, frames 0, dropped 0, segments [0.0 s tab 06F8BF031D4597E6A821E7B16C1A46C0 (no frames)]). Note: agent was on tab 06F8BF031D4597E6A821E7B16C1A46C0 at stop; video followed tab 06F8BF031D4597E6A821E7B16C1A46C0 (no frames). Poster: not made (no finalized file). Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153106Z-fe93a8.timeline.json (0 actions). Marker at 0.0 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+# session 2 (no wait)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153108Z-85d8c0.webm (tab DF28D6C2A38F5C704C7293282B419EC5); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153108Z-85d8c0.webm left in place; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153108Z-85d8c0.webm (bytes 0, duration 0.0 s, frames 0, dropped 0, segments [0.0 s tab DF28D6C2A38F5C704C7293282B419EC5 (no frames)]). Note: agent was on tab DF28D6C2A38F5C704C7293282B419EC5 at stop; video followed tab DF28D6C2A38F5C704C7293282B419EC5 (no frames). Poster: not made (no finalized file). Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153108Z-85d8c0.timeline.json (0 actions). Marker at 0.0 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+# session 3 (no wait)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153110Z-ca9248.webm (tab 4ADF55DA12F5CEB76C754B85F063214D); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153110Z-ca9248.webm left in place; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153110Z-ca9248.webm (bytes 0, duration 0.0 s, frames 0, dropped 0, segments [0.0 s tab 4ADF55DA12F5CEB76C754B85F063214D (no frames)]). Note: agent was on tab 4ADF55DA12F5CEB76C754B85F063214D at stop; video followed tab 4ADF55DA12F5CEB76C754B85F063214D (no frames). Poster: not made (no finalized file). Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153110Z-ca9248.timeline.json (0 actions). Marker at 0.0 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+# per-tab mode, same case
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-tab1-20261026T153112Z-3a01b0.webm (tab E462C401F186617322336CD34BA1BF4F); first frame not awaited. record-stop saves every tab's file.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=true ✗ error: recording not clean (per-tab, 1 file): tab E462C401F186617322336CD34BA1BF4F: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-tab1-20261026T153112Z-3a01b0.webm left in place; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-tab1-20261026T153112Z-3a01b0.webm (bytes 0, duration 0.0 s, frames 0, dropped 0, segments [0.0 s tab E462C401F186617322336CD34BA1BF4F (no frames)]). Note: agent was on tab E462C401F186617322336CD34BA1BF4F at stop; video followed tab E462C401F186617322336CD34BA1BF4F (no frames). Poster: not made (no finalized file). Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-tab1-20261026T153112Z-3a01b0.timeline.json (0 actions). Marker at 0.0 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+
+
+SNIPPET no-frames-wait
+--- text (no-frames-wait.jsonl):
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"tool": "run", "arguments": {"steps": [{"action": "wait", "condition": "js", "js": "false", "timeout": 1, "optional": true}]}}
+{"op": "record-stop", "value": "PASS: assertion-only case"}
+--- run:
+
+SNIPPET no-frames-wait-result
+# session 1 (1 s run wait)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153114Z-0824b8.webm (tab A5EA0278BA3424100920BC1476F4FBB2); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL run {"steps": [{"action": "wait", "condition": "js", "js": "false", "timeout": 1, "optional": true}]}
+RESULT isError=false step 1 (optional): failed — step 1 wait failed: wait timeout: condition 'js' not met within 1s
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153114Z-0824b8.webm (bytes 11924, duration 1.1 s, frames 11, dropped 0, segments [0.0 s tab A5EA0278BA3424100920BC1476F4FBB2], captured 12). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153114Z-0824b8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153114Z-0824b8.timeline.json (1 action). Marker at 1.1 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+# session 2 (1 s run wait)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153117Z-87a7d0.webm (tab 3DD7FF5977CE4FB0E859398982B10710); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL run {"steps": [{"action": "wait", "condition": "js", "js": "false", "timeout": 1, "optional": true}]}
+RESULT isError=false step 1 (optional): failed — step 1 wait failed: wait timeout: condition 'js' not met within 1s
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153117Z-87a7d0.webm (bytes 11716, duration 1.1 s, frames 11, dropped 0, segments [0.0 s tab 3DD7FF5977CE4FB0E859398982B10710], captured 12). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153117Z-87a7d0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153117Z-87a7d0.timeline.json (1 action). Marker at 1.0 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+# session 3 (1 s run wait)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153120Z-5702d0.webm (tab 0B317F03A643831E9D7D36D59CDE06AB); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL run {"steps": [{"action": "wait", "condition": "js", "js": "false", "timeout": 1, "optional": true}]}
+RESULT isError=false step 1 (optional): failed — step 1 wait failed: wait timeout: condition 'js' not met within 1s
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153120Z-5702d0.webm (bytes 11735, duration 1.1 s, frames 11, dropped 0, segments [0.0 s tab 0B317F03A643831E9D7D36D59CDE06AB], captured 12). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153120Z-5702d0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153120Z-5702d0.timeline.json (1 action). Marker at 1.1 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+
+SNIPPET no-frames-repaint
+--- text (no-frames-repaint.jsonl):
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"action": "click", "text": "turn blue"}
+{"op": "record-stop", "value": "PASS: assertion-only case"}
+--- run:
+
+SNIPPET no-frames-repaint-result
+# session 1 (repaint)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153123Z-e117f8.webm (tab B6F40A107C7890CA7DBB55D47D8F5B82); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL act {"action": "click", "text": "turn blue"}
+RESULT isError=false outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153123Z-e117f8.webm (bytes 27540, duration 0.8 s, frames 8, dropped 0, segments [0.0 s tab B6F40A107C7890CA7DBB55D47D8F5B82]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153123Z-e117f8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153123Z-e117f8.timeline.json (1 action). Marker at 0.7 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+# session 2 (repaint)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153125Z-229ce8.webm (tab 04460A85005ACE6F93C8C6397273F9AE); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL act {"action": "click", "text": "turn blue"}
+RESULT isError=false outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153125Z-229ce8.webm (bytes 28068, duration 0.9 s, frames 9, dropped 0, segments [0.0 s tab 04460A85005ACE6F93C8C6397273F9AE], captured 10). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153125Z-229ce8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz/recordings/07-03-assert-only-20261026T153125Z-229ce8.timeline.json (1 action). Marker at 0.9 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 26400 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.nt1QvvAHJz

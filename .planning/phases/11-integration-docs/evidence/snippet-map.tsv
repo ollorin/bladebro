@@ -9,7 +9,7 @@
 d644eba4	output	stop-result	11-01-s01-mcp-state.txt
 e3bfb1b5	output	stop-result-extras	11-01-s01-mcp-state.txt
 745fcf07	output	follow-result	11-01-s03-tabs.txt
-b6d37208	output	tabs-popup	11-01-s03-tabs.txt
+b47a8d22	output	tabs-popup	11-01-s03-tabs.txt
 33d39266	output	per-tab-result	11-01-s03-tabs.txt
 77a0e3a9	output	timeline-json	11-01-s01-mcp-state.txt
 b752ca41	config	claude-code-mcp-json	11-01-s01-mcp-state.txt
@@ -31,3 +31,9 @@ d2f0bcc3	run	one-off	11-01-s05-modes.txt
 bdd5b294	run	extract-path	11-02-q01-qa-flows.txt
 572d6122	output	extract-path	11-02-q01-qa-flows.txt
 b763499e	config	dsh-profile-record	11-02-q01-qa-flows.txt
+# 11-03 (gap 1, no-frame stop): the short-case run and the two recipes, from 11-03-no-frames.txt.
+# The short case's error sample is shortened; only its SNIPPET label is checked (output rows).
+982c4a15	run	no-frames-short	11-03-no-frames.txt
+110457e0	output	no-frames-error	11-03-no-frames.txt
+b1ae9512	run	no-frames-wait	11-03-no-frames.txt
+ec7972c2	output	no-frames-wait-result	11-03-no-frames.txt
