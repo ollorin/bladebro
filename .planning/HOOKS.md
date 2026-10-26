@@ -45,4 +45,4 @@ Phase 8: no new hooks (zero edits to upstream files; verified by the opus verifi
 | 9 | src/session_profile/reap.rs | first line of `reap_orphans()`: `crate::record::orphans::sweep();` (1 line) | sweep orphaned bladebro ffmpeg on every Chrome launch (LIFE-03); logic in src/record/orphans.rs (4-part safety rule) | b95e023 |
 
 Phase 9 ledger verified by the opus verifier (2026-10-26) against `git diff 9756923..HEAD` and `git cat-file -e upstream/main:<path>`: only src/cli/daemon.rs and src/session_profile/reap.rs touch upstream files.
-| 8.1 | src/page/mod.rs | Page::act new-tab branch: `self.activate()` -> `crate::record::hub::activate_opener(self)` (1 line) | while a recording is active a popup opened by a click keeps the front (stock Chrome behaviour) so it can be recorded; recording off: identical call (CAPT-06, D1 option A) | SHA |
+| 8.1 | src/page/mod.rs | Page::act new-tab branch: `self.activate()` -> `crate::record::hub::activate_opener(self)` (1 line) | while a recording is active a popup opened by a click keeps the front (stock Chrome behaviour) so it can be recorded; recording off: identical call (CAPT-06, D1 option A) | 35ea894 |
