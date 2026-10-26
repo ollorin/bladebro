@@ -89,6 +89,12 @@ fn basename(program: &str) -> &str {
 /// The rule above. `dir` is the resolved recordings dir; `alive` says whether
 /// a pid is a running process.
 pub fn classify(p: &ProcInfo, dir: &Path, alive: impl Fn(u32) -> bool) -> Verdict {
+    classify_as(p, dir, alive, std::process::id())
+}
+
+/// `classify` with our own pid injected (tests): a bladebro that is itself pid 1
+/// (container without init) is the live parent of its own encoder, not an orphan-maker.
+pub fn classify_as(p: &ProcInfo, dir: &Path, alive: impl Fn(u32) -> bool, me: u32) -> Verdict {
     // Program = the text before the first " -" (an install path may hold spaces).
     let line = format!("{} ", p.cmd.trim());
     let program = line.split(" -").next().unwrap_or("").trim();
@@ -121,7 +127,7 @@ pub fn classify(p: &ProcInfo, dir: &Path, alive: impl Fn(u32) -> bool) -> Verdic
     if !is_recording_name(name) {
         return Verdict::Keep("not a recording name");
     }
-    if p.ppid != 1 && alive(p.ppid) {
+    if p.ppid == me || (p.ppid != 1 && alive(p.ppid)) {
         return Verdict::Keep("parent alive");
     }
     Verdict::Orphan

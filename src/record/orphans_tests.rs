@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use super::orphans::{classify, list_procs, parse_ps, sweep_in, ProcInfo, Verdict};
+use super::orphans::{classify, classify_as, list_procs, parse_ps, sweep_in, ProcInfo, Verdict};
 use crate::record::encoder::test_util::{pid_gone, Scratch};
 use crate::record::{build_args, EncodeSpec, FfmpegVersion, Format, FrameSize};
 
@@ -404,4 +404,31 @@ fn reaper_hook_is_the_first_statement() {
 fn sweeping_a_missing_dir_starts_nothing() {
     // No recordings dir: returns at once (canonicalize fails before any thread or ps).
     super::orphans::sweep_dir(std::env::temp_dir().join("bladebro-no-such-recordings-dir-9f3a"));
+}
+
+#[test]
+fn bladebro_as_pid1_keeps_its_own_live_encoder() {
+    // Container without init: our encoder has ppid 1 == our own pid.
+    let d = std::path::Path::new("/rec");
+    let out = format!("/rec/{NAME}");
+    let proc = p(1, line("ffmpeg", "webm", &out));
+    // Parent 1 is us: keep. Parent 1 is somebody else (real orphan): reap.
+    proc_keep(classify_as(&proc, d, |_| false, 1));
+    assert!(matches!(
+        classify_as(
+            &{
+                let mut q = proc.clone();
+                q.ppid = 1;
+                q
+            },
+            d,
+            |_| false,
+            777
+        ),
+        Verdict::Orphan
+    ));
+}
+
+fn proc_keep(v: Verdict) {
+    assert!(matches!(v, Verdict::Keep("parent alive")), "{v:?}");
 }

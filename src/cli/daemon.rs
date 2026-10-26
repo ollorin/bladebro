@@ -443,9 +443,9 @@ pub async fn run_daemon() -> Result<()> {
         }
     }
 
+    // Cleanup: persist live logins, then kill Chrome gracefully.
+    // (Never on the real lane — not our cookie store.)
     crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
-                                                    // Cleanup: persist live logins, then kill Chrome gracefully.
-                                                    // (Never on the real lane — not our cookie store.)
     if let Some(ref p) = page {
         if !crate::realbrowser::real_lane() {
             if let Err(e) = crate::logins::snapshot(p.cdp_ref()).await {
