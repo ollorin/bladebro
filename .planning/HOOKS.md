@@ -46,4 +46,4 @@ Phase 8: no new hooks (zero edits to upstream files; verified by the opus verifi
 
 Phase 9 ledger verified by the opus verifier (2026-10-26) against `git diff 9756923..HEAD` and `git cat-file -e upstream/main:<path>`: only src/cli/daemon.rs and src/session_profile/reap.rs touch upstream files.
 | 8.1 | src/page/mod.rs | Page::act new-tab branch: `self.activate()` -> `crate::record::hub::activate_opener(self)` (1 line) | while a recording is active a popup opened by a click keeps the front (stock Chrome behaviour) so it can be recorded; recording off: identical call (CAPT-06, D1 option A) | 35ea894 |
-| 8.1 | src/state.rs | ListTabs: marker via `hub::tab_marker(...)` (replaces the `is_current` if/else) + `out.push_str(hub::tabs_footer(...))` (2 added lines) | mark agent (*) and video (R) tabs while recording; byte-identical when not recording (CAPT-06 SC3) | TBD |
+| 8.1 | src/state.rs | ListTabs: marker via `hub::tab_marker(...)` (replaces the `is_current` if/else) + `out.push_str(hub::tabs_footer(...))` (2 added lines) | mark agent (*) and video (R) tabs while recording; byte-identical when not recording (CAPT-06 SC3) | 6d0dba4 |

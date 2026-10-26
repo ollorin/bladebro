@@ -37,6 +37,8 @@ pub mod machine;
 mod machine_tests;
 pub mod msg;
 #[cfg(all(test, unix))]
+mod per_tab_popup_tests;
+#[cfg(all(test, unix))]
 mod per_tab_tests;
 #[cfg(all(test, unix))]
 mod popup_tests;
