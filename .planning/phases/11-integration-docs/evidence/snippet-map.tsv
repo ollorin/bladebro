@@ -25,3 +25,10 @@ e345a6f2	config	suite-file	11-01-s04-project-files.txt
 d2f0bcc3	run	one-off	11-01-s05-modes.txt
 1ed14070	run	per-test-cli	11-01-s02-cli.txt
 3b150b0c	output	per-test-cli	11-01-s02-cli.txt
+# 11-02 (QA flows section): six new blocks; the moved claude-code and dsh-options blocks keep their 11-01 rows above.
+12f683aa	config	gsd-agent-tools	11-02-q01-qa-flows.txt
+00dfab07	run	qa-per-test	11-02-q01-qa-flows.txt
+83aa7fb8	output	qa-per-test	11-02-q01-qa-flows.txt
+bdd5b294	run	extract-path	11-02-q01-qa-flows.txt
+572d6122	output	extract-path	11-02-q01-qa-flows.txt
+b763499e	config	dsh-profile-record	11-02-q01-qa-flows.txt

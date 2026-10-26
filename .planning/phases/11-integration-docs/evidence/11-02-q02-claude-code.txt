@@ -1,0 +1,28 @@
+# 2026-10-26T15:03:38Z git b15b3b9 bladebro v4.6.5 (b928e52-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.lBrZK3zkEe BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+# claude 2.1.247 (Claude Code); cwd /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/tmp.EzMDDRxRWC
+
+SNIPPET claude-code-client
+--- text (claude-code.mcp.json):
+{
+  "mcpServers": {
+    "bladebro": {
+      "command": "bladebro",
+      "args": ["mcp"],
+      "env": { "BLADE_RECORD": "1" }
+    }
+  }
+}
+--- run:
+claude reply: Failed to authenticate: OAuth session expired and could not be refreshed
+video: none
+NOT VERIFIED: no recording at a reported path (see the claude reply above)
+
+SNIPPET claude-code-subagent
+agents: {"qa-recorder":{"description":"Runs one browser test case with bladebro and records it","prompt":"You run one browser test case with the bladebro tools and record it. Call mcp__bladebro__state {\"op\":\"record-start\",\"name\":<test id>} first, then do the steps with mcp__bladebro__act, then mcp__bladebro__state {\"op\":\"record-stop\",\"value\":\"PASS: <test id>\" or \"FAIL: <reason>\"}. Return the record-stop text verbatim.","tools":["mcp__bladebro__act","mcp__bladebro__see","mcp__bladebro__state","mcp__bladebro__run","mcp__bladebro__vision"]}}
+claude reply: Failed to authenticate: OAuth session expired and could not be refreshed
+video: none
+NOT VERIFIED: no recording at a reported path (see the claude reply above)
+recordings dir: ls: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.lBrZK3zkEe/recordings: No such file or directory 
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 99647 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.lBrZK3zkEe

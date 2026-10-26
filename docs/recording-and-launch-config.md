@@ -8,6 +8,7 @@ Single reference for every bladebro-fork option: session recording, the ffmpeg o
 - Hide the browser for tests: `BLADE_HEADLESS=1` (one run), `bladebro headless on` (your machine) or `"headless": true` in a committed `.bladebro.json` (a suite).
 - Keep it visible: leave everything unset (macOS and Windows show a window; Linux uses its private virtual display), or set `BLADE_HEADLESS=0` to override a lower layer.
 - Where settings live: environment, then `.bladebro.json` found from the current directory upward, then `<data root>/launch.json` and `<data root>/record.json`. See [Configuration layers and precedence](#configuration-layers-and-precedence).
+- Record each QA test case (Claude Code GSD agents, DSH): see [QA flows: recording per test case](#qa-flows-recording-per-test-case).
 
 ## Environment variables
 
@@ -344,7 +345,30 @@ The example has two entries because that run made one action and one marker. Key
 
 **Recording off.** With recording off the timeline hooks cost one atomic load and nothing else, and no poster, timeline or video file is created. Measured in 10-02 against the pre-phase binary (d18dae1, two runs each, the same fixed CLI session): the set of CDP methods is the same (11 distinct), every method except `Input.dispatchMouseEvent` has equal per-method counts, and the normalized stdout is byte-identical. `Input.dispatchMouseEvent` is not a stable count even for one binary (the base binary gave 23 and 30 in two runs, the new one 34 and 30), because the humanized mouse paths are random by design (`src/stealth/biometrics.rs`). Read that count as noise, not as a regression signal.
 
-### Example: Claude Code (.mcp.json)
+## QA flows: recording per test case
+
+A QA agent records one video per test case with two extra `state` calls; nothing else changes in how it drives the browser. Recording is switched on once, for the long-lived process (the MCP server or the daemon), not per call.
+
+Per test case:
+
+1. `state` with `{"op": "record-start", "name": "<test id>"}`. The result starts `recording started: <path>`.
+2. The test steps, as their own `act` / `see` / `vision` / `run` calls. Do not put `record-start` or `record-stop` inside a `run`: the timeline would be empty (see [Known issues](#known-issues)).
+3. `state` with `{"op": "record-stop", "value": "PASS: <test id>"}` or `{"op": "record-stop", "value": "FAIL: <what went wrong>"}`. The note becomes the marker on the timeline.
+4. Copy the paths from the stop result into the test report.
+
+Where the paths appear: the stop result is text (MCP: the tool result's text content; CLI: stdout; CLI `--json`: the `text` field of `{"is_error":false,"ok":true,"text":"..."}`) of the form `recording saved: <video> (bytes ..., duration ... s, ...). Poster: <stem>.poster.png. Timeline: <stem>.timeline.json (N actions). Marker at T s`. The video path is the text between `recording saved: ` and ` (bytes`; the poster and timeline paths follow `Poster: ` and `Timeline: `. If a poster or timeline could not be made the text says `not made` or `not written` instead, and the video is still saved. A recording with a problem starts `recording not clean:` and still names the file; per-tab mode starts `recording saved (per-tab, N files):` and lists each file, separated by `; `.
+
+Rules that keep one video per test case:
+
+- One recording at a time: stop the previous test's recording before the next `record-start` (a second start is refused and names the active file).
+- Close popups a test opened before the next test (`state close-tab <id>`); a window-feature popup otherwise keeps the video (see [Tab following](#tab-following)).
+- A stop can take up to about 21 s; the client's tool timeout must be longer.
+- Use the test id as `name`: it is sanitized (see [Per-call parameters](#per-call-parameters)) and gets a UTC stamp, so reruns never overwrite.
+- Recordings are sensitive (see [Recording settings](#recording-settings)): use test accounts, and delete recordings in your harness.
+
+### Claude Code GSD flow (gsd-charlotte-qa, gsd-test-writer)
+
+Server entry (project `.mcp.json`):
 
 ```json
 {
@@ -358,9 +382,54 @@ The example has two entries because that run made one action and one marker. Key
 }
 ```
 
-`record-stop` can take about 21 s (18 s for the video plus the 3 s poster budget), so your client's MCP tool timeout must be longer than that.
+`command` must start this fork's build (put it first on PATH or use its absolute path): the npm-published `bladebro` has no recording. Add `"BLADE_HEADLESS": "1"` to `env` to hide the browser (see [Example 1](#1-qa-server-hidden-browser)). The tools are then `mcp__bladebro__act`, `mcp__bladebro__see`, `mcp__bladebro__state`, `mcp__bladebro__run` and `mcp__bladebro__vision`.
 
-### Example: DSH plugin
+**gsd-charlotte-qa (MCP).** The agent definition in get-shit-done lists only Charlotte tools today, and bladebro does not ship or change it. For your copy of the agent to drive bladebro, its `tools:` line needs the bladebro tools, for example:
+
+```yaml
+tools: Read, Bash, mcp__bladebro__act, mcp__bladebro__see, mcp__bladebro__state, mcp__bladebro__run, mcp__bladebro__vision
+```
+
+Each flow in its `test_flows` / `e2e_flows` is then one test case. The calls of one case, as run in 11-02 (the `name` is phase-plan-flow):
+
+```json
+{"op": "record-start", "name": "07-02-login-invalid-password"}
+{"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+{"action": "click", "text": "turn blue"}
+{"op": "record-stop", "value": "FAIL: error banner never appeared"}
+```
+
+Result of the last call (11-02 evidence; paths shortened):
+
+```
+recording saved: /abs/path/07-02-login-invalid-password-20261026T150308Z-2505f0.webm (bytes 53535, duration 4.6 s, frames 46, dropped 0, segments [0.0 s tab 0B65...], captured 35). Poster: /abs/path/07-02-login-invalid-password-20261026T150308Z-2505f0.poster.png. Timeline: /abs/path/07-02-login-invalid-password-20261026T150308Z-2505f0.timeline.json (2 actions). Marker at 4.6 s
+```
+
+Have the agent report the video, poster and timeline paths with each flow's result.
+
+**gsd-test-writer (Bash).** This agent has no MCP tools; the tests it writes can call the CLI. The daemon reads `BLADE_RECORD` when it starts, so the suite's first `bladebro` command runs with it (see [Example 5](#5-per-test-recording-from-a-shell-cli-daemon)). After a test's steps, the test takes the paths from the stop line:
+
+```bash
+out=$(bladebro state record-stop --value "PASS: t03")
+video=$(printf '%s\n' "$out" | sed -nE 's/^recording saved: (.+\.(webm|mp4)) \(bytes .*/\1/p')
+poster=$(printf '%s\n' "$out" | sed -nE 's/.*\. Poster: (.+\.poster\.png)\..*/\1/p')
+timeline=$(printf '%s\n' "$out" | sed -nE 's/.*\. Timeline: (.+\.timeline\.json) \(.*/\1/p')
+echo "video: $video"; echo "poster: $poster"; echo "timeline: $timeline"
+```
+
+Output from that run (11-02 evidence; paths shortened):
+
+```
+video: /abs/path/t03-20261026T150315Z-2f3988.webm
+poster: /abs/path/t03-20261026T150315Z-2f3988.poster.png
+timeline: /abs/path/t03-20261026T150315Z-2f3988.timeline.json
+```
+
+On Windows the CLI cannot record (no daemon); use the MCP server there.
+
+### DSH plugin flow
+
+Install the plugin as the npm package README says: `dsh plugin --profile web add bladebro` (Desktop: `dsh plugin --profile desktop add bladebro`). DSH exposes the same five tools as `mcp__bladebro__act`, `mcp__bladebro__see`, `mcp__bladebro__state`, `mcp__bladebro__run` and `mcp__bladebro__vision`, so the per-test-case calls are the ones above.
 
 The plugin (`npm/bladebro/dsh-plugin.mjs`) runs `bladebro mcp` over stdio and accepts the options `binaryPath`, `env`, `cwd`, `toolCallTimeoutMs` (default 180000 ms, which covers the stop) and `reconnect`. Without `binaryPath` the plugin looks for the npm platform package for this machine, and its source throws `bladebro: platform package "<pkg>" not installed` when that package is missing. Point `binaryPath` at this fork's build:
 
@@ -369,6 +438,19 @@ The plugin (`npm/bladebro/dsh-plugin.mjs`) runs `bladebro mcp` over stdio and ac
 ```
 
 `cwd` decides which `.bladebro.json` applies.
+
+As a profile patch (the `bladebro` row exists once `dsh plugin add` has run; per the gsd-dsh profile notes a patch row replaces that row's whole `config`, so list every option you need):
+
+```yaml
+- id: bladebro
+  config:
+    binaryPath: /abs/path/to/bladebro
+    env:
+      BLADE_HEADLESS: "1"
+      BLADE_RECORD: "1"
+```
+
+DSH accepts one `bladebro` namespace per profile (see [Example 1](#1-qa-server-hidden-browser)), and its default `toolCallTimeoutMs` (180000 ms) covers the stop. Run in 11-02: the plugin file with a stub DSH bridge, its options started as the MCP server and driven through the same test case, which saved a recording; a DSH host itself was not run (see [Not verified](#not-verified)). The GSD port in gsd-dsh has no `bladebro` entry in its tool map (`tool-map.ts` maps the Charlotte tools to `drop`), so this flow applies to a DSH chat or agent that has the plugin enabled.
 
 ## Configuration layers and precedence
 
@@ -584,7 +666,7 @@ The Phase 11 runs were on macOS (arm64) with headless Chrome 154 against local f
 - Headed Chrome: no example was run with a visible browser (the interactive `.mcp.json` entry was started and listed its tools, but made no browser call).
 - The real-browser lane (`BLADE_LANE`): recording is refused there by design; the refusal was not run.
 - A DSH host: `dsh` is not installed here. The plugin file was loaded with a stub bridge and the options it hands DSH were started as the MCP server; DSH's own loading of the profile YAML and its MCP bridge were not run.
-- The Claude Code client itself: the `.mcp.json` entries were started exactly as a client starts them (command, args, env) and driven over stdio; a session inside Claude Code was not run (see Phase 11 evidence).
+- The Claude Code client itself: the `.mcp.json` entries were started exactly as a client starts them (command, args, env) and driven over stdio; a session inside Claude Code was not run (see Phase 11 evidence). An attempt with claude -p from the build sandbox failed before any tool call (Failed to authenticate: OAuth session expired and could not be refreshed).
 - A real 2 h recording, a full disk and a 1 GiB file (see [Disk space and limits](#disk-space-and-limits)).
 
 ## Troubleshooting

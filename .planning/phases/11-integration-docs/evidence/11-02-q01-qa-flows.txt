@@ -1,0 +1,82 @@
+# 2026-10-26T15:03:07Z git b15b3b9 bladebro v4.6.5 (b928e52-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET qa-per-test
+--- text (qa-per-test.jsonl):
+{"op": "record-start", "name": "07-02-login-invalid-password"}
+{"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+{"action": "click", "text": "turn blue"}
+{"op": "record-stop", "value": "FAIL: error banner never appeared"}
+--- run:
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro
+TOOLS mcp__bladebro__act,mcp__bladebro__see,mcp__bladebro__state,mcp__bladebro__run,mcp__bladebro__vision
+CALL state {"op": "record-start", "name": "07-02-login-invalid-password"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.webm (tab 0B651C1621D27C110CE13BE9228ADB88); first frame not awaited. record-stop saves it.
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL act {"action": "click", "text": "turn blue"}
+RESULT isError=false outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+CALL state {"op": "record-stop", "value": "FAIL: error banner never appeared"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.webm (bytes 53535, duration 4.6 s, frames 46, dropped 0, segments [0.0 s tab 0B651C1621D27C110CE13BE9228ADB88], captured 35). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.timeline.json (2 actions). Marker at 4.6 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+video: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.webm
+ffprobe 07-02-login-invalid-password-20261026T150308Z-2505f0.webm: vp9,1280,720,10/1 duration=4.600000
+-rw-------@ 45066 /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.poster.png
+-rw-------@ 981 /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150308Z-2505f0.timeline.json
+
+SNIPPET gsd-agent-tools
+--- text (gsd-agent-tools.yml):
+tools: Read, Bash, mcp__bladebro__act, mcp__bladebro__see, mcp__bladebro__state, mcp__bladebro__run, mcp__bladebro__vision
+--- run:
+PASS mcp__bladebro__act is a tool the server exposes
+PASS mcp__bladebro__see is a tool the server exposes
+PASS mcp__bladebro__state is a tool the server exposes
+PASS mcp__bladebro__run is a tool the server exposes
+PASS mcp__bladebro__vision is a tool the server exposes
+
+SNIPPET extract-path
+--- text (extract-path.sh):
+out=$(bladebro state record-stop --value "PASS: t03")
+video=$(printf '%s\n' "$out" | sed -nE 's/^recording saved: (.+\.(webm|mp4)) \(bytes .*/\1/p')
+poster=$(printf '%s\n' "$out" | sed -nE 's/.*\. Poster: (.+\.poster\.png)\..*/\1/p')
+timeline=$(printf '%s\n' "$out" | sed -nE 's/.*\. Timeline: (.+\.timeline\.json) \(.*/\1/p')
+echo "video: $video"; echo "poster: $poster"; echo "timeline: $timeline"
+--- run:
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/t03-20261026T150315Z-2f3988.webm (tab 2157B67EDB5092442D04DE4F7BAE4A9D); first frame not awaited. record-stop saves it.
+outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+video: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/t03-20261026T150315Z-2f3988.webm
+poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/t03-20261026T150315Z-2f3988.poster.png
+timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/t03-20261026T150315Z-2f3988.timeline.json
+PASS video: file exists (29668 bytes)
+PASS poster: file exists (42244 bytes)
+PASS timeline: file exists (688 bytes)
+daemon stopped
+
+SNIPPET dsh-profile-record
+--- text (dsh-profile-record.yml):
+- id: bladebro
+  config:
+    binaryPath: /abs/path/to/bladebro
+    env:
+      BLADE_HEADLESS: "1"
+      BLADE_RECORD: "1"
+--- run:
+--- not loaded by a DSH host (dsh is not installed). Its config object (dsh-profile-record.json, binaryPath substituted) through the plugin stub, then the per-test calls:
+{ "binaryPath": "/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro", "env": { "BLADE_HEADLESS": "1", "BLADE_RECORD": "1" } }
+PLUGIN bladebro inject ["tools"]
+BRIDGE OPTIONS {"toolCallTimeoutMs":180000,"env":{"BLADE_HEADLESS":"1","BLADE_RECORD":"1"},"transport":"stdio","serverName":"bladebro","command":"/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro","args":["mcp"],"failOnStartupError":true}
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_HEADLESS": "1", "BLADE_RECORD": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro
+TOOLS mcp__bladebro__act,mcp__bladebro__see,mcp__bladebro__state,mcp__bladebro__run,mcp__bladebro__vision
+CALL state {"op": "record-start", "name": "07-02-login-invalid-password"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150320Z-a51e48.webm (tab 67EDC428CABE1D7D073CBF6CCB058BF9); first frame not awaited. record-stop saves it.
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL act {"action": "click", "text": "turn blue"}
+RESULT isError=false outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+CALL state {"op": "record-stop", "value": "FAIL: error banner never appeared"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150320Z-a51e48.webm (bytes 52055, duration 4.6 s, frames 46, dropped 0, segments [0.0 s tab 67EDC428CABE1D7D073CBF6CCB058BF9], captured 35). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150320Z-a51e48.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G/recordings/07-02-login-invalid-password-20261026T150320Z-a51e48.timeline.json (2 actions). Marker at 4.6 s
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 99237 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Bqaa7tVL1G
