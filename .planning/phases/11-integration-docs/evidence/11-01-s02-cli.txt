@@ -1,0 +1,113 @@
+# 2026-10-26T14:52:21Z git 75fd79c bladebro v4.6.5 (9d20e81-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3 BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET per-test-cli
+--- text (per-test-cli.sh):
+export BLADE_HEADLESS=1 BLADE_RECORD=1
+bladebro nav http://127.0.0.1:8765/mark.html
+for t in t01-blue t02-green; do
+  bladebro state record-start "$t"
+  bladebro act click "turn ${t#*-}"
+  bladebro state record-stop --value "PASS: $t"
+done
+bladebro stop
+--- run:
++ export BLADE_HEADLESS=1 BLADE_RECORD=1
++ BLADE_HEADLESS=1
++ BLADE_RECORD=1
++ bladebro nav http://127.0.0.1:8765/mark.html
+[bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+outcome: navigated → http://127.0.0.1:8765/mark.html
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+e1 button "turn blue"
+e2 button "turn green"
+
+--- content ---
+Mark turn blue turn green
++ for t in t01-blue t02-green
++ bladebro state record-start t01-blue
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t01-blue-20261026T145222Z-1c9b50.webm (tab D4E7CF4E3FD4DEC8A36DEF75DD4E36E3); first frame not awaited. record-stop saves it.
++ bladebro act click 'turn blue'
+outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+  e1 button "turn blue"
+  e2 button "turn green"
+
++ bladebro state record-stop --value 'PASS: t01-blue'
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t01-blue-20261026T145222Z-1c9b50.webm (bytes 27424, duration 0.8 s, frames 8, dropped 0, segments [0.0 s tab D4E7CF4E3FD4DEC8A36DEF75DD4E36E3], captured 9). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t01-blue-20261026T145222Z-1c9b50.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t01-blue-20261026T145222Z-1c9b50.timeline.json (1 action). Marker at 0.7 s
++ for t in t01-blue t02-green
++ bladebro state record-start t02-green
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t02-green-20261026T145223Z-0e76a9.webm (tab D4E7CF4E3FD4DEC8A36DEF75DD4E36E3); first frame not awaited. record-stop saves it.
++ bladebro act click 'turn green'
+outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+  e1 button "turn blue"
+  e2 button "turn green"
+
++ bladebro state record-stop --value 'PASS: t02-green'
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t02-green-20261026T145223Z-0e76a9.webm (bytes 25976, duration 0.8 s, frames 8, dropped 0, segments [0.0 s tab D4E7CF4E3FD4DEC8A36DEF75DD4E36E3], captured 9). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t02-green-20261026T145223Z-0e76a9.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/t02-green-20261026T145223Z-0e76a9.timeline.json (1 action). Marker at 0.7 s
++ bladebro stop
+daemon stopped
+ffprobe t01-blue-20261026T145222Z-1c9b50.webm: vp9,1280,720,10/1 duration=0.800000
+ffprobe t02-green-20261026T145223Z-0e76a9.webm: vp9,1280,720,10/1 duration=0.800000
+files: t01-blue-20261026T145222Z-1c9b50.poster.png t01-blue-20261026T145222Z-1c9b50.timeline.json t01-blue-20261026T145222Z-1c9b50.webm t02-green-20261026T145223Z-0e76a9.poster.png t02-green-20261026T145223Z-0e76a9.timeline.json t02-green-20261026T145223Z-0e76a9.webm 
+
+SNIPPET cli-forms
+$ bladebro state record-start login-flow
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145226Z-9db040.webm (tab 65B674914BFE94F3774F5B9075242087); first frame not awaited. record-stop saves it.
+exit=0
+$ bladebro state record-stop
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145226Z-9db040.webm (bytes 11885, duration 1.1 s, frames 11, dropped 0, segments [0.0 s tab 65B674914BFE94F3774F5B9075242087]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145226Z-9db040.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145226Z-9db040.timeline.json (0 actions)
+exit=0
+$ bladebro state record-start login-flow --json
+{"is_error":false,"ok":true,"text":"recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145228Z-ec29e1.webm (tab 65B674914BFE94F3774F5B9075242087); first frame not awaited. record-stop saves it."}
+
+exit=0
+$ bladebro state record-stop --value "FAIL: login button did nothing" --json
+{"is_error":false,"ok":true,"text":"recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145228Z-ec29e1.webm (bytes 12125, duration 1.1 s, frames 11, dropped 0, segments [0.0 s tab 65B674914BFE94F3774F5B9075242087]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145228Z-ec29e1.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/login-flow-20261026T145228Z-ec29e1.timeline.json (0 actions). Marker at 1.0 s"}
+
+exit=0
+$ bladebro state record-stop   (none active)
+✗ error: no active recording; record-start <name> first.
+exit=1
+$ bladebro state record-stop --value x   (none active, with a note)
+✗ error: no active recording; record-start <name> first. Marker not placed: no active recording
+exit=1
+
+SNIPPET known-in-run-timeline
+$ bladebro run [state record-start, click, state record-stop]
+step 1: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/inrun-20261026T145229Z-9c269a.webm (tab 65B674914BFE94F3774F5B9075242087); first frame not awaited. record-stop saves it.
+step 2: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+step 3: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/inrun-20261026T145229Z-9c269a.webm (bytes 23036, duration 0.7 s, frames 7, dropped 0, segments [0.0 s tab 65B674914BFE94F3774F5B9075242087]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/inrun-20261026T145229Z-9c269a.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/inrun-20261026T145229Z-9c269a.timeline.json (0 actions). Marker at 0.6 s
+timeline entries: ['marker']
+$ the same three calls as separate commands
+outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/sep-20261026T145230Z-030d63.webm (bytes 31614, duration 2.8 s, frames 28, dropped 0, segments [0.0 s tab 65B674914BFE94F3774F5B9075242087]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/sep-20261026T145230Z-030d63.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/sep-20261026T145230Z-030d63.timeline.json (1 action). Marker at 2.7 s
+timeline entries: ['action', 'marker']
+
+SNIPPET known-click-verdict
+$ bladebro act click "turn blue"
+outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+poster 1x1 rgb (blue page = low red, high blue):  2 65 252 
+
+SNIPPET name-rules
+$ bladebro state record-start '../../evil name%d'
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/evil_name_d-20261026T145237Z-6acda5.webm
+exit=0
+$ bladebro state record-start 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-20261026T145238Z-67af66.webm
+exit=0
+$ bladebro state record-start '...'
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/recording-20261026T145239Z-09a85f.webm
+exit=0
+$ bladebro state record-start 'ok.name_1-2'
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3/recordings/ok.name_1-2-20261026T145240Z-eb1f50.webm
+exit=0
+$ bladebro state record-start ""
+✗ error: usage: record-start needs name (a string), e.g. state record-start login-flow.
+exit=1
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 89307 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.Fs8EFFwGu3
