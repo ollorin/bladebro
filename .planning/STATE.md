@@ -1,6 +1,6 @@
 # Project State
 
-> **ON HOLD (user request, 2026-10-23):** Phases 1-8 and 4.1 verified; Phase 9 executed but NOT verified; resume with /gsd:execute-roadmap, then run the sonnet + adversarial opus verification for Phase 9 first.
+> **RESUMED (user, 2026-10-26):** order now: verify Phase 9 (sonnet then adversarial opus) -> Phase 8.1 (follow every popup, user decision) -> Phases 10, 11, 12. Hold note of 2026-10-23 superseded.
 
 ## Project Reference
 
@@ -46,6 +46,7 @@ Progress: [████░░░░░░] 33% (4/12 phases executed)
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [User 2026-10-26]: popup decision = FOLLOW CLICK-OPENED POPUPS TOO. Inserted Phase 8.1 (CAPT-06), to run after Phase 9 verification. Supersedes the 'pending owner decision' below.
 - [Phase 8 status 2026-10-23]: executed and verified on macOS (720 tests pass, 0 fail, 12 ignored; live default and per-tab runs verified independently by the orchestrator). Opus verdict human_needed on ONE owner decision: click-opened popups are followed only after switch-tab; window-feature popups are followed by the video while `state tabs` names the opener (roadmap criterion 1 was reworded by the coordinator in 16cf41a). Orchestrator recommends ACCEPT; pending the owner's answer. Execution continues with Phase 9 under the assumption that current behavior stands; if the owner rejects, a follow-up phase changes popup following.
 - [User 2026-10-21]: Phase 4.1 inserted: `BLADE_HEADLESS` switch (tests hidden, everything else visible), layered config per-call > env > project file > user toggle > default (headless is suite-level; no per-test relaunch op), mode shown in doctor. Documentation standing rule: every option/config is documented in docs/recording-and-launch-config.md, enforced by a drift test (DOC-02), completeness verified in Phase 11 (DOC-01).
 - [Roadmap]: Sidecar prototype (Phase 2) is a pass/fail gate; if it fails, revise the roadmap before Phase 3

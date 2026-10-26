@@ -22,6 +22,7 @@ Requirements for the first milestone. Each maps to a roadmap phase.
 - [ ] **CAPT-01**: The recorder captures frames with CDP `Page.startScreencast` as JPEG and acknowledges every `screencastFrame` immediately on receipt
 - [ ] **CAPT-02**: Capture never blocks the CDP reader: frames go through a bounded queue, newest frames are dropped under backpressure, and drops are counted
 - [ ] **CAPT-03**: In the default mode one recording follows the active tab: `switch-tab` and popups rebind capture into the same file, and each switch is reported as a segment boundary
+- [ ] **CAPT-06**: A popup or new window opened by the recorded tab (click-opened `target=_blank` / `window.open`, with or without window features) becomes a segment without the agent running `switch-tab`, the video returns to the opener when the popup closes, and `state tabs` and the `record-stop` segments agree on which tab is current (user decision 2026-10-26, replaces the narrower Phase 8 popup wording)
 - [ ] **CAPT-04**: User can opt in to a per-tab-files mode that writes one file per tab
 - [ ] **CAPT-05**: If a loaded page produces no frames for a configurable period, the result says so instead of reporting a blank video as success
 
@@ -122,6 +123,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CAPT-01 | Phase 6 | Pending |
 | CAPT-02 | Phase 6 | Pending |
 | CAPT-03 | Phase 8 | Pending |
+| CAPT-06 | Phase 8.1 | Pending |
 | CAPT-04 | Phase 8 | Pending |
 | CAPT-05 | Phase 6 | Pending |
 | OUT-01 | Phase 4 | Pending |
@@ -155,8 +157,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-01 | Phase 11 | Pending |
 
 **Coverage:**
-- v1 requirements: 41 total
-- Mapped to phases: 41
+- v1 requirements: 42 total
+- Mapped to phases: 42
 - Unmapped: 0 ✓
 
 ---

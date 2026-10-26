@@ -23,6 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [x] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
+- [ ] **Phase 8.1: Follow Every Popup (INSERTED)** - A click-opened or script-opened popup becomes a segment without `switch-tab`; the video returns to the opener when it closes; `state tabs` and the segments agree (user decision 2026-10-26; runs after Phase 9 is verified)
 - [ ] **Phase 9: Finalization on Every Exit Path** (EXECUTED, NOT VERIFIED) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [ ] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
@@ -176,6 +177,22 @@ Plans:
 - [x] 08-01: Rebind on switch/open/popup in default mode + segment markers + fixtures/tests
 - [x] 08-02: Per-tab-files mode + tests
 
+### Phase 8.1: Follow Every Popup (INSERTED)
+**Goal**: A recording follows every popup or new window the recorded tab opens, however it was opened, and what the video shows, what `state tabs` marks as current and what the stop report lists as segments all agree
+**Depends on**: Phase 9 verified (it touches the same hub and follower code)
+**Requirements**: CAPT-06
+**Success Criteria** (what must be TRUE):
+  1. On the local popup fixtures, a click-opened popup (`target=_blank` link and `window.open` without features) and a window-feature popup each become a segment within a bounded delay (measured and documented) without `switch-tab`, and `record-stop` lists the boundary with its offset and tab id
+  2. When the popup closes the video returns to the opener (segment boundary), and closing the recorded popup never silently ends the recording
+  3. `state tabs` marks the same tab as current that the video is following while recording (the Phase 8 mismatch is gone or, if Bladebro's own opener-stays-current behavior makes that impossible without upstream edits, the difference is documented and the stop report says which tab the AGENT is on versus which the VIDEO follows)
+  4. Rapid popup bursts, popups opened by a popup, and popups blocked by the browser are covered by tests; per-tab mode gets one file per popup with the Phase 8 cap
+  5. Zero or tiny hooks in upstream files (each listed in HOOKS.md), recording-off behavior unchanged (CDP method comparison), `docs/recording-and-launch-config.md` updated and the drift test green, audit and qol_probe not worse than baseline
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08.1-01: Popup detection (opener relationship) and rebind/return in default mode + fixtures/tests
+- [ ] 08.1-02: Agent-vs-video tab agreement in `state tabs`/stop report, per-tab mode, docs, live checks
+
 ### Phase 9: Finalization on Every Exit Path
 **Goal**: However a session ends, the recording is finalized or honestly reported as interrupted, and no ffmpeg process is left behind
 **Depends on**: Phase 8
@@ -241,7 +258,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 → 8 → 9 (verify) → 8.1 →  10 → 11 → 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -254,7 +271,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 4.1 → 5 → 6 → 7 �
 | 6. Frame Source | 3/3 | Complete on macOS (headless; Linux/Windows not executed; diff_oracle not run) | 2026-10-22 |
 | 7. RecordHub and state Ops | 3/3 | Complete (macOS headless; opus verified, +07-04 gap fix) | 2026-10-22 |
 | 8. Tab Following | 2/2 | Executed (macOS headless; opus verifier: human_needed on popup wording; 720 tests; 0 upstream hooks) | 2026-10-23 |
-| 9. Finalization on Every Exit Path | 0/3 | Not started | - |
+| 8.1 Follow Every Popup (INSERTED) | 0/2 | Not started (runs after Phase 9 verification) | - |
+| 9. Finalization on Every Exit Path | 3/3 | EXECUTED, NOT VERIFIED (verification resumes 2026-10-26) | - |
 | 10. Evidence Extras | 0/2 | Not started | - |
 | 11. Integration Docs | 0/2 | Not started | - |
 | 12. Full Instrument Gate | 0/2 | Not started | - |
