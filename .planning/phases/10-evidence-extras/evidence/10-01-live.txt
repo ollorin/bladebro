@@ -1,0 +1,100 @@
+# evidence_live.sh  started 2026-10-26T12:41:31Z  headless=1  fixtures=http://127.0.0.1:8765
+# new binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (325d581-dirty))  git: 325d581
+# baseline binary: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/ev10base.RN8zx8bXmq/tgt/release/bladebro (bladebro v4.6.5 (d18dae1))
+[poster] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.lnxoR00RlL/recordings/poster-20261026T124132Z-44f5c8.webm (tab 2470B29FACC00680857E4212E46E8DB9); first frame not awaited. record-stop saves it.
+[poster] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[poster] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.lnxoR00RlL/recordings/poster-20261026T124132Z-44f5c8.webm (bytes 34876, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 2470B29FACC00680857E4212E46E8DB9]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.lnxoR00RlL/recordings/poster-20261026T124132Z-44f5c8.poster.png
+PASS [poster] record-stop exits 0 and saves the webm
+[poster] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.lnxoR00RlL/recordings/poster-20261026T124132Z-44f5c8.poster.png
+PASS [poster] stop text has '. Poster: <abs>.poster.png'
+PASS [poster] poster sits next to the video, named <video stem>.poster.png
+PASS [poster] poster mode 600 (is 600)
+PASS [poster] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[poster] poster ffprobe: png,1280,720   video ffprobe: vp9,1280,720
+PASS [poster] poster is png at the video's width x height
+PASS [poster] poster shows the last frame: 1x1 tone is blue (rgb 2 66 251 )
+PASS [poster] video full decode exit=0 stderr_lines=0
+PASS [poster] decoded frames (38) == reported frames (38)
+PASS [poster] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[poster-mp4] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ZJBHiFUoHz/recordings/poster-mp4-20261026T124138Z-b37b08.mp4 (tab 6B4A98499AAD7E9504AABB1E65F56659); first frame not awaited. record-stop saves it.
+[poster-mp4] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[poster-mp4] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ZJBHiFUoHz/recordings/poster-mp4-20261026T124138Z-b37b08.mp4 (bytes 14782, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 6B4A98499AAD7E9504AABB1E65F56659]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ZJBHiFUoHz/recordings/poster-mp4-20261026T124138Z-b37b08.poster.png
+PASS [poster-mp4] record-stop exits 0 and saves the mp4
+[poster-mp4] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ZJBHiFUoHz/recordings/poster-mp4-20261026T124138Z-b37b08.poster.png
+PASS [poster-mp4] stop text has '. Poster: <abs>.poster.png'
+PASS [poster-mp4] poster sits next to the video, named <video stem>.poster.png
+PASS [poster-mp4] poster mode 600 (is 600)
+PASS [poster-mp4] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[poster-mp4] poster ffprobe: png,1280,720   video ffprobe: h264,1280,720
+PASS [poster-mp4] poster is png at the video's width x height
+PASS [poster-mp4] poster shows the last frame: 1x1 tone is blue (rgb 2 65 252 )
+PASS [poster-mp4] video full decode exit=0 stderr_lines=0
+PASS [poster-mp4] decoded frames (39) == reported frames (39)
+PASS [poster-mp4] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[marker] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.7JOpJ6rp3V/recordings/marker-20261026T124144Z-6bdda8.webm (tab 89BB37610EA222ADC9277B79DD317AFB); first frame not awaited. record-stop saves it.
+[marker] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[marker] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.7JOpJ6rp3V/recordings/marker-20261026T124144Z-6bdda8.webm (bytes 34807, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 89BB37610EA222ADC9277B79DD317AFB]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.7JOpJ6rp3V/recordings/marker-20261026T124144Z-6bdda8.poster.png. Marker at 3.8 s
+PASS [marker] record-stop exits 0 and saves the file
+PASS [marker] marker offset present (T=3.8 s, duration 3.8 s)
+PASS [marker] marker T in [duration-0.6, duration]
+PASS [marker] note text is not echoed in the result
+[marker] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.7JOpJ6rp3V/recordings/marker-20261026T124144Z-6bdda8.poster.png
+PASS [marker] stop text has '. Poster: <abs>.poster.png'
+PASS [marker] poster sits next to the video, named <video stem>.poster.png
+PASS [marker] poster mode 600 (is 600)
+PASS [marker] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[marker] poster ffprobe: png,1280,720   video ffprobe: vp9,1280,720
+PASS [marker] poster is png at the video's width x height
+PASS [marker] poster shows the last frame: 1x1 tone is blue (rgb 2 66 251 )
+PASS [marker] video full decode exit=0 stderr_lines=0
+PASS [marker] decoded frames (38) == reported frames (38)
+PASS [marker] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[marker-bad] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.QJuI9EcL4P/recordings/marker-bad-20261026T124150Z-15c258.webm (tab 841A63C6BEFD1B4C2B0CBD8D4D733738); first frame not awaited. record-stop saves it.
+[marker-bad] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[marker-bad] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.QJuI9EcL4P/recordings/marker-bad-20261026T124150Z-15c258.webm (bytes 35462, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 841A63C6BEFD1B4C2B0CBD8D4D733738]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.QJuI9EcL4P/recordings/marker-bad-20261026T124150Z-15c258.poster.png. Marker not placed: empty note
+PASS [marker-bad] record-stop exits 0 and saves the file
+PASS [marker-bad] empty note: '. Marker not placed: empty note'
+PASS [marker-bad] no marker offset in the result
+PASS [marker-bad] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[per-tab] record-start: recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.8xFWVBHiPW/recordings/pt-tab1-20261026T124156Z-0175c0.webm (tab 6123AFA45206B3959A813884729D47AB); first frame not awaited. record-stop saves every tab's file.
+[per-tab] open-tab: ✓ opened + switched to tab BB3FE7CFAB02EAEB327C0C184206020D
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+e1 button "turn blue"
+e2 button "turn green"
+[per-tab] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[per-tab] stop rc=0: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.8xFWVBHiPW/recordings/pt-tab1-20261026T124156Z-0175c0.webm (bytes 14526, duration 4.6 s, frames 46, dropped 0, segments [0.0 s tab 6123AFA45206B3959A813884729D47AB], captured 17); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.8xFWVBHiPW/recordings/pt-tab2-20261026T124158Z-3cc209.webm (bytes 31206, duration 3.0 s, frames 30, dropped 0, segments [0.0 s tab BB3FE7CFAB02EAEB327C0C184206020D]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.8xFWVBHiPW/recordings/pt-tab2-20261026T124158Z-3cc209.poster.png
+PASS [per-tab] stop exits 0 with two per-tab files
+PASS [per-tab] exactly one Poster in the result
+PASS [per-tab] poster is named after the -tab2- file (the followed tab)
+[per-tab] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.8xFWVBHiPW/recordings/pt-tab2-20261026T124158Z-3cc209.poster.png
+PASS [per-tab] stop text has '. Poster: <abs>.poster.png'
+PASS [per-tab] poster sits next to the video, named <video stem>.poster.png
+PASS [per-tab] poster mode 600 (is 600)
+PASS [per-tab] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[per-tab] poster ffprobe: png,1280,720   video ffprobe: vp9,1280,720
+PASS [per-tab] poster is png at the video's width x height
+PASS [per-tab] poster shows the last frame: 1x1 tone is green (rgb 0 158 0 )
+PASS [per-tab] video full decode exit=0 stderr_lines=0
+PASS [per-tab] decoded frames (30) == reported frames (30)
+PASS [per-tab] tab2 file ends green (frame at 2.7 s: green)
+PASS [per-tab] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== latency: 3 interleaved runs each of the same poster scenario (stop call wall time)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] base run 1: 0.655s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.T7rg40Lpcx/recordings/lat-20261026T124203Z-b07f70.webm (bytes 35110, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 420903640F7C3BF9C984FC340C5E03F4])
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] new run 1: 0.649s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.KLRxkUNhQj/recordings/lat-20261026T124209Z-a21518.webm (bytes 36323, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 6E220F6C88EEE8B97815A9A38C1D83BF]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.KLRxkUNhQj/recordings/lat-20261026T124209Z-a21518.poster.png
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] base run 2: 0.632s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.Ce1dOO1XJE/recordings/lat-20261026T124216Z-55b570.webm (bytes 34512, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 313B15818DCC026233D2E12AA40817C2])
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] new run 2: 0.654s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.EZ1ml8fKZN/recordings/lat-20261026T124221Z-7c8980.webm (bytes 36229, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab B1179777A5CC45FA03672AE7C4648779], captured 38). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.EZ1ml8fKZN/recordings/lat-20261026T124221Z-7c8980.poster.png
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] base run 3: 0.62s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ptcn6WboEF/recordings/lat-20261026T124228Z-dee398.webm (bytes 36048, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 1CC61AF7A7261D053DBF26886D694FD5])
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] new run 3: 0.661s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.BBdspqLZAK/recordings/lat-20261026T124234Z-3a5e48.webm (bytes 36226, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 97B998BA28E77B3BFF7873AA27235A09]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.BBdspqLZAK/recordings/lat-20261026T124234Z-3a5e48.poster.png
+record-stop latency base 0.632 s (runs 0.655 0.632 0.62) / new 0.654 s (runs 0.649 0.654 0.661) median
+PASS [latency] new - base median <= 1.0 s (delta 0.022 s)
+poster ffmpeg alone (3 recordings x 5 runs, same argv as make_poster): 0.068 0.069 0.067 0.07 0.072 0.07 0.069 0.071 0.068 0.067 0.073 0.073 0.074 0.07 0.069
+poster ffmpeg alone: typ 0.07 s, max 0.074 s
+final pgrep of our fixtures/daemons: none
+== total FAIL count: 0

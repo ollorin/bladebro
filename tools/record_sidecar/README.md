@@ -35,7 +35,7 @@ and every measurement are in [RESULTS.md](RESULTS.md) (look for the `## Gate ver
 - `measure.mjs` - `probe` / `merge` / `encode-bench` helpers that turn run stats into result JSON.
 - `battery_probe.py` - runs the diff_oracle battery against the current tab and classifies run-to-run noise.
 - `env.sh` - scratch home, fixture server, `bb_port`, `bb_cleanup`. `fixtures/` - `anim` (~100 fps repaint),
-  `idle`, `tick` (one repaint per second), `a`, `b`.
+  `idle`, `tick` (one repaint per second), `a`, `b`, `mark` (red page, "turn blue" / "turn green" buttons; the 10-01 poster and marker checks click them).
 - `scenarios/` - the measurement scripts below. `results/` - recorded outputs. `test/` - unit tests.
 
 ## sidecar.mjs flags
@@ -99,6 +99,7 @@ Each sources `env.sh`, uses fresh scratch homes and tears down its own browser. 
 | `REC_HUB_FIX=http://127.0.0.1:8765 EXIT_BIN=target/release/bladebro python3 -I tools/record_sidecar/lib/sizes_live.py [SECONDS]` | 6 settings x (SECONDS + about 5 s), default 60 | file size per minute at default / mp4 / 15 fps / 1080p / max size (stdout; output of the 09-03 run: evidence/09-03-sizes.txt) |
 | `python3 -I tools/record_sidecar/lib/cdp_tap.py --self-test` | seconds | stdlib logging TCP proxy for Chrome's debug port (`cdp_tap.py LISTEN CHROME LOGFILE`): rewrites `/json*` ws URLs, unmasks client frames, logs CDP method names. No `websockets` module needed |
 | `REC_HUB_FIX=http://127.0.0.1:8765 python3 -I tools/record_sidecar/lib/lane_matrix_local.py <lane> 5` | about 20 s per lane | `tools/lane_matrix.py` run unchanged except a `ps` process sweep (the original needs `/proc`, Linux only) and the local `idle.html` fixture instead of example.com |
+| `BASE_BIN=<binary built from d18dae1> bash tools/record_sidecar/scenarios/evidence_live.sh [--only ID]` | about 2 min (headless, local fixtures `mark.html`; a scratch home per scenario; `BASE_BIN` is required by `latency` only) | .planning/phases/10-evidence-extras/evidence/10-01-live.txt (ids `poster` = record-stop returns `. Poster:` pointing at a PNG next to the webm, mode 600, PNG magic, ffprobe png at the video's size, 1x1 colour of the last frame blue, full decode and decoded-frame count; `poster-mp4` = the same with `BLADE_RECORD_FORMAT=mp4`; `marker` = `record-stop --value "FAIL: demo note"` gives `. Marker at T s` with T in [duration-0.6, duration] and the note not echoed; `marker-bad` = `--value ""` gives `. Marker not placed: empty note` and the stop still saves; `per-tab` = `BLADE_RECORD_TABS=per-tab` after an `open-tab`: one Poster named after the `-tab2-` file, ending green; `latency` = 3 interleaved stop-call wall times of the base and new binaries, and the poster ffmpeg run alone; `PASS [id]` / `FAIL [id]` lines computed by script, cleanup check after every scenario) |
 
 `source_live.sh` drives the product `FrameSource` + `Encoder` (not the Node sidecar) through the `#[ignore]` test `tests/record_live.rs` (inputs `REC_LIVE_PORT/TARGET/OUT/SECS/MODE`, one `REC_LIVE_REPORT <json>` stdout line); it is test code, not a CLI command or tool. Always `BLADE_HEADLESS=1`. Modes of `REC_LIVE_MODE`: `plain`, `resize`, `trace` (adds `wire_methods`/`wire_first` from the proxy), `slow` (300 ms/frame SlowSink, queue 16; adds `slow_sink {accepted, refused, max_len}`); every mode reports `frame_sizes` (distinct JPEG pixel sizes seen).
 
