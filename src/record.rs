@@ -20,6 +20,7 @@
 //! - `marker`: record-stop `value` note: clean_text (controls, bidi/zero-width, length), MarkerIn (OUT-06).
 //! - `sidecar`: files named after the video stem (`<stem>.poster.png`, later timeline JSON), create_new 0600 (OUT-06).
 //! - `poster`: poster PNG of the finished video via one bounded ffmpeg run, PNG-magic verified (OUT-06).
+//! - `timeline`: action timeline log (bounded, inert when off), verdict lines, clock placement, JSON v1 (OUT-07).
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
@@ -44,6 +45,9 @@ pub mod poster;
 mod poster_tests;
 pub mod sidecar;
 pub mod source;
+pub mod timeline;
+#[cfg(test)]
+mod timeline_tests;
 pub mod values;
 
 pub use config::{
