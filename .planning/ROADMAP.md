@@ -237,8 +237,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 11-01: README recording section + help text
-- [ ] 11-02: GSD and DSH integration snippets, verified against a fixture
+- [ ] 11-01: Run every snippet with evidence, two tiny wording fixes, complete the reference page (DOC-01)
+- [ ] 11-02: GSD and DSH integration docs verified against a fixture, README pointer, HOOKS.md
 
 ### Phase 12: Full Instrument Gate
 **Goal**: The milestone is proven ready to merge into the fork's main: complete tests, green on all platforms, stealth unchanged with recording on, and upstream updates still merge cleanly
