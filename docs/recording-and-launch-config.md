@@ -1,6 +1,6 @@
 # Recording and launch configuration
 
-Single reference for every bladebro-fork option: session recording, the ffmpeg override and the managed browser's launch mode. The README only points here. Every copy-paste block on this page was run against local fixtures in Phase 11 (headless, macOS); see [Not verified](#not-verified) for what was not.
+Single reference for every bladebro-fork option: session recording, the ffmpeg override and the managed browser's launch mode. The README only points here. Every command and config block on this page was run against local fixtures in Phase 11 (headless, macOS); see [Not verified](#not-verified) for what was not.
 
 ## Quick answers
 
@@ -100,13 +100,13 @@ CLI: `bladebro state record-start login-flow`, `bladebro state record-stop` and 
 Start result (the first frame is not awaited):
 
 ```
-recording started: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (tab A89A...); first frame not awaited. record-stop saves it.
+recording started: /abs/path/login-flow-20261026T145206Z-6c82d8.webm (tab F376...); first frame not awaited. record-stop saves it.
 ```
 
-Stop result, from a real run:
+Stop result, from the Phase 11 MCP run (11-01 evidence; paths shortened):
 
 ```
-recording saved: /abs/path/smoke-20261022T122754Z-c1f8f8.webm (bytes 51945, duration 4.1 s, frames 41, dropped 0, segments [0.0 s tab A89A...])
+recording saved: /abs/path/login-flow-20261026T145206Z-6c82d8.webm (bytes 12952, duration 1.6 s, frames 16, dropped 0, segments [0.0 s tab F376...]). Poster: /abs/path/login-flow-20261026T145206Z-6c82d8.poster.png. Timeline: /abs/path/login-flow-20261026T145206Z-6c82d8.timeline.json (0 actions)
 ```
 
 Stop result with a poster, a timeline and a marker (real MCP run, 11-01 evidence; paths shortened like the examples above):
@@ -147,11 +147,11 @@ Refusals (nothing is recorded, an error is returned):
 
 ### Tab following
 
-One recording is one file and one ffmpeg process for the whole session; the video follows the tab the agent is on and each tab it shows is a segment in the stop result. Real results (headless Chrome, local fixtures; ids shortened):
+One recording is one file and one ffmpeg process for the whole session; the video follows the tab the agent is on and each tab it shows is a segment in the stop result. Real results from the Phase 11 run (headless Chrome, local fixtures; ids shortened):
 
 ```
-recording saved: /abs/path/f-20261022T140820Z-527648.webm (bytes 30013, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab F249..., 3.9 s tab 746A..., 6.2 s tab F249...], captured 63)
-recording saved: /abs/path/c-20261022T141401Z-e248c8.webm (bytes 27994, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab B59C..., 3.3 s tab 3AA1..., 5.3 s tab B59C...], captured 59). Note: tab 3AA1... gone at 5.3 s; following tab B59C...
+recording saved: /abs/path/f-20261026T145300Z-b64fd0.webm (bytes 41830, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab EE14..., 1.7 s tab 0848..., 3.6 s tab EE14...]). Poster: /abs/path/f-20261026T145300Z-b64fd0.poster.png. Timeline: /abs/path/f-20261026T145300Z-b64fd0.timeline.json (2 actions)
+recording saved: /abs/path/c-20261026T145305Z-a03e19.webm (bytes 37934, duration 4.8 s, frames 48, dropped 0, segments [0.0 s tab EE14..., 1.7 s tab 0AEC..., 3.3 s tab 0848...], captured 47). Note: tab 0AEC... gone at 3.3 s; following tab 0848.... Poster: /abs/path/c-20261026T145305Z-a03e19.poster.png. Timeline: /abs/path/c-20261026T145305Z-a03e19.timeline.json (2 actions)
 ```
 
 How it works:
@@ -276,11 +276,10 @@ When: at every Chrome launch (the same place stale browsers are cleaned up; the 
 
 ### Per-tab files
 
-Set `BLADE_RECORD_TABS=per-tab` (or `record.tabs` in `record.json` / `.bladebro.json`) to get one file per tab instead of one file that follows the agent. There is no `state` parameter for it. Real results (headless Chrome, local fixtures; directories and ids shortened; the second result is a run where tab 2 was closed while recording):
+Set `BLADE_RECORD_TABS=per-tab` (or `record.tabs` in `record.json` / `.bladebro.json`) to get one file per tab instead of one file that follows the agent. There is no `state` parameter for it. Real result from the Phase 11 run (headless Chrome, local fixtures; directories and ids shortened):
 
 ```
-recording saved (per-tab, 3 files): /abs/recordings/pt-tab1-20261022T145420Z-dd5570.webm (bytes 18877, duration 10.7 s, frames 107, dropped 0, segments [0.0 s tab 182C..., 8.7 s tab 182C...], captured 42); /abs/recordings/pt-tab2-20261022T145424Z-905bd9.webm (bytes 13282, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab B397...], captured 16); /abs/recordings/pt-tab3-20261022T145427Z-196942.webm (bytes 11114, duration 3.4 s, frames 34, dropped 0, segments [0.0 s tab 583E...], captured 14)
-recording saved (per-tab, 2 files): /abs/recordings/ptc-tab1-20261022T145446Z-6a8fd0.webm (bytes 15579, duration 7.2 s, frames 72, dropped 0, segments [0.0 s tab FC01..., 5.5 s tab FC01...], captured 33); /abs/recordings/ptc-tab2-20261022T145450Z-3ee0a9.webm (bytes 11919, duration 2.4 s, frames 24, dropped 0, segments [0.0 s tab 45CC...], captured 21). Note: tab 45CC... gone at 5.5 s; following tab FC01...; tab 45CC... closed at 5.7 s
+recording saved (per-tab, 2 files): /abs/path/pt-tab1-20261026T145327Z-0901e8.webm (bytes 8976, duration 3.2 s, frames 32, dropped 0, segments [0.0 s tab BF81...], captured 18); /abs/path/pt-tab2-20261026T145328Z-2389e9.webm (bytes 10793, duration 1.7 s, frames 17, dropped 0, segments [0.0 s tab 176C...]). Poster: /abs/path/pt-tab2-20261026T145328Z-2389e9.poster.png. Timeline: /abs/path/pt-tab1-20261026T145327Z-0901e8.timeline.json (1 action)
 ```
 
 How it works:

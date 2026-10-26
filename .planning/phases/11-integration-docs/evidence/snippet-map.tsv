@@ -1,17 +1,16 @@
 # doc_snippets.py map for docs/recording-and-launch-config.md (Phase 11, plan 11-01)
 # id	kind	label	evidence file (relative to this directory)
 # run/config rows: the block text must appear verbatim in the file, next to `SNIPPET <label>`.
-# output rows: only `SNIPPET <label>` is checked. Output rows whose sample text is kept from an earlier
-# phase (start-result, stop-result, follow-result, per-tab-result) were not re-run in Phase 11; the named
-# Phase 11 run printed a line of the same shape. per-tab-result shows 3 files from Phase 10; the Phase 11
-# run in 11-01-s03-tabs.txt printed 2 files.
+# output rows: only `SNIPPET <label>` is checked. The start, stop, follow and per-tab result samples are
+# the Phase 11 runs' own lines (11-01-s01 lines 35 and 37, 11-01-s03 lines 9, 13 and 69), paths and ids
+# shortened; the per-tab sample is the 2-file run (the earlier 3-file Phase 10 sample was replaced).
 0a0f1cfd	run	state-ops	11-01-s01-mcp-state.txt
-c26b9afe	output	start-result	11-01-s01-mcp-state.txt
-5cb8a4a2	output	stop-result	11-01-s01-mcp-state.txt
+3fa9c230	output	start-result	11-01-s01-mcp-state.txt
+d644eba4	output	stop-result	11-01-s01-mcp-state.txt
 e3bfb1b5	output	stop-result-extras	11-01-s01-mcp-state.txt
-4ec94275	output	follow-result	11-01-s03-tabs.txt
+745fcf07	output	follow-result	11-01-s03-tabs.txt
 b6d37208	output	tabs-popup	11-01-s03-tabs.txt
-9e141214	output	per-tab-result	11-01-s03-tabs.txt
+33d39266	output	per-tab-result	11-01-s03-tabs.txt
 77a0e3a9	output	timeline-json	11-01-s01-mcp-state.txt
 b752ca41	config	claude-code-mcp-json	11-01-s01-mcp-state.txt
 30d16058	config	dsh-options	11-01-s06-dsh.txt
