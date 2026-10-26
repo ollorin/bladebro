@@ -594,7 +594,7 @@ Honest boundaries: what surprises people, and what Bladebro deliberately does no
 | **Datacenter / VPS IPs** | Flagged regardless of fingerprint. Use `BLADE_PROXY` with a residential proxy — with a proxy set, WebRTC ICE candidates are filtered (no srflx / raw-IP host candidates reach the page) so the real IP cannot leak around it. |
 | **Cross-origin iframe content** | Invisible (`SecurityError`). Deliberate: access would need `Runtime.enable`, which defuses the protocol stealth layer. |
 | **Browser extensions** | Not supported — CDP cannot load them, and they would break the stealth profile. |
-| **Session video recording** | Not supported. Use `vision` screenshots. |
+| **Session video recording** | Opt-in in this fork: `state` `record-start` / `record-stop` per test case (needs ffmpeg). See [docs/recording-and-launch-config.md](docs/recording-and-launch-config.md). |
 | **Firefox / Gecko** | Not supported — the driver speaks CDP, which is Chromium-only. |
 | **macOS binaries** | Cross-compiled from Linux via cargo-zigbuild; CI builds and tests macOS natively on every release, and since 4.6.1 the CI stealth audit drives the released binary through a real browser on macOS (and Windows) per release — runtime-verified in CI, not yet on local hardware. File an issue if something breaks. |
 | **Linux ARM64** | Cross-compiled; not live-verified on ARM hardware yet. Community reports welcome. |
@@ -648,13 +648,13 @@ Data root resolution (Unix): `BLADE_HOME` → `$XDG_STATE_HOME/blade` → `$HOME
 
 **Raspberry Pi OS trixie (arm64):** issue [#45](https://github.com/dondai44423/bladebro/issues/45) reports Chromium's regular-profile network service hanging even on loopback. On a detected Raspberry Pi running Debian/Raspbian trixie, the agent lane automatically uses one managed incognito context. Other hosts keep their persistent profile, and an explicit `BLADE_PROFILE_DIR` keeps its chosen mode. Set `BLADE_INCOGNITO=1` to request this compatibility path elsewhere, or `0` to disable automatic selection. The real-browser and external-attach lanes keep their existing behavior. Incognito cookies still persist through Bladebro's login snapshot; named `state save`/`load` sessions restore cookies and storage. History, cache and automatic localStorage persistence are unavailable in this mode; launch diagnostics and `doctor` disclose that tradeoff. The reporter verified the Pi workaround; the release regression suite exercises the context, tabs, HTTP navigation and persistence contracts on Linux x64.
 
-## Recording (in development)
+## Recording
 
-> **Not functional yet.** Recording settings exist but the recorder is not wired in.
+Opt-in session video for QA runs: switch it on for the server or daemon (`BLADE_RECORD=1`), then wrap each test case in `state` `record-start` / `record-stop`. The stop returns the video path (WebM or MP4; ffmpeg 4.3+ required), a poster PNG and a JSON action timeline; about 0.7 MB per minute at the defaults.
 
 **Recordings contain whatever was on screen**, including passwords and tokens: treat them as sensitive.
 
-Every option (recording, ffmpeg, `BLADE_HEADLESS`, `.bladebro.json`, `bladebro headless`) is documented in [docs/recording-and-launch-config.md](docs/recording-and-launch-config.md).
+Every option, result field, the Claude Code and DSH setups, known issues and what was not verified: [docs/recording-and-launch-config.md](docs/recording-and-launch-config.md).
 
 ## 🔄 Maintenance
 
