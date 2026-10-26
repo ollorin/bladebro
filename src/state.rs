@@ -260,12 +260,7 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
             let mut out = String::new();
             for tab in &tabs {
                 let marker =
-                    if crate::record::hub::is_current(tab.attached, &tab.target_id, own.as_deref())
-                    {
-                        "*"
-                    } else {
-                        " "
-                    };
+                    crate::record::hub::tab_marker(tab.attached, &tab.target_id, own.as_ref());
                 out.push_str(&format!(
                     "{} {}  {}\n",
                     marker,
@@ -277,6 +272,7 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
                     }
                 ));
             }
+            out.push_str(crate::record::hub::tabs_footer(own.as_ref()));
             out.push_str("(* = current tab; switch-tab <target_id> to change)");
             Ok(out)
         }

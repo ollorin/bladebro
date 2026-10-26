@@ -464,3 +464,43 @@ async fn an_unknown_opener_needs_the_settle_and_a_flash_is_ignored_silently() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stop_names_the_agent_tab_when_the_video_is_on_a_popup() {
+    guard(async {
+        let a = FakeCdp::start(fake(400, 0.0)).await;
+        let p = FakeCdp::start(fake(400, 3.0)).await;
+        let mut r = rig("note", &a).await;
+        r.start().await;
+        tokio::time::sleep(ms(300)).await;
+        r.opener("P", "A");
+        r.set(vec![view("P", &p.url), view("A", &a.url)]);
+        until("P started", || started(&p)).await;
+        tokio::time::sleep(ms(300)).await;
+        // The agent is still on A (its tab is not in front): no catch-up.
+        let t = okay(r.hub.stop(&r.env).await);
+        assert_eq!(segments(&t), "0.0 s tab A, 3.0 s tab P", "{t}");
+        assert!(
+            t.contains("agent was on tab A at stop; video followed tab P"),
+            "{t}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_front_agent_tab_is_caught_up_at_stop_without_a_note() {
+    guard(async {
+        let a = FakeCdp::start(fake(400, 0.0)).await;
+        let b = FakeCdp::start(fake(400, 3.0)).await;
+        let mut r = rig("catch", &a).await;
+        r.start().await;
+        tokio::time::sleep(ms(300)).await;
+        r.set(vec![view("B", &b.url), view("A", &a.url)]);
+        *r.env.tab.lock().expect("tab") = "B".into();
+        let t = okay(r.hub.stop(&r.env).await);
+        assert!(segments(&t).ends_with("tab B"), "{t}");
+        assert!(!t.contains("agent was on tab"), "{t}");
+    })
+    .await;
+}

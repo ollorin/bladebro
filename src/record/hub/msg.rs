@@ -125,6 +125,16 @@ pub fn popup_closed(popup: &str, at_s: f64, opener: &str) -> String {
     format!("popup {popup} closed at {at_s:.1} s; back on opener {opener}")
 }
 
+/// At stop the agent's tab and the tab the video ended on differ (only then).
+pub fn agent_vs_video(agent: Option<&str>, video: Option<&str>) -> Option<String> {
+    match (agent, video) {
+        (Some(a), Some(v)) if a != v => Some(format!(
+            "agent was on tab {a} at stop; video followed tab {v}"
+        )),
+        _ => None,
+    }
+}
+
 /// Popups of the recording that never stayed in front (at most 3 ids named).
 pub fn popups_unfollowed(n: usize, ids: &[String]) -> String {
     let shown: Vec<&str> = ids.iter().take(3).map(String::as_str).collect();

@@ -103,8 +103,10 @@ fn tabs(mcp: &mut Mcp) -> Vec<(bool, String, String)> {
     assert!(!e, "tabs: {t}");
     t.lines()
         .filter_map(|l| {
+            // Rows are `* ID`, `*R ID`, `*  ID`, ` R ID`, `  ID` (marker width
+            // differs with and without a recording): current = the `*` rows.
             let cur = l.trim_start().starts_with('*');
-            let rest = l.trim_start().trim_start_matches('*').trim();
+            let rest = l.trim_start().trim_start_matches(['*', 'R']).trim();
             let id = rest.split_whitespace().next()?;
             if id.len() != 32 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
                 return None;
@@ -434,4 +436,21 @@ fn per_tab_cap() {
         ffmpeg_children(mcp.pid()).is_empty(),
         "no ffmpeg child after stop"
     );
+}
+
+#[test]
+fn tab_rows_parse_in_every_marker_form() {
+    // Pure check of the row shapes `state tabs` prints (off and recording).
+    let id = "0123456789ABCDEF0123456789ABCDEF";
+    for (row, cur) in [
+        (format!("* {id}  T"), true),
+        (format!("*R {id}  T"), true),
+        (format!("*  {id}  T"), true),
+        (format!(" R {id}  T"), false),
+        (format!("   {id}  T"), false),
+    ] {
+        let rest = row.trim_start().trim_start_matches(['*', 'R']).trim();
+        assert_eq!(rest.split_whitespace().next(), Some(id), "{row}");
+        assert_eq!(row.trim_start().starts_with('*'), cur, "{row}");
+    }
 }

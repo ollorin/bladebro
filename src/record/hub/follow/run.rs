@@ -235,6 +235,8 @@ impl Run {
         if let Some(c) = &self.cur {
             s.tab = c.tab.clone();
             s.health = c.src.health();
+        } else if self.parked.is_some() {
+            s.tab.clear(); // per-tab: the front tab has no file
         }
         s.files = self.policy.files();
         s.lost = self.lost;
@@ -444,7 +446,7 @@ impl Run {
                 let cur = self.cur.as_ref().map(|c| c.tab.clone());
                 if cur.as_deref() != Some(h.as_str()) {
                     if let Ok(Ok(list)) = timeout(LIST_CAP, self.probe.list(&h)).await {
-                        if let Some(v) = list.iter().find(|v| v.id == h) {
+                        if let Some(v) = list.first().filter(|v| v.id == h) {
                             if self.rebind(v, None).await {
                                 self.wait_first_frame().await;
                             }

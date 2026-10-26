@@ -169,6 +169,7 @@ async fn closing_a_tab_finalizes_its_file_before_the_stop() {
             .len();
         assert!(size > 0 && size % FRAME_BYTES == 0, "{size}");
         tokio::time::sleep(Duration::from_millis(300)).await;
+        *r.env.tab.lock().expect("tab") = "C".into();
         let t = okay(r.hub.stop(&r.env).await);
         assert!(t.starts_with("recording saved (per-tab, 3 files): "), "{t}");
         assert!(t.contains(". Note: tab B closed at "), "{t}");

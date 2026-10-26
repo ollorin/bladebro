@@ -45,6 +45,8 @@ pub mod report;
 mod report_tests;
 #[cfg(test)]
 mod schema_tests;
+#[cfg(test)]
+mod tabs_marker_tests;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
@@ -123,22 +125,53 @@ pub async fn finish_best_effort() {
     }
 }
 
+/// What `state tabs` marks while recording: the agent's tab and the tab the
+/// video follows (None in per-tab mode while the followed tab has no file).
+pub struct TabsView {
+    pub agent: String,
+    pub video: Option<String>,
+}
+
 /// `state tabs` hook, part 1: while a recording is active the recorder's own
 /// CDP connection makes its tab report `attached`, so the agent's tab is read
 /// from its own session instead. None (and no CDP call) when nothing records.
-pub async fn own_target(cdp: &crate::cdp::CdpSession) -> Option<String> {
+pub async fn own_target(cdp: &crate::cdp::CdpSession) -> Option<TabsView> {
     let m = HUB.get()?;
-    if !m.lock().await.is_active() {
-        return None;
-    }
+    let video = {
+        let h = m.lock().await;
+        if !h.is_active() {
+            return None;
+        }
+        h.video_tab()
+    };
     let info = cdp.send("Target.getTargetInfo", None).await.ok()?;
-    info["targetInfo"]["targetId"].as_str().map(String::from)
+    let agent = info["targetInfo"]["targetId"].as_str()?.to_string();
+    Some(TabsView { agent, video })
 }
 
-/// `state tabs` hook, part 2: is this tab the agent's current one? Without a
-/// recording (`own` None) this is exactly Chrome's `attached` flag.
-pub fn is_current(attached: bool, target_id: &str, own: Option<&str>) -> bool {
-    own.map_or(attached, |o| o == target_id)
+/// `state tabs` hook, part 2: the row marker. Without a recording (`own` None)
+/// exactly Chrome's `attached` flag (`*` or space); while recording two
+/// characters: `*` agent, `R` video.
+pub fn tab_marker(attached: bool, id: &str, own: Option<&TabsView>) -> &'static str {
+    let Some(o) = own else {
+        return if attached { "*" } else { " " };
+    };
+    match (o.agent == id, o.video.as_deref() == Some(id)) {
+        (true, true) => "*R",
+        (true, false) => "* ",
+        (false, true) => " R",
+        (false, false) => "  ",
+    }
+}
+
+/// `state tabs` hook, part 3: one extra line only when agent and video differ.
+pub fn tabs_footer(own: Option<&TabsView>) -> &'static str {
+    match own {
+        Some(o) if o.video.as_deref().is_some_and(|v| v != o.agent) => {
+            "(* agent, R video: differ; switch-tab to move the agent)\n"
+        }
+        _ => "",
+    }
 }
 
 #[cfg(test)]
@@ -277,31 +310,6 @@ mod tests {
             record_op(&json!({ "op": "record-stop" })),
             Some(RecordOp::Stop)
         );
-    }
-}
-
-#[cfg(test)]
-mod tabs_marker_tests {
-    use super::is_current;
-
-    #[test]
-    fn off_mode_follows_attached() {
-        assert!(is_current(true, "A", None));
-        assert!(!is_current(false, "A", None));
-    }
-
-    #[test]
-    fn recorded_tab_is_not_current_when_agent_is_elsewhere() {
-        // Recording on A (attached by the recorder), agent on B (attached).
-        let own = Some("B");
-        assert!(!is_current(true, "A", own));
-        assert!(is_current(true, "B", own));
-        assert!(!is_current(false, "C", own));
-    }
-
-    #[test]
-    fn agent_on_recorded_tab_marks_it() {
-        assert!(is_current(true, "A", Some("A")));
     }
 }
 

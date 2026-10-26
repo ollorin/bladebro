@@ -146,6 +146,12 @@ impl Hub {
         }
     }
 
+    /// The tab the video follows right now (None: no recording, or no file for it).
+    pub fn video_tab(&self) -> Option<String> {
+        let t = self.active.as_ref()?.rec.current_tab();
+        (!t.is_empty()).then_some(t)
+    }
+
     pub fn is_active(&self) -> bool {
         self.active.is_some()
     }
@@ -449,9 +455,22 @@ impl Hub {
         let Active { enc, rec, fps, .. } = a;
         // Follower first: it ends the video, drains every source's acks and
         // releases every sink so the encoder can be taken back.
-        let (ok, text) = match rec.stop(hint).await {
-            Outcome::PerTab(r) => compose_per_tab(&r, fps),
-            Outcome::One(fr) => {
+        let (ok, text) = match rec.stop(hint.clone()).await {
+            Outcome::PerTab(mut r) => {
+                let last = r.files.iter().flat_map(|f| &f.segments).max_by(|a, b| {
+                    a.at_s
+                        .partial_cmp(&b.at_s)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                let last = last.map(|s| s.tab.clone());
+                r.notes
+                    .extend(msg::agent_vs_video(hint.as_deref(), last.as_deref()));
+                compose_per_tab(&r, fps)
+            }
+            Outcome::One(mut fr) => {
+                let last = fr.segments.last().map(|s| s.tab.clone());
+                fr.notes
+                    .extend(msg::agent_vs_video(hint.as_deref(), last.as_deref()));
                 let Some(enc) = enc else {
                     return Err(failed(msg::follower_stuck()));
                 };
