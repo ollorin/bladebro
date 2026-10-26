@@ -1,0 +1,21 @@
+# 08.1-02 Task 5 final gate (2026-10-26, macOS arm64, BLADE_HEADLESS=1 BLADE_NO_UPDATE_CHECK=1, scratch BLADE_HOME)
+cargo fmt --check                                  -> exit 0
+cargo clippy --release --all-targets -- -D warnings -> Finished, no warnings (exit 0)
+cargo build --release                              -> Finished
+cargo test --release --no-fail-fast                -> 819 passed, 1 failed (concurrent_cold_starts_have_one_owner, daemon_lifecycle), 16 ignored
+  rerun: cargo test --release --test daemon_lifecycle -> 5 passed, 0 failed (flake passed on rerun)
+  leaked race daemon (BLADE_HOME .../bladebro-daemon-race-37238, pid 37239) stopped via its own BLADE_HOME: "daemon stopped"
+  total after rerun: 820 passed, 0 failed, 16 ignored (baseline floor 773 + new)
+bladebro audit                                     -> SCORE 100/100 pass, VERDICT: PASS
+python3 tools/qol_probe/run.py                     -> 120 passed, 2 failed (known: "chord cleared the live editor", "nested scroller movement is reported as such")
+python3 -I tools/record_sidecar/lib/lane_matrix_local.py daemon 3   -> exit 0 (3/3 rounds)
+python3 -I tools/record_sidecar/lib/lane_matrix_local.py oneshot 3  -> exit 0 (3/3 rounds)
+python3 -I tools/record_sidecar/lib/lane_matrix_local.py mcp 3      -> exit 0 (3/3 rounds)
+python3 -I tools/record_sidecar/lib/lane_matrix_local.py mcp-pipe 3 -> exit 0 (3/3 rounds)
+  (real lane not run; tools/lane_matrix.py not run directly; tools/diff_oracle not run: python websockets missing, not installed)
+
+# Hook accounting: git diff --name-only 62cb476..HEAD -- src Cargo.toml Cargo.lock npm CHANGELOG.md .github
+UPSTREAM src/page/mod.rs  (1 line changed, HOOKS.md 8.1 row, commit 35ea894)
+UPSTREAM src/state.rs     (2 added, 6 removed, HOOKS.md 8.1 row, commit 6d0dba4)
+FORK     src/record/** (22 files; fork-owned, not in upstream/main)
+Cargo.toml, Cargo.lock, npm, CHANGELOG.md, .github, src/updater, src/mcp, src/cli: no diff
