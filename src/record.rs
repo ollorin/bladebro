@@ -17,6 +17,9 @@
 //! - `orphans`: ffmpeg orphan sweeper (LIFE-03): classify + sweep, hooked from the reaper.
 //! - `exit`: exit-path matrix (LIFE-01): which exits finalize, signal/Windows reasoning (pure data + docs).
 //! - `hub`: recording hub: one active recording per process, state ops record-start/record-stop, honest stop report (CTRL-01/04/05, OUT-05).
+//! - `marker`: record-stop `value` note: clean_text (controls, bidi/zero-width, length), MarkerIn (OUT-06).
+//! - `sidecar`: files named after the video stem (`<stem>.poster.png`, later timeline JSON), create_new 0600 (OUT-06).
+//! - `poster`: poster PNG of the finished video via one bounded ffmpeg run, PNG-magic verified (OUT-06).
 //!
 //! Fork-only module (SYNC-01): upstream files are touched only by the hook
 //! lines listed in .planning/HOOKS.md.
@@ -31,10 +34,15 @@ pub mod exit;
 pub mod ffmpeg;
 pub mod hub;
 pub mod layered;
+pub mod marker;
 pub mod names;
 pub mod orphans;
 #[cfg(all(test, unix))]
 mod orphans_tests;
+pub mod poster;
+#[cfg(test)]
+mod poster_tests;
+pub mod sidecar;
 pub mod source;
 pub mod values;
 

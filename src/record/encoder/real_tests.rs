@@ -21,7 +21,7 @@ fn exe(name: &str) -> String {
 }
 
 /// The override when it is a real absolute file, else the local install dir.
-fn real_ffmpeg() -> Option<PathBuf> {
+pub(crate) fn real_ffmpeg() -> Option<PathBuf> {
     if let Some(v) = std::env::var_os(ENV_FFMPEG) {
         let p = PathBuf::from(v);
         if p.is_absolute() && p.is_file() {
@@ -34,22 +34,11 @@ fn real_ffmpeg() -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
-async fn run_real(format: Format, codec: &str) {
-    let Some(ff) = real_ffmpeg() else {
-        eprintln!("skip: no real ffmpeg (set {ENV_FFMPEG} or install to ~/.local/ffmpeg/bin)");
-        return;
-    };
-    let info = match probe(&ff, PROBE_TIMEOUT) {
-        Ok(i) => i,
-        Err(e) => panic!("ffmpeg at {} is present but unusable: {e}", ff.display()),
-    };
-    if !info.encoders.has(format.encoder()) {
-        eprintln!("skip: this ffmpeg has no {} encoder", format.encoder());
-        return;
-    }
-    let s = Scratch::new();
-    let jpg = s.0.join("f.jpg");
-    let gen = Command::new(&ff)
+/// One 1001x641 JPEG test frame written into `dir` by ffmpeg's lavfi
+/// `testsrc2`. None when ffmpeg cannot make it (the callers skip).
+pub(crate) fn make_test_jpeg(ff: &std::path::Path, dir: &std::path::Path) -> Option<PathBuf> {
+    let jpg = dir.join("f.jpg");
+    let gen = Command::new(ff)
         .args([
             "-hide_banner",
             "-loglevel",
@@ -68,10 +57,27 @@ async fn run_real(format: Format, codec: &str) {
         ])
         .arg(&jpg)
         .output();
-    if !matches!(&gen, Ok(o) if o.status.success()) {
-        eprintln!("skip: this ffmpeg cannot generate the test frame (no lavfi?)");
+    matches!(&gen, Ok(o) if o.status.success()).then_some(jpg)
+}
+
+async fn run_real(format: Format, codec: &str) {
+    let Some(ff) = real_ffmpeg() else {
+        eprintln!("skip: no real ffmpeg (set {ENV_FFMPEG} or install to ~/.local/ffmpeg/bin)");
+        return;
+    };
+    let info = match probe(&ff, PROBE_TIMEOUT) {
+        Ok(i) => i,
+        Err(e) => panic!("ffmpeg at {} is present but unusable: {e}", ff.display()),
+    };
+    if !info.encoders.has(format.encoder()) {
+        eprintln!("skip: this ffmpeg has no {} encoder", format.encoder());
         return;
     }
+    let s = Scratch::new();
+    let Some(jpg) = make_test_jpeg(&ff, &s.0) else {
+        eprintln!("skip: this ffmpeg cannot generate the test frame (no lavfi?)");
+        return;
+    };
     let bytes = std::fs::read(&jpg).unwrap();
     assert!(!bytes.is_empty());
 

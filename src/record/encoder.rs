@@ -11,7 +11,7 @@
 //! - `writer` (05-02): paced stdin writer task; dropping its stdin is the EOF stop.
 //! - `test_util`, `lifecycle_tests`, `matrix_tests` (tests only): fake ffmpeg scripts, unix lifecycle tests and outcome matrix.
 //! - `windows_tests` (tests only, cfg(windows)): .cmd fakes, written but never compiled here.
-//! - `real_tests` (tests only): real ffmpeg end-to-end, skipped when absent.
+//! - `real_tests` (tests only): real ffmpeg end-to-end, skipped when absent; its frame helper and real_ffmpeg are reused by poster_tests.
 //! - `size_change_tests` (tests only): two JPEG sizes into one encoder (tab following), real ffmpeg.
 //!
 //! Fork-only module (SYNC-01): no upstream file is touched by it.
@@ -26,7 +26,7 @@ mod process;
 #[cfg(all(test, unix))]
 mod process_group_tests;
 #[cfg(test)]
-mod real_tests;
+pub(crate) mod real_tests;
 mod report;
 mod resolve;
 #[cfg(test)]
