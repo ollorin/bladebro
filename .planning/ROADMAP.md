@@ -27,6 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Finalization on Every Exit Path** (verified 2026-10-26, macOS) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [x] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [x] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
+- [ ] **Phase 11.1: Short-Case Frame Guarantee (INSERTED)** - A short static QA case still leaves a playable video; two small honest-report fixes
 - [ ] **Phase 12: Full Instrument Gate** - Test-suite completeness plus the full stealth, cross-platform and regression gate with recording on
 
 ## Phase Details
@@ -239,6 +240,19 @@ Plans:
 Plans:
 - [ ] 11-01: Run every snippet with evidence, two tiny wording fixes, complete the reference page (DOC-01)
 - [ ] 11-02: GSD and DSH integration docs verified against a fixture, README pointer, HOOKS.md
+
+### Phase 11.1: Short-Case Frame Guarantee (INSERTED)
+**Goal**: A QA case that stops within ~0.5 s of record-start on a static page still leaves a playable video with at least one frame (core value), and the stop report never contradicts itself
+**Depends on**: Phase 11 (found by its live doc runs; see .planning/phases/11-integration-docs/deferred-items.md)
+**Requirements**: SAFE-04, OUT-05 (core value: always a playable file)
+**Success Criteria** (what must be TRUE):
+  1. A recording started and stopped within 0.5 s on a static page (MCP, daemon and per-tab) ends with a playable file with at least one frame, without the agent waiting or repainting; record-stop waits a bounded time (about 2 s) for the first frame, and if none comes the honest no-frames verdict is kept
+  2. The agent_vs_video note compares bare tab ids and never prints "agent was on tab X; video followed tab X (no frames)" for the same tab; regression tests added
+  3. Fork-owned code under src/record/** only, no upstream-file hooks, recording-off behavior unchanged; the docs recipe for short cases and the Known issues entries are updated; drift test green, audit and qol_probe not worse than baseline
+**Plans**: 1 plan
+
+Plans:
+- [ ] 11.1-01: First-frame wait at stop, agent_vs_video id fix, tests, live short-case check, docs
 
 ### Phase 12: Full Instrument Gate
 **Goal**: The milestone is proven ready to merge into the fork's main: complete tests, green on all platforms, stealth unchanged with recording on, and upstream updates still merge cleanly
