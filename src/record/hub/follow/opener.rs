@@ -10,13 +10,11 @@
 //! never counted into the family or the unfollowed note, so its own children
 //! stay foreign.
 
-// Wired into the follower by the next task of this plan.
-#![allow(dead_code)]
-
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use super::probe::{OpenerFeed, TabView};
+use crate::record::hub::msg;
 use crate::record::source::Source;
 
 /// What the cache knows about one tab's opener.
@@ -27,6 +25,15 @@ pub enum Opener {
     Is(String),
     /// The lookup failed or Chrome did not list the tab.
     Unknown,
+}
+
+/// The follower's action for a new front tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Stay,
+    Follow,
+    /// Not a popup of the recording: the ordinary two-sample confirm.
+    Confirm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +107,7 @@ impl Settle {
         }
     }
 
+    #[cfg(test)]
     pub fn is_pending(&self) -> bool {
         self.pending.is_some()
     }
@@ -113,7 +121,7 @@ pub struct Return {
     pub via_opener: bool,
 }
 
-/// Front tab if it is in the family; else the gone tab's opener if listed;
+/// Front tab if it is in the family (or nobody opened it); else the gone tab's opener if listed;
 /// else the newest previous segment tab still listed; else the front tab.
 pub fn return_to(
     gone: &str,
@@ -132,7 +140,10 @@ pub fn return_to(
         to,
     };
     let front = list.first().map(|t| t.id.clone());
-    if let Some(f) = front.clone().filter(|f| fam.contains(f)) {
+    // A front tab nobody opened (the agent's own new tab) is as good as one of
+    // the family; only a tab opened from outside the recording is passed over.
+    let ours = |f: &String| fam.contains(f) || matches!(cache.get(f), Some(Opener::None));
+    if let Some(f) = front.clone().filter(ours) {
         return Some(pick(f));
     }
     if let Some(o) = opener.clone() {
@@ -164,6 +175,15 @@ impl OpenerState {
         }
     }
 
+    /// Tabs already open at record-start are never popups of this recording.
+    pub fn with_known(mut self, known: &[String]) -> Self {
+        for id in known {
+            self.cache.entry(id.clone()).or_insert(Opener::None);
+        }
+        self
+    }
+
+    #[cfg(test)]
     pub fn cache(&self) -> &HashMap<String, Opener> {
         &self.cache
     }
@@ -194,7 +214,7 @@ impl OpenerState {
     /// caches those ids as `Unknown` (never asked again for them).
     pub async fn refresh(&mut self, list: &[TabView], feed: &OpenerFeed, src: Option<&Source>) {
         let missing = self.missing(list);
-        if missing.is_empty() {
+        if missing.is_empty() || (feed.needs_source() && src.is_none()) {
             self.observe(list);
             return;
         }
@@ -235,6 +255,56 @@ impl OpenerState {
             .filter(|p| !self.roots.contains(p))
             .cloned()
             .collect()
+    }
+
+    /// What the follower does with front tab `cand` that is not the bound tab.
+    /// `now` is any monotonic clock.
+    pub fn step(&mut self, cand: &str, cur: &str, now: Duration, settle: Duration) -> Step {
+        match self.classify(cand) {
+            Kind::Popup => {
+                if self.settle.feed(cand, cur, now, settle) {
+                    Step::Follow
+                } else {
+                    Step::Stay
+                }
+            }
+            Kind::Fresh => {
+                self.settle.feed(cur, cur, now, settle);
+                Step::Confirm
+            }
+            Kind::Foreign => {
+                self.settle.feed(cur, cur, now, settle);
+                Step::Stay
+            }
+        }
+    }
+
+    /// Where the video goes when `cur` is gone, and the note for it.
+    pub fn gone(
+        &self,
+        cur: &str,
+        list: &[TabView],
+        prev: &[String],
+        at_s: f64,
+        cand: &str,
+    ) -> (String, String) {
+        match self.return_to(cur, list, prev) {
+            Some(r) if r.via_opener => {
+                let note = msg::popup_closed(cur, at_s, &r.to);
+                (r.to, note)
+            }
+            Some(r) => {
+                let note = msg::tab_gone(cur, at_s, &r.to);
+                (r.to, note)
+            }
+            None => (cand.to_string(), msg::tab_gone(cur, at_s, cand)),
+        }
+    }
+
+    /// The stop note for family popups that never stayed in front.
+    pub fn note(&self) -> Option<String> {
+        let ids = self.unfollowed();
+        (!ids.is_empty()).then(|| msg::popups_unfollowed(ids.len(), &ids))
     }
 
     pub fn return_to(&self, gone: &str, list: &[TabView], prev_tabs: &[String]) -> Option<Return> {

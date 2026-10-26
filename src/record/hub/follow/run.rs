@@ -18,8 +18,9 @@ use tokio::time::{sleep, timeout};
 
 use super::files::{Policy, Skip};
 use super::merge::{merge, MergeIn, SegIn};
+use super::opener::{OpenerState, Step};
 use super::pick::{agent_tab, Baseline, Confirm};
-use super::probe::{TabProbe, TabView};
+use super::probe::{OpenerFeed, TabProbe, TabView};
 use super::sink::FollowShared;
 use super::{Outcome, Snap, RULE};
 use crate::record::hub::msg;
@@ -46,11 +47,11 @@ pub(super) struct Params {
     pub no_frames_after: Duration,
     pub snap: Arc<Mutex<Snap>>,
     /// Chrome's list at record-start: its first page (see `Baseline`) and
-    /// every id already open (a tab not in it is "new", see `new_confirm`).
+    /// every id already open (never a popup, see `opener`).
     pub head: Option<String>,
     pub known: Vec<String>,
-    /// How long a tab that just appeared must stay in front before it is followed.
-    pub new_confirm: Duration,
+    /// How long a popup of the recording must stay in front before it is followed.
+    pub popup_settle: Duration,
 }
 
 struct Cur {
@@ -93,11 +94,10 @@ struct Run {
     failures: Vec<String>,
     confirm: Confirm,
     baseline: Baseline,
-    /// Every tab id seen in a previous sample.
-    known: HashSet<String>,
-    /// A brand-new tab in front and since when.
-    new_since: Option<(String, Instant)>,
-    new_confirm: Duration,
+    /// Opener facts, the settle clock and the popups never followed.
+    op: OpenerState,
+    feed: OpenerFeed,
+    popup_settle: Duration,
     /// Per-tab mode: the tab the agent is on while it has no source (cap
     /// reached or its file could not be created); nothing is retried until
     /// the agent moves.
@@ -144,6 +144,8 @@ impl Run {
     fn new(p: Params) -> Run {
         let baseline = Baseline::new(p.head.as_deref(), &p.tab);
         let now = Instant::now();
+        let op = OpenerState::new(&p.tab).with_known(&p.known);
+        let feed = OpenerFeed::for_probe(&p.probe);
         Run {
             segs: vec![SegRec {
                 tab: p.tab.clone(),
@@ -163,9 +165,9 @@ impl Run {
             failures: Vec::new(),
             confirm: Confirm::new(),
             baseline,
-            known: p.known.into_iter().collect(),
-            new_since: None,
-            new_confirm: p.new_confirm,
+            op,
+            feed,
+            popup_settle: p.popup_settle,
             parked: None,
             misses: 0,
             fail_streak: 0,
@@ -249,11 +251,14 @@ impl Run {
             Ok(Ok(list)) => {
                 self.misses = 0;
                 let ids: Vec<String> = list.iter().map(|v| v.id.clone()).collect();
+                let live = self.cur.as_ref().map(|c| &c.src);
+                self.op
+                    .refresh(&list, &self.feed, live.filter(|s| !s.is_finished()))
+                    .await;
                 self.decide(list).await;
                 let keep = self.cur.as_ref().map(|c| c.tab.clone());
                 let at = self.at_s();
                 self.policy.close_missing(&ids, keep.as_deref(), at);
-                self.known.extend(ids);
             }
             _ => {
                 self.misses += 1;
@@ -297,49 +302,38 @@ impl Run {
             return;
         };
         if !present || finished {
-            let Some(v) = list.iter().find(|v| v.id == cand) else {
+            let at = self.at_s();
+            let prev: Vec<String> = self.segs.iter().map(|s| s.tab.clone()).collect();
+            let (to, note) = if !present {
+                self.op.gone(&cur, &list, &prev, at, &cand)
+            } else {
+                (cand.clone(), msg::tab_reconnected(&cand, at))
+            };
+            let Some(v) = list.iter().find(|v| v.id == to) else {
                 return;
             };
-            let at = self.at_s();
-            let note = if self.cur.is_none() {
-                None // parked: the tab had no source to lose
-            } else if cand == cur {
-                Some(msg::tab_reconnected(&cand, at))
-            } else {
-                Some(msg::tab_gone(&cur, at, &cand))
-            };
+            // Parked: the tab had no source to lose, so nothing to explain.
+            let note = self.cur.is_some().then_some(note);
             self.rebind(v, note).await;
             return;
         }
+        let step = self
+            .op
+            .step(&cand, &cur, self.start.elapsed(), self.popup_settle);
         if cand == cur {
             self.confirm.reset();
-            self.new_since = None;
             return;
         }
-        // A tab that just appeared in front is ambiguous: open-tab (the agent
-        // is on it) or a popup the opener re-fronts once its click verdict is
-        // done (live: ~0.6 s). It must stay in front for `new_confirm`.
-        let fresh = !self.known.contains(&cand)
-            || self.new_since.as_ref().is_some_and(|(id, _)| *id == cand);
-        if fresh {
-            match &self.new_since {
-                Some((id, since)) if *id == cand => {
-                    if since.elapsed() < self.new_confirm {
-                        return;
-                    }
+        match step {
+            Step::Stay => return,
+            Step::Follow => {
+                if let Some(v) = list.iter().find(|v| v.id == cand) {
+                    self.rebind(v, None).await;
                 }
-                _ => {
-                    self.new_since = Some((cand, Instant::now()));
-                    return;
-                }
+                return;
             }
-            self.new_since = None;
-            if let Some(v) = list.iter().find(|v| v.id == cand) {
-                self.rebind(v, None).await;
-            }
-            return;
+            Step::Confirm => {}
         }
-        self.new_since = None;
         let target = if self.confirm.feed(&cand, &cur) {
             Some((cand, list))
         } else {
@@ -400,6 +394,7 @@ impl Run {
                     tab: v.id.clone(),
                     seg: self.segs.len() - 1,
                 });
+                self.op.note_followed(&v.id);
                 self.parked = None;
                 self.fail_streak = 0;
                 self.confirm.reset();
@@ -440,7 +435,6 @@ impl Run {
         self.retire(true);
         self.parked = Some(v.id.clone());
         self.confirm.reset();
-        self.new_since = None;
     }
 
     async fn finish(mut self, hint: Option<String>) -> Outcome {
@@ -462,6 +456,7 @@ impl Run {
         // The video ends at the stop request (once per file).
         self.policy.mark_end();
         self.retire(false);
+        self.notes.extend(self.op.note());
         for (idx, h) in std::mem::take(&mut self.pending) {
             self.segs[idx].report = h.await.ok();
         }

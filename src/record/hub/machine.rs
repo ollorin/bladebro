@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use super::env::{Attach, HubEnv, Lane};
 use super::follow::{
     compose_follow, first_view, Files, FollowShared, Outcome, Policy, SpawnArgs, Tracker, CONFIRM,
-    NEW_TAB_CONFIRM, POLL,
+    POLL, POPUP_SETTLE,
 };
 use super::follow_report::compose_per_tab;
 use super::msg::{self, scrub};
@@ -52,8 +52,8 @@ pub struct Knobs {
     /// Tab-list poll interval and the gap between the two confirming samples.
     pub poll: Option<Duration>,
     pub confirm: Option<Duration>,
-    /// How long a brand-new tab must stay in front before it is followed.
-    pub new_confirm: Option<Duration>,
+    /// How long a popup of the recording must stay in front before it is followed.
+    pub popup_settle: Option<Duration>,
     /// A zero-frame segment this long is a failure (default: the 5 s watchdog).
     pub no_frames_after: Option<Duration>,
     /// Test-shortened LIFE-04 limits (default: `record::disk` consts).
@@ -390,7 +390,7 @@ impl Hub {
             policy,
             probe,
             initial,
-            new_confirm: self.knobs.new_confirm.unwrap_or(NEW_TAB_CONFIRM),
+            popup_settle: self.knobs.popup_settle.unwrap_or(POPUP_SETTLE),
             scfg,
             poll: self.knobs.poll.unwrap_or(POLL),
             confirm: self.knobs.confirm.unwrap_or(CONFIRM),

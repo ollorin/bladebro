@@ -55,6 +55,18 @@ pub enum OpenerFeed {
 }
 
 impl OpenerFeed {
+    pub fn for_probe(p: &TabProbe) -> OpenerFeed {
+        match p {
+            TabProbe::Scripted(s) => OpenerFeed::Scripted(s.clone()),
+            _ => OpenerFeed::Source,
+        }
+    }
+
+    /// The real feed needs a live source to ask; the scripted one never does.
+    pub fn needs_source(&self) -> bool {
+        matches!(self, OpenerFeed::Source)
+    }
+
     /// Rows for every page Chrome knows. `src` is the current source (None in
     /// tests and for a retiring one: never asked).
     pub async fn rows(

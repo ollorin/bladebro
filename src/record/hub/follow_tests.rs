@@ -102,7 +102,7 @@ pub(super) struct Rig {
 }
 
 impl Rig {
-    async fn new(name: &str, first: &FakeCdp, no_frames_after: Duration) -> Rig {
+    pub(super) async fn new(name: &str, first: &FakeCdp, no_frames_after: Duration) -> Rig {
         Rig::with(name, first, OK_SCRIPT, Tabs::Follow, no_frames_after).await
     }
 
@@ -144,7 +144,7 @@ impl Rig {
             finish_timeout: Some(Duration::from_secs(10)),
             poll: Some(Duration::from_millis(30)),
             confirm: Some(Duration::from_millis(10)),
-            new_confirm: Some(Duration::from_millis(150)),
+            popup_settle: Some(Duration::from_millis(150)),
             no_frames_after: Some(no_frames_after),
             ..Default::default()
         });
@@ -160,6 +160,26 @@ impl Rig {
     /// Script a browser that stopped answering the tab list.
     pub(super) fn fail(&self, f: bool) {
         self.list.lock().expect("list").fail = f;
+    }
+
+    /// Script `Target.getTargets`: `child` was opened by `parent`.
+    pub(super) fn opener(&self, child: &str, parent: &str) {
+        self.list
+            .lock()
+            .expect("list")
+            .openers
+            .insert(child.into(), parent.into());
+    }
+
+    /// Script a `Target.getTargets` failure (the opener stays unknown).
+    pub(super) fn targets_fail(&self, f: bool) {
+        self.list.lock().expect("list").targets_fail = f;
+    }
+
+    /// (tab-list reads, opener lookups) so far.
+    pub(super) fn calls(&self) -> (u64, u64) {
+        let g = self.list.lock().expect("list");
+        (g.calls, g.target_calls)
     }
 
     pub(super) fn set(&self, tabs: Vec<TabView>) {
@@ -331,7 +351,8 @@ async fn a_popup_that_the_opener_re_fronts_in_time_is_not_a_segment() {
         r.start().await;
         tokio::time::sleep(Duration::from_millis(300)).await;
         // The popup is first right after the click; the opener's re-activation
-        // (after the click verdict) puts it back, well inside new_confirm.
+        // (after the click verdict) puts it back, well inside popup_settle.
+        r.opener("P", "A");
         r.set(vec![view("P", &p.url), view("A", &a.url)]);
         tokio::time::sleep(Duration::from_millis(70)).await;
         r.set(vec![view("A", &a.url), view("P", &p.url)]);
@@ -339,8 +360,10 @@ async fn a_popup_that_the_opener_re_fronts_in_time_is_not_a_segment() {
         assert!(!started(&p), "a re-fronted popup must not be recorded");
         let t = okay(r.hub.stop(&r.env).await);
         assert_eq!(segments(&t), "0.0 s tab A", "{t}");
-        // Once the popup is known, switching to it is followed after the short
-        // confirm only (the agent chose it).
+        assert!(
+            t.contains("1 popup(s) not recorded (never in front): P"),
+            "{t}"
+        );
     })
     .await;
 }

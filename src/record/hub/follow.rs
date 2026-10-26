@@ -61,10 +61,6 @@ pub const RULE: Rule = Rule::ListOrder;
 pub const POLL: Duration = Duration::from_millis(200);
 /// Gap between the two samples that confirm a switch to a known tab.
 pub const CONFIRM: Duration = Duration::from_millis(50);
-/// A tab that just appeared in front must stay there this long (popups are
-/// re-fronted by their opener within about a second; see `run.rs`).
-pub const NEW_TAB_CONFIRM: Duration = Duration::from_millis(1500);
-
 /// A popup of the recording (opener in its family) must stay in front this
 /// long before it is followed. Spike (08.1-01-spike.txt, option A): the
 /// opener is no longer re-fronted while recording, so a real popup stays in
@@ -95,7 +91,7 @@ pub struct SpawnArgs {
     pub confirm: Duration,
     /// `first_view` sampled before the first source started.
     pub initial: Initial,
-    pub new_confirm: Duration,
+    pub popup_settle: Duration,
 }
 
 /// Chrome's tab list at record-start.
@@ -155,7 +151,7 @@ impl Tracker {
             snap: snap.clone(),
             head: a.initial.head,
             known: a.initial.known,
-            new_confirm: a.new_confirm,
+            popup_settle: a.popup_settle,
         };
         let task = tokio::spawn(run::run(p, stop_rx));
         Tracker {

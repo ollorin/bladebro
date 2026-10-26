@@ -358,7 +358,7 @@ fn limit_knobs(max_duration: Option<Duration>, max_file_bytes: Option<u64>) -> K
         finish_timeout: Some(Duration::from_secs(10)),
         poll: Some(Duration::from_millis(30)),
         confirm: Some(Duration::from_millis(10)),
-        new_confirm: Some(Duration::from_millis(150)),
+        popup_settle: Some(Duration::from_millis(150)),
         no_frames_after: Some(LONG),
         max_duration,
         max_file_bytes,

@@ -322,7 +322,7 @@ async fn a_stop_is_bounded_when_one_encoder_ignores_eof() {
             finish_timeout: Some(Duration::from_secs(1)),
             poll: Some(Duration::from_millis(30)),
             confirm: Some(Duration::from_millis(10)),
-            new_confirm: Some(Duration::from_millis(150)),
+            popup_settle: Some(Duration::from_millis(150)),
             no_frames_after: Some(LONG),
             ..Default::default()
         });

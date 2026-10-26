@@ -44,4 +44,5 @@ FAILS=0
 #   the opener returns to the front at ~8.2 s because `vision` runs bringToFront (documented ping-pong);
 #   `act press Tab` re-fronts the opener (head == opener 1 s later), as designed.
 # POPUP_SETTLE input for Task 4: 300 ms (Option A); no re-front observed while recording, popup stayed head 3 s.
+# follow delay after the opener rule (Task 4, POPUP_SETTLE 300 ms, same fixtures, click at ~1 s): popup segment starts at 1.8 s (blank) and 2.0 s (js) vs 3.2 s under the old 1.5 s rule; opener returns at 7.6-7.8 s (vision bringToFront ping-pong, unchanged). Fake-CDP follow delay (poll 30 + settle 150): asserted < 750 ms.
 SPIKE: PASS (option A)
