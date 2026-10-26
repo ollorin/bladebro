@@ -1,0 +1,152 @@
+# follow_live.sh 08-01/08-02  started 2026-10-26T17:07:11Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  chrome: bladebro 4.6.5
+# git: 013eb94
+== mcp: tests/record_follow.rs live tests (MCP stdio, headless)
+[mcp] running 5 tests
+[mcp] test follow_close_recorded ... RESULT follow close stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fcl-15623/recordings/c-20261026T170713Z-a7a940.webm (bytes 46464, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab 3C084559EEFFAA42CFE1879DBC4A7B24, 1.7 s tab 3CF21C1F68A7F43252BCCB4FDF3267BF, 5.3 s tab 3C084559EEFFAA42CFE1879DBC4A7B24]). Note: tab 3CF21C1F68A7F43252BCCB4FDF3267BF gone at 5.3 s; following tab 3C084559EEFFAA42CFE1879DBC4A7B24. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fcl-15623/recordings/c-20261026T170713Z-a7a940.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fcl-15623/recordings/c-20261026T170713Z-a7a940.timeline.json (2 actions)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_popup ... RESULT popup link stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-15623/recordings/p1-20261026T170722Z-4877d8.webm (bytes 39163, duration 5.5 s, frames 55, dropped 0, segments [0.0 s tab 5D612D86546D46724EC0B792EE905112, 1.9 s tab C2B4B7AD04629259B6DACC9F1116AE58], captured 38). Note: agent was on tab 5D612D86546D46724EC0B792EE905112 at stop; video followed tab C2B4B7AD04629259B6DACC9F1116AE58. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-15623/recordings/p1-20261026T170722Z-4877d8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-15623/recordings/p1-20261026T170722Z-4877d8.timeline.json (1 action)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT popup window stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-15623/recordings/p2-20261026T170728Z-10dc59.webm (bytes 37291, duration 4.8 s, frames 48, dropped 0, segments [0.0 s tab 5D612D86546D46724EC0B792EE905112, 1.9 s tab A94484CB6CAA24AE32094D75B0D09445], captured 34). Note: agent was on tab 5D612D86546D46724EC0B792EE905112 at stop; video followed tab A94484CB6CAA24AE32094D75B0D09445. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-15623/recordings/p2-20261026T170728Z-10dc59.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-15623/recordings/p2-20261026T170728Z-10dc59.timeline.json (1 action)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_switch_open ... RESULT follow stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fsw-15623/recordings/f-20261026T170735Z-d7fbf8.webm (bytes 47867, duration 7.9 s, frames 79, dropped 0, segments [0.0 s tab 303A3F7D1F17EC91D294EF4EE1396950, 2.1 s tab E75A456B04474F83D15DB7D630F8FD34, 6.0 s tab 303A3F7D1F17EC91D294EF4EE1396950], captured 78). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fsw-15623/recordings/f-20261026T170735Z-d7fbf8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fsw-15623/recordings/f-20261026T170735Z-d7fbf8.timeline.json (2 actions)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT follow colors: [Red, Blue, Red]
+[mcp] test per_tab_cap ... RESULT per-tab cap stop: recording saved (per-tab, 8 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab1-20261026T170744Z-0b0598.webm (bytes 26550, duration 19.7 s, frames 197, dropped 0, segments [0.0 s tab 265E3A6F5414DC20615014506A524336], captured 17); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab2-20261026T170746Z-b1aca1.webm (bytes 27446, duration 18.1 s, frames 181, dropped 0, segments [0.0 s tab 9D7313B4CABD9601A602F583C894894F], captured 24); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab3-20261026T170749Z-2d1f2a.webm (bytes 24012, duration 15.5 s, frames 155, dropped 0, segments [0.0 s tab B89FA66BCFA5F4EF370CF2C705383019], captured 22); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab4-20261026T170751Z-590a33.webm (bytes 24106, duration 13.2 s, frames 132, dropped 0, segments [0.0 s tab 0EE6A1A8AF90C7816F5815CC121D3A2B], captured 22); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab5-20261026T170753Z-91ad4c.webm (bytes 16041, duration 11.2 s, frames 112, dropped 0, segments [0.0 s tab 8CBF4C1FFD1221845A595FCCCAA9C720], captured 23); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab6-20261026T170755Z-118efd.webm (bytes 15144, duration 8.9 s, frames 89, dropped 0, segments [0.0 s tab 9C130C7703F5F0A440993BF4F19BDFD3], captured 23); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab7-20261026T170758Z-acb80e.webm (bytes 13534, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab 7DAB8BC0194CED3BCBAF3A002BC39A12], captured 23); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab8-20261026T170800Z-d510d7.webm (bytes 13160, duration 4.3 s, frames 43, dropped 0, segments [0.0 s tab 1C1A1913E794FD389EB39D7E88E97A2C], captured 22). Note: tab 3E9C5ABFBB370E18E26D5ABBAFF510A3 not recorded from 17.7 s: per-tab cap of 8 open files reached (close a tab to free one); agent was on tab 3E9C5ABFBB370E18E26D5ABBAFF510A3 at stop; video followed tab 1C1A1913E794FD389EB39D7E88E97A2C. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab8-20261026T170800Z-d510d7.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-15623/recordings/cap-tab1-20261026T170744Z-0b0598.timeline.json (8 actions)
+[mcp] test per_tab_three_files ... RESULT per-tab stop: recording saved (per-tab, 3 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-15623/recordings/pt-tab1-20261026T170806Z-3377b0.webm (bytes 19944, duration 12.3 s, frames 123, dropped 0, segments [0.0 s tab 843C9B7C1745C0EFC50CD99D84759562, 7.5 s tab 843C9B7C1745C0EFC50CD99D84759562], captured 41); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-15623/recordings/pt-tab2-20261026T170808Z-bea001.webm (bytes 19052, duration 10.4 s, frames 104, dropped 0, segments [0.0 s tab 5011EAB3A2896BADDE7D93DEF9A1AA4E, 8.9 s tab 5011EAB3A2896BADDE7D93DEF9A1AA4E], captured 43); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-15623/recordings/pt-tab3-20261026T170811Z-42a2d2.webm (bytes 15320, duration 6.1 s, frames 61, dropped 0, segments [0.0 s tab C5154576A55A5C5F0F7F9C6FEC6C2031, 4.6 s tab C5154576A55A5C5F0F7F9C6FEC6C2031], captured 38). Note: tab C5154576A55A5C5F0F7F9C6FEC6C2031 gone at 11.0 s; following tab 5011EAB3A2896BADDE7D93DEF9A1AA4E; tab C5154576A55A5C5F0F7F9C6FEC6C2031 closed at 11.2 s. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-15623/recordings/pt-tab2-20261026T170808Z-bea001.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-15623/recordings/pt-tab1-20261026T170806Z-3377b0.timeline.json (5 actions)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 67.75s
+PASS [mcp] the live follow and per-tab tests pass (exit=0)
+PASS [mcp] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T17:08:19Z failures=0
+follow_id_exit[mcp]=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T17:08:20Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  chrome: bladebro 4.6.5
+# git: 013eb94
+== daemon: CLI daemon, record-start, open-tab, switch-tab back, record-stop
+[daemon] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.IeWHtyd0RG/recordings/f-20261026T170822Z-c21788.webm (tab B2BFA6E7DE28CF46B223670A9D19A2B4); first frame not awaited. record-stop saves it.
+[daemon] A=B2BFA6E7DE28CF46B223670A9D19A2B4 B=A0CF35CFE766FB7FE757AD4259917862
+[daemon] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.IeWHtyd0RG/recordings/f-20261026T170822Z-c21788.webm (bytes 45704, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab B2BFA6E7DE28CF46B223670A9D19A2B4, 2.3 s tab A0CF35CFE766FB7FE757AD4259917862, 6.0 s tab B2BFA6E7DE28CF46B223670A9D19A2B4], captured 79). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.IeWHtyd0RG/recordings/f-20261026T170822Z-c21788.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.IeWHtyd0RG/recordings/f-20261026T170822Z-c21788.timeline.json (2 actions)
+PASS [daemon] stop exits 0 and says recording saved
+PASS [daemon] segments are A, B, A (ids match state tabs)
+PASS [daemon] offsets strictly increasing
+[daemon] offsets: 0.0 2.3 6.0 
+PASS [daemon] one ffmpeg pid across the switch (16509  / 16509 )
+[daemon] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.000000"}}
+PASS [daemon] full decode exit=0 stderr_lines=0
+PASS [daemon] codec vp9 1280x720 (constant output size)
+PASS [daemon] decoded frames (80) == reported frames (80)
+[daemon] segment 0 colour at 1.15 s: red
+[daemon] segment 1 colour at 4.15 s: blue
+[daemon] segment 2 colour at 7.0 s: red
+PASS [daemon] colours red, blue, red
+PASS [daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T17:08:31Z failures=0
+follow_id_exit[daemon]=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T17:08:32Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  chrome: bladebro 4.6.5
+# git: 013eb94
+== per-tab: record.tabs=per-tab from a project .bladebro.json -> one file per tab; BLADE_RECORD_TABS=follow overrides it
+[per-tab] record-start: recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pt-tab1-20261026T170833Z-473190.webm (tab 6B98EBE6EEBA2533A0F407D5EDE04B44); first frame not awaited. record-stop saves every tab's file.
+PASS [per-tab] start text says per-tab files (project layer enabled recording)
+[per-tab] ffmpeg pids while recording: 16940 16987 17010 
+PASS [per-tab] three ffmpeg processes while three files are open
+[per-tab] record-stop rc=0: recording saved (per-tab, 3 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pt-tab1-20261026T170833Z-473190.webm (bytes 19083, duration 10.6 s, frames 106, dropped 0, segments [0.0 s tab 6B98EBE6EEBA2533A0F407D5EDE04B44, 8.5 s tab 6B98EBE6EEBA2533A0F407D5EDE04B44], captured 44); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pt-tab2-20261026T170836Z-701901.webm (bytes 15911, duration 8.2 s, frames 82, dropped 0, segments [0.0 s tab 0D8ADA1EE51577C0B76446DEFB4D92A2], captured 32); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pt-tab3-20261026T170839Z-cd0722.webm (bytes 13752, duration 5.1 s, frames 51, dropped 0, segments [0.0 s tab ABF79A0E79607C46F7A671FFCCB57D22], captured 32). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pt-tab1-20261026T170833Z-473190.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pt-tab1-20261026T170833Z-473190.timeline.json (3 actions)
+PASS [per-tab] stop exits 0 with the per-tab header (3 files)
+PASS [per-tab] file 1 name has -tab1-
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"10.600000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (106) == reported frames (106)
+[per-tab] file 1 segments: 0.0 s tab 6B98EBE6EEBA2533A0F407D5EDE04B44, 8.5 s tab 6B98EBE6EEBA2533A0F407D5EDE04B44
+PASS [per-tab] file 1 is red at its first segment
+PASS [per-tab] file 2 name has -tab2-
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.200000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (82) == reported frames (82)
+[per-tab] file 2 segments: 0.0 s tab 0D8ADA1EE51577C0B76446DEFB4D92A2
+PASS [per-tab] file 2 is blue at its first segment
+PASS [per-tab] file 3 name has -tab3-
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"5.100000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (51) == reported frames (51)
+[per-tab] file 3 segments: 0.0 s tab ABF79A0E79607C46F7A671FFCCB57D22
+PASS [per-tab] file 3 is green at its first segment
+PASS [per-tab] three files listed (3)
+PASS [per-tab] tab ids in segments are A, B, C
+[per-tab] record-start (env follow): recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pf-20261026T170848Z-675f50.webm (tab 6453970D2C5F3474E2A44EA4A69C2A48); first frame not awaited. record-stop saves it.
+[per-tab] record-stop (env follow) rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pf-20261026T170848Z-675f50.webm (bytes 38131, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab 6453970D2C5F3474E2A44EA4A69C2A48, 1.7 s tab 592D6016DE19CB5B229D18756CD57257], captured 50). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pf-20261026T170848Z-675f50.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.bDgBgvF3vr/recordings/pf-20261026T170848Z-675f50.timeline.json (1 action)
+PASS [per-tab] BLADE_RECORD_TABS=follow beats the project file: one file, follow header
+PASS [per-tab] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T17:08:54Z failures=0
+follow_id_exit[per-tab]=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T17:08:55Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  chrome: bladebro 4.6.5
+# git: 013eb94
+== per-tab-close: closing a recorded tab finishes its file at once, while the recording keeps running
+[per-tab-close] ffmpeg pids before the close: 17566 17592 
+[per-tab-close] close-tab: ✓ closed tab B24DC0451FE0DE6568339F864D888958 (was current; switched to CC07135299914118FB365F5D40F00A89)
+[per-tab-close] ffmpeg pids after the close (recording still running): 17566 
+PASS [per-tab-close] only one ffmpeg left while recording continues
+[per-tab-close] tab 2 file: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.yH9HXhK9Rm/recordings/ptc-tab2-20261026T170858Z-5c1591.webm
+PASS [per-tab-close] tab 2 file is finalized before record-stop (ffprobe duration '3.800000')
+PASS [per-tab-close] tab 2 file decodes cleanly
+[per-tab-close] record-stop rc=0: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.yH9HXhK9Rm/recordings/ptc-tab1-20261026T170856Z-22db98.webm (bytes 15907, duration 7.2 s, frames 72, dropped 0, segments [0.0 s tab CC07135299914118FB365F5D40F00A89, 5.3 s tab CC07135299914118FB365F5D40F00A89], captured 35); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.yH9HXhK9Rm/recordings/ptc-tab2-20261026T170858Z-5c1591.webm (bytes 14633, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab B24DC0451FE0DE6568339F864D888958], captured 37). Note: tab B24DC0451FE0DE6568339F864D888958 gone at 5.3 s; following tab CC07135299914118FB365F5D40F00A89; tab B24DC0451FE0DE6568339F864D888958 closed at 5.5 s. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.yH9HXhK9Rm/recordings/ptc-tab1-20261026T170856Z-22db98.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.yH9HXhK9Rm/recordings/ptc-tab1-20261026T170856Z-22db98.timeline.json (2 actions)
+PASS [per-tab-close] stop exits 0 with 2 files and a closed note
+PASS [per-tab-close] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T17:09:05Z failures=0
+follow_id_exit[per-tab-close]=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T17:09:05Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  chrome: bladebro 4.6.5
+# git: 013eb94
+== close: the recorded tab is closed (the agent was on it): rebind with a note, never a failure
+[close] close-tab: ✓ closed tab 19BF86A86E8972DD7DC6F71F8F53B9FA (was current; switched to F13530C44E8FD231EF309B4C74A0590F)
+[close] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.jmcPin81mP/recordings/c-20261026T170907Z-fd99b0.webm (bytes 45476, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab F13530C44E8FD231EF309B4C74A0590F, 1.7 s tab 19BF86A86E8972DD7DC6F71F8F53B9FA, 5.3 s tab F13530C44E8FD231EF309B4C74A0590F], captured 75). Note: tab 19BF86A86E8972DD7DC6F71F8F53B9FA gone at 5.3 s; following tab F13530C44E8FD231EF309B4C74A0590F. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.jmcPin81mP/recordings/c-20261026T170907Z-fd99b0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.jmcPin81mP/recordings/c-20261026T170907Z-fd99b0.timeline.json (2 actions)
+PASS [close] stop exits 0 and says recording saved
+PASS [close] note says the recorded tab was gone
+PASS [close] last segment is the tab the agent landed on (F13530C44E8FD231EF309B4C74A0590F)
+[close] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.400000"}}
+PASS [close] full decode exit=0 stderr_lines=0
+PASS [close] codec vp9 1280x720 (constant output size)
+PASS [close] decoded frames (74) == reported frames (74)
+PASS [close] colours blue then red around the close
+PASS [close] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T17:09:15Z failures=0
+follow_id_exit[close]=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T17:09:16Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  chrome: bladebro 4.6.5
+# git: 013eb94
+== off: BLADE_RECORD unset: no follower, nothing created, CDP/HTTP trace identical to the pre-phase binary
+PASS [off] daemon nav/open-tab/switch-tab/tabs/close-tab all exit 0 (0 0 0 0 0)
+PASS [off] no recordings dir
+PASS [off] no ffmpeg process
+PASS [off-daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bb9e7dd)
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 13
+[off] base run 1 HTTP /json lines: 10
+[off] base run 2 HTTP /json lines: 10
+[off] new distinct WS methods: 13
+[off] new run 1 HTTP /json lines: 10
+[off] new run 2 HTTP /json lines: 10
+PASS [off] traces are non-empty
+PASS [off] distinct WS method sets identical (base vs new)
+PASS [off] no screencast method in new
+[off] HTTP GET /json* max per run: base=10 new=10
+PASS [off] HTTP /json* count identical (base vs new)
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T17:09:30Z failures=0
+follow_id_exit[off]=0
+follow_exit=0

@@ -13,6 +13,7 @@
 //! - `evidence`: stop extras (OUT-06): poster pick and run, marker offset on the video clock.
 //! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
 //! - `listing_tests` (tests only): recordings-dir helpers list videos, never sidecars.
+//! - `first_frame_tests` (tests only): record-stop's bounded first-frame wait; exit paths never wait.
 //!
 //! The process-global lives here and is a thin wrapper: all logic is on `Hub`
 //! instances so tests never share state through it.
@@ -28,6 +29,8 @@ mod evidence_tests;
 #[cfg(all(test, unix))]
 #[path = "exit_tests.rs"]
 mod exit_tests;
+#[cfg(all(test, unix))]
+mod first_frame_tests;
 pub mod follow;
 pub mod follow_report;
 #[cfg(test)]

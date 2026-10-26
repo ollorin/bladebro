@@ -8,7 +8,7 @@
 //! - `sink`: `FollowShared` + `SegmentSink` (generation and monotonic filters, no-op mark_end).
 //! - `merge`: pure merge of per-segment reports and `compose_follow`.
 //! - `files`: sink policy (one encoder, or one file per tab with a cap of 8) and the per-tab lifecycle.
-//! - `run`: the follower task (poll, rebind, gone/lost handling, catch-up stop).
+//! - `run`: the follower task (poll, rebind, gone/lost handling); its child `stop` (stop.rs): catch-up, bounded first-frame wait, end and merge.
 //! - `unit_tests` (tests only): tables for pick, sink, merge, msg.
 //! - `opener_tests` (tests only): tables for the opener rules.
 //!
@@ -67,6 +67,23 @@ pub const CONFIRM: Duration = Duration::from_millis(50);
 /// front; a script flashing a tab and closing it does not reach 300 ms.
 pub const POPUP_SETTLE: Duration = Duration::from_millis(300);
 
+/// An agent `record-stop` whose current capture has no frame yet waits up to
+/// this long for it before ending the video: Chrome's first screencast frame
+/// comes some hundred ms after start, and a QA case stopped within ~0.5 s on a
+/// static page otherwise got 0 frames (11-03: 3 of 3 MCP, 1 of 1 per-tab).
+/// Exit paths (finish_orphan, interrupt, limit) pass zero, so the exit bound
+/// in exit.rs is unchanged. Documented (schema_tests checks the page).
+pub const FIRST_FRAME_WAIT: Duration = Duration::from_secs(2);
+
+/// What `Tracker::stop` hands the follower task.
+#[derive(Debug, Default)]
+pub struct StopReq {
+    /// The agent's tab now (catch-up of a switch younger than one poll).
+    pub hint: Option<String>,
+    /// Bounded wait for the current capture's first frame (zero: no wait).
+    pub first_frame_wait: Duration,
+}
+
 /// Live view for `msg::active` and the hub.
 pub(super) struct Snap {
     pub tab: String,
@@ -117,7 +134,7 @@ pub async fn first_view(probe: &TabProbe, tab: &str) -> Initial {
 }
 
 pub struct Tracker {
-    stop_tx: Option<oneshot::Sender<Option<String>>>,
+    stop_tx: Option<oneshot::Sender<StopReq>>,
     task: Option<JoinHandle<Outcome>>,
     snap: Arc<Mutex<Snap>>,
     cap: Duration,
@@ -198,9 +215,13 @@ impl Tracker {
     /// End the recording: `hint` is the tab the agent is on now (catch-up when
     /// the last switch is younger than one poll). Bounded; a follower that does
     /// not answer is aborted and reported honestly.
-    pub async fn stop(mut self, hint: Option<String>) -> Outcome {
+    /// `first_frame_wait`: see FIRST_FRAME_WAIT; zero on exit paths.
+    pub async fn stop(mut self, hint: Option<String>, first_frame_wait: Duration) -> Outcome {
         if let Some(tx) = self.stop_tx.take() {
-            let _ = tx.send(hint);
+            let _ = tx.send(StopReq {
+                hint,
+                first_frame_wait,
+            });
         }
         // No facts about the frames: not clean, named, never "saved".
         let paths = self.files();
@@ -236,7 +257,7 @@ impl Tracker {
         let Some(mut task) = self.task.take() else {
             return stuck();
         };
-        match tokio::time::timeout(self.cap, &mut task).await {
+        match tokio::time::timeout(self.cap + first_frame_wait, &mut task).await {
             Ok(Ok(r)) => r,
             _ => {
                 task.abort();

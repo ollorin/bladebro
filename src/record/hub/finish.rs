@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use super::super::env::HubEnv;
 use super::super::evidence::{finish_extras, videos_one, videos_per_tab, Stopped};
-use super::super::follow::{compose_follow, Outcome};
+use super::super::follow::{compose_follow, Outcome, FIRST_FRAME_WAIT};
 use super::super::follow_report::compose_per_tab;
 use super::super::msg::{self, scrub};
 use super::{failed, take_encoder, Active, Hub, HubError, StopExtras};
@@ -95,7 +95,13 @@ impl Hub {
         let (entries, dropped) = log.take();
         // Follower first: it ends the video, drains every source's acks and
         // releases every sink so the encoder can be taken back.
-        let (ok, text) = match rec.stop(hint.clone()).await {
+        // Only the agent's record-stop (extras Some) waits for a first frame;
+        // finish_orphan / interrupt_if / stop_on_limit keep their bound (exit.rs).
+        let first_frame_wait = match &extras {
+            Some(_) => self.knobs.first_frame_wait.unwrap_or(FIRST_FRAME_WAIT),
+            None => Duration::ZERO,
+        };
+        let (ok, text) = match rec.stop(hint.clone(), first_frame_wait).await {
             Outcome::PerTab(mut r) => {
                 let last = r.files.iter().flat_map(|f| &f.segments).max_by(|a, b| {
                     a.at_s

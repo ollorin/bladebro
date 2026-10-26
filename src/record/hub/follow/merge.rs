@@ -89,7 +89,7 @@ pub fn merge(i: MergeIn) -> Merged {
             if s.dur_ms >= i.no_frames_after_ms {
                 failures.push(msg::zero_frames(&s.tab, secs(s.dur_ms)));
             } else {
-                label = format!("{} (no frames)", s.tab);
+                label = format!("{}{}", s.tab, msg::NO_FRAMES_LABEL);
             }
         } else if let SourceOutcome::ConnectionLost { .. } = s.report.outcome {
             if !s.rebound && k + 1 == n {

@@ -298,3 +298,32 @@ fn health_labels_cover_every_variant() {
         "quiet 7.0 s"
     );
 }
+
+#[test]
+fn agent_vs_video_compares_bare_tab_ids() {
+    // 11-03 gap 1: a zero-frame stop on the agent's own tab named that tab twice.
+    assert_eq!(
+        msg::agent_vs_video(Some("X"), Some("X (no frames)")).as_deref(),
+        None
+    );
+    assert_eq!(msg::agent_vs_video(Some("X"), Some("X")).as_deref(), None);
+    assert_eq!(
+        msg::agent_vs_video(Some("A"), Some("B")).as_deref(),
+        Some("agent was on tab A at stop; video followed tab B")
+    );
+    assert_eq!(
+        msg::agent_vs_video(Some("A"), Some("B (no frames)")).as_deref(),
+        Some("agent was on tab A at stop; video followed tab B (no frames)")
+    );
+    assert_eq!(
+        msg::agent_vs_video(None, Some("X (no frames)")).as_deref(),
+        None
+    );
+    assert_eq!(msg::agent_vs_video(Some("X"), None).as_deref(), None);
+}
+
+#[test]
+fn no_frames_label_matches_the_merge_label() {
+    assert_eq!(format!("T1{}", msg::NO_FRAMES_LABEL), "T1 (no frames)");
+    assert_eq!(scrub("T1 (no frames)"), "T1 (no frames)");
+}

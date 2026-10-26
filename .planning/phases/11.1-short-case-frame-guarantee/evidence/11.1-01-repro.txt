@@ -1,0 +1,116 @@
+# short_case_live  2026-10-26T16:40:17Z  bin=/Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))  fixtures=http://127.0.0.1:8765
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-1"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.6j0ebp86/recordings/short-1-20261026T164017Z-358f90.webm (tab 15A22310BE19F1DD5D9789976F55F44A); first frame not awaited. record-stop saves it.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.6j0ebp86/recordings/short-1-20261026T164017Z-358f90.webm (bytes 9730, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab 15A22310BE19F1DD5D9789976F55F44A]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.6j0ebp86/recordings/short-1-20261026T164017Z-358f90.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.6j0ebp86/recordings/short-1-20261026T164017Z-358f90.timeline.json (0 actions)
+PASS [mcp-0.1 #1] frames=2 nb_read_frames=2 bytes=9730 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-2"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.id_hk7j7/recordings/short-2-20261026T164019Z-d22200.webm (tab 0C23997878476B57979B0707CF230AF3); first frame not awaited. record-stop saves it.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.id_hk7j7/recordings/short-2-20261026T164019Z-d22200.webm (bytes 9713, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab 0C23997878476B57979B0707CF230AF3]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.id_hk7j7/recordings/short-2-20261026T164019Z-d22200.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.id_hk7j7/recordings/short-2-20261026T164019Z-d22200.timeline.json (0 actions)
+PASS [mcp-0.1 #2] frames=2 nb_read_frames=2 bytes=9713 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-3"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.girawi58/recordings/short-3-20261026T164022Z-7b2fd0.webm (tab D6F1FF8117E7FCE9B841B3308532E8F5); first frame not awaited. record-stop saves it.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.girawi58/recordings/short-3-20261026T164022Z-7b2fd0.webm (bytes 9730, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab D6F1FF8117E7FCE9B841B3308532E8F5]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.girawi58/recordings/short-3-20261026T164022Z-7b2fd0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.girawi58/recordings/short-3-20261026T164022Z-7b2fd0.timeline.json (0 actions)
+PASS [mcp-0.1 #3] frames=2 nb_read_frames=2 bytes=9730 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-1"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.i8j9dwhj/recordings/short-1-20261026T164023Z-a3eaa8.webm (tab CE8887B7A882EB647B7FD89D97FB08FA); first frame not awaited. record-stop saves it.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.i8j9dwhj/recordings/short-1-20261026T164023Z-a3eaa8.webm (bytes 10755, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab CE8887B7A882EB647B7FD89D97FB08FA]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.i8j9dwhj/recordings/short-1-20261026T164023Z-a3eaa8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.i8j9dwhj/recordings/short-1-20261026T164023Z-a3eaa8.timeline.json (0 actions)
+PASS [mcp-0.5 #1] frames=6 nb_read_frames=6 bytes=10755 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-2"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.9kk2tfnl/recordings/short-2-20261026T164026Z-1c09c0.webm (tab 3EEA42FB83ED5EBBADCCAA9DD0CEC9C1); first frame not awaited. record-stop saves it.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.9kk2tfnl/recordings/short-2-20261026T164026Z-1c09c0.webm (bytes 10730, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab 3EEA42FB83ED5EBBADCCAA9DD0CEC9C1]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.9kk2tfnl/recordings/short-2-20261026T164026Z-1c09c0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.9kk2tfnl/recordings/short-2-20261026T164026Z-1c09c0.timeline.json (0 actions)
+PASS [mcp-0.5 #2] frames=6 nb_read_frames=6 bytes=10730 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-3"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.sok26ib1/recordings/short-3-20261026T164028Z-9fe550.webm (tab E34A7893E98BCB4D7D5CEBFA801E12B8); first frame not awaited. record-stop saves it.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.sok26ib1/recordings/short-3-20261026T164028Z-9fe550.webm (bytes 10730, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab E34A7893E98BCB4D7D5CEBFA801E12B8]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.sok26ib1/recordings/short-3-20261026T164028Z-9fe550.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.sok26ib1/recordings/short-3-20261026T164028Z-9fe550.timeline.json (0 actions)
+PASS [mcp-0.5 #3] frames=6 nb_read_frames=6 bytes=10730 stop_s=-
+RESULT recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.f7g17ihv/recordings/short-daemon-1-20261026T164031Z-2ba408.webm (bytes 9730, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab C74D00EDE8E28F978087BA5BE07CCEFC]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.f7g17ihv/recordings/short-daemon-1-20261026T164031Z-2ba408.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.f7g17ihv/recordings/short-daemon-1-20261026T164031Z-2ba408.timeline.json (0 actions)
+PASS [daemon-0.1 #1] frames=2 nb_read_frames=2 bytes=9730 stop_s=0.57
+RESULT recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.bdtri72h/recordings/short-daemon-2-20261026T164033Z-d713b8.webm (bytes 9717, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab 418100FCFDEF2DD8431F9F8C5F4B9F0C]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.bdtri72h/recordings/short-daemon-2-20261026T164033Z-d713b8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.bdtri72h/recordings/short-daemon-2-20261026T164033Z-d713b8.timeline.json (0 actions)
+PASS [daemon-0.1 #2] frames=2 nb_read_frames=2 bytes=9717 stop_s=0.56
+RESULT recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.40qri7vi/recordings/short-daemon-3-20261026T164034Z-6fd770.webm (bytes 9722, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab E90CC99748F4331C828019558B2A2110]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.40qri7vi/recordings/short-daemon-3-20261026T164034Z-6fd770.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.40qri7vi/recordings/short-daemon-3-20261026T164034Z-6fd770.timeline.json (0 actions)
+PASS [daemon-0.1 #3] frames=2 nb_read_frames=2 bytes=9722 stop_s=0.57
+RESULT recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.jw9705cl/recordings/short-daemon-1-20261026T164036Z-8a6060.webm (bytes 10625, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab A32662296D9CC37D304FD331A3FE4377]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.jw9705cl/recordings/short-daemon-1-20261026T164036Z-8a6060.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.jw9705cl/recordings/short-daemon-1-20261026T164036Z-8a6060.timeline.json (0 actions)
+PASS [daemon-0.5 #1] frames=6 nb_read_frames=6 bytes=10625 stop_s=0.58
+RESULT recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.0zngkbkw/recordings/short-daemon-2-20261026T164038Z-f9fec8.webm (bytes 10714, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab 579503D5FF4867216CBF00EA8A58A7AA]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.0zngkbkw/recordings/short-daemon-2-20261026T164038Z-f9fec8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.0zngkbkw/recordings/short-daemon-2-20261026T164038Z-f9fec8.timeline.json (0 actions)
+PASS [daemon-0.5 #2] frames=6 nb_read_frames=6 bytes=10714 stop_s=0.58
+RESULT recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.267xkmn6/recordings/short-daemon-3-20261026T164041Z-bd9c38.webm (bytes 10730, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab 536B48EE8D69A8E0413640DD71D89B4E]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.267xkmn6/recordings/short-daemon-3-20261026T164041Z-bd9c38.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.267xkmn6/recordings/short-daemon-3-20261026T164041Z-bd9c38.timeline.json (0 actions)
+PASS [daemon-0.5 #3] frames=6 nb_read_frames=6 bytes=10730 stop_s=0.58
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-1"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.4e13vfqe/recordings/short-1-tab1-20261026T164043Z-fafe28.webm (tab 6C46C486A89E0CF7439E23C36432CD7E); first frame not awaited. record-stop saves every tab's file.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved (per-tab, 1 file): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.4e13vfqe/recordings/short-1-tab1-20261026T164043Z-fafe28.webm (bytes 9696, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab 6C46C486A89E0CF7439E23C36432CD7E]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.4e13vfqe/recordings/short-1-tab1-20261026T164043Z-fafe28.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.4e13vfqe/recordings/short-1-tab1-20261026T164043Z-fafe28.timeline.json (0 actions)
+PASS [pertab-0.1 #1] frames=2 nb_read_frames=2 bytes=9696 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-2"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.7xgd4a_0/recordings/short-2-tab1-20261026T164045Z-9016b0.webm (tab 2A4A743A372D2D9C40E0F23B6063E33A); first frame not awaited. record-stop saves every tab's file.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved (per-tab, 1 file): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.7xgd4a_0/recordings/short-2-tab1-20261026T164045Z-9016b0.webm (bytes 9713, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab 2A4A743A372D2D9C40E0F23B6063E33A]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.7xgd4a_0/recordings/short-2-tab1-20261026T164045Z-9016b0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.7xgd4a_0/recordings/short-2-tab1-20261026T164045Z-9016b0.timeline.json (0 actions)
+PASS [pertab-0.1 #2] frames=2 nb_read_frames=2 bytes=9713 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-3"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.eb89v8p2/recordings/short-3-tab1-20261026T164047Z-411e00.webm (tab 9CFA56630761C7C3AF069EBDFF863DC8); first frame not awaited. record-stop saves every tab's file.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved (per-tab, 1 file): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.eb89v8p2/recordings/short-3-tab1-20261026T164047Z-411e00.webm (bytes 9696, duration 0.2 s, frames 2, dropped 0, segments [0.0 s tab 9CFA56630761C7C3AF069EBDFF863DC8]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.eb89v8p2/recordings/short-3-tab1-20261026T164047Z-411e00.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.eb89v8p2/recordings/short-3-tab1-20261026T164047Z-411e00.timeline.json (0 actions)
+PASS [pertab-0.1 #3] frames=2 nb_read_frames=2 bytes=9696 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-1"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.21mseqi5/recordings/short-1-tab1-20261026T164049Z-72ccc0.webm (tab 05BC6F7D6D8BED711AF93A2D1DE95D50); first frame not awaited. record-stop saves every tab's file.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved (per-tab, 1 file): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.21mseqi5/recordings/short-1-tab1-20261026T164049Z-72ccc0.webm (bytes 10755, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab 05BC6F7D6D8BED711AF93A2D1DE95D50]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.21mseqi5/recordings/short-1-tab1-20261026T164049Z-72ccc0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.21mseqi5/recordings/short-1-tab1-20261026T164049Z-72ccc0.timeline.json (0 actions)
+PASS [pertab-0.5 #1] frames=6 nb_read_frames=6 bytes=10755 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-2"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.381h_mby/recordings/short-2-tab1-20261026T164051Z-2029e8.webm (tab AD5BBD6A5839E932E70609A312945AF0); first frame not awaited. record-stop saves every tab's file.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved (per-tab, 1 file): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.381h_mby/recordings/short-2-tab1-20261026T164051Z-2029e8.webm (bytes 10755, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab AD5BBD6A5839E932E70609A312945AF0]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.381h_mby/recordings/short-2-tab1-20261026T164051Z-2029e8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.381h_mby/recordings/short-2-tab1-20261026T164051Z-2029e8.timeline.json (0 actions)
+PASS [pertab-0.5 #2] frames=6 nb_read_frames=6 bytes=10755 stop_s=-
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "short-3"}
+RESULT isError=false recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.w4p54663/recordings/short-3-tab1-20261026T164054Z-99fc58.webm (tab A07DD7B74B86D896A71EE76B6C984F7F); first frame not awaited. record-stop saves every tab's file.
+CALL state {"op": "record-stop"}
+RESULT isError=false recording saved (per-tab, 1 file): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.w4p54663/recordings/short-3-tab1-20261026T164054Z-99fc58.webm (bytes 10600, duration 0.6 s, frames 6, dropped 0, segments [0.0 s tab A07DD7B74B86D896A71EE76B6C984F7F]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.w4p54663/recordings/short-3-tab1-20261026T164054Z-99fc58.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.w4p54663/recordings/short-3-tab1-20261026T164054Z-99fc58.timeline.json (0 actions)
+PASS [pertab-0.5 #3] frames=6 nb_read_frames=6 bytes=10600 stop_s=-
+SNIPPET short-case-saved
+{"op": "record-start", "name": "07-03-assert-only"}
+{"tool": "see", "arguments": {"mode": "model"}}
+{"op": "record-stop", "value": "PASS: assertion-only case"}
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/mark.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/mark.html
+CALL state {"op": "record-start", "name": "07-03-assert-only"}
+RESULT isError=false recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z-d28070.webm (tab 93BAC7D11194ABAC9B88EBC3D310C980); first frame not awaited. record-stop saves it.
+CALL see {"mode": "model"}
+RESULT isError=false Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+CALL state {"op": "record-stop", "value": "PASS: assertion-only case"}
+RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z-d28070.webm left in place; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z-d28070.webm (bytes 0, duration 0.0 s, frames 0, dropped 0, segments [0.0 s tab 93BAC7D11194ABAC9B88EBC3D310C980 (no frames)]). Note: agent was on tab 93BAC7D11194ABAC9B88EBC3D310C980 at stop; video followed tab 93BAC7D11194ABAC9B88EBC3D310C980 (no frames). Poster: not made (no finalized file). Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z-d28070.timeline.json (0 actions). Marker at 0.0 s
+FAIL [doc-case #1] stop did not save: RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z
+FAIL [doc-case #1] no frames reached the encoder
+FAIL [doc-case #1] agent-tab note present: RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z
+FAIL [doc-case #1] video missing or empty: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z-d28070.webm
+FAIL [doc-case #1] stop text reports no frames: RESULT isError=true ✗ error: recording not clean: recording failed: no frames reached the encoder, so there is no video; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbshort.m2nwgwa8/recordings/07-03-assert-only-20261026T164056Z
+# summary: 18 PASS, 5 FAIL
+# repro: 5 FAIL lines with no frames reached the encoder

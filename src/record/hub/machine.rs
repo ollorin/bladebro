@@ -60,6 +60,9 @@ pub struct Knobs {
     pub popup_settle: Option<Duration>,
     /// A zero-frame segment this long is a failure (default: the 5 s watchdog).
     pub no_frames_after: Option<Duration>,
+    /// How long an agent record-stop waits for the current capture's first
+    /// frame (default `follow::FIRST_FRAME_WAIT`). Exit paths never wait.
+    pub first_frame_wait: Option<Duration>,
     /// Test-shortened LIFE-04 limits (default: `record::disk` consts).
     pub max_duration: Option<Duration>,
     pub max_file_bytes: Option<u64>,

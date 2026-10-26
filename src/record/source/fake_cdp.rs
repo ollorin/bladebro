@@ -35,6 +35,10 @@ pub(crate) struct FakeOpts {
     pub ts_base: f64,
     /// `(method, result)`: canned success result for that method (default `{}`).
     pub replies: Vec<(&'static str, Value)>,
+    /// Delay of the first frame after `Page.startScreencast` (Chrome's first
+    /// frame comes some hundred ms later, 11-03); a stop in that window means
+    /// no frame at all, as live.
+    pub first_delay: Duration,
 }
 
 impl Default for FakeOpts {
@@ -50,6 +54,7 @@ impl Default for FakeOpts {
             garbage_every: None,
             ts_base: 1.7e9,
             replies: Vec::new(),
+            first_delay: Duration::ZERO,
         }
     }
 }
@@ -210,6 +215,10 @@ async fn emit(o: FakeOpts, st: Arc<FakeState>, tx: mpsc::UnboundedSender<Option<
     let bytes: Vec<u8> = (0..o.frame_bytes).map(|i| (i * 31 % 251) as u8).collect();
     let good = base64::engine::general_purpose::STANDARD.encode(bytes);
     let mut extra_left = o.frames_after_stop;
+    let until = tokio::time::Instant::now() + o.first_delay;
+    while tokio::time::Instant::now() < until && !st.stopped.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
     for i in 0..o.frames {
         if st.stopped.load(Ordering::SeqCst) {
             if extra_left == 0 {

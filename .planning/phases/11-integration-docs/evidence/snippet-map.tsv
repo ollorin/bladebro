@@ -32,8 +32,7 @@ bdd5b294	run	extract-path	11-02-q01-qa-flows.txt
 572d6122	output	extract-path	11-02-q01-qa-flows.txt
 b763499e	config	dsh-profile-record	11-02-q01-qa-flows.txt
 # 11-03 (gap 1, no-frame stop): the short-case run and the two recipes, from 11-03-no-frames.txt.
-# The short case's error sample is shortened; only its SNIPPET label is checked (output rows).
+# (11.1 replaced the error sample and the two recipe blocks; their rows were removed.)
 982c4a15	run	no-frames-short	11-03-no-frames.txt
-110457e0	output	no-frames-error	11-03-no-frames.txt
-b1ae9512	run	no-frames-wait	11-03-no-frames.txt
-ec7972c2	output	no-frames-wait-result	11-03-no-frames.txt
+# 11.1 (short-case frame guarantee): the assertion-only case now saves; result from the 11.1 live run.
+6588bc18	output	short-case-saved	../../11.1-short-case-frame-guarantee/evidence/11.1-01-live.txt

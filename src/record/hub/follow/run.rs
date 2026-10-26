@@ -17,7 +17,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
 
 use super::files::{Policy, Skip};
-use super::merge::{merge, MergeIn, SegIn};
+use super::merge::SegIn;
 use super::opener::{OpenerState, Step};
 use super::pick::{agent_tab, Baseline, Confirm};
 use super::probe::{OpenerFeed, TabProbe, TabView};
@@ -25,6 +25,10 @@ use super::sink::FollowShared;
 use super::{Outcome, Snap, RULE};
 use crate::record::hub::msg;
 use crate::record::source::{Source, SourceConfig, SourceOutcome, SourceReport, SourceStats};
+
+// The stop path lives in a child module (keeps this file under 500 lines).
+#[path = "stop.rs"]
+mod stop;
 
 /// A rebind that cannot finish within this is a failure, never a hang.
 const REBIND_CAP: Duration = Duration::from_secs(4);
@@ -117,12 +121,15 @@ struct Run {
     snap: Arc<Mutex<Snap>>,
 }
 
-pub(super) async fn run(p: Params, mut stop_rx: oneshot::Receiver<Option<String>>) -> Outcome {
+pub(super) async fn run(p: Params, mut stop_rx: oneshot::Receiver<super::StopReq>) -> Outcome {
     let mut r = Run::new(p);
     loop {
         tokio::select! {
             biased;
-            hint = &mut stop_rx => return r.finish(hint.ok().flatten()).await,
+            req = &mut stop_rx => {
+                let req = req.unwrap_or_default();
+                return r.finish(req.hint, req.first_frame_wait).await;
+            }
             _ = sleep(r.poll) => r.tick().await,
         }
     }
@@ -437,70 +444,5 @@ impl Run {
         self.retire(true);
         self.parked = Some(v.id.clone());
         self.confirm.reset();
-    }
-
-    async fn finish(mut self, hint: Option<String>) -> Outcome {
-        // Catch up a switch made less than one poll before the stop.
-        if !self.lost && !self.probe.is_fixed() {
-            if let Some(h) = hint {
-                let cur = self.cur.as_ref().map(|c| c.tab.clone());
-                if cur.as_deref() != Some(h.as_str()) {
-                    if let Ok(Ok(list)) = timeout(LIST_CAP, self.probe.list(&h)).await {
-                        if let Some(v) = list.first().filter(|v| v.id == h) {
-                            if self.rebind(v, None).await {
-                                self.wait_first_frame().await;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // The video ends at the stop request (once per file).
-        self.policy.mark_end();
-        self.retire(false);
-        self.notes.extend(self.op.note());
-        for (idx, h) in std::mem::take(&mut self.pending) {
-            self.segs[idx].report = h.await.ok();
-        }
-        let no_frames_after = self.no_frames_after;
-        match &mut self.policy {
-            Policy::PerTab(files) => Outcome::PerTab(
-                files
-                    .finish(
-                        &self.segs,
-                        no_frames_after,
-                        std::mem::take(&mut self.failures),
-                        std::mem::take(&mut self.notes),
-                    )
-                    .await,
-            ),
-            Policy::One { shared, .. } => {
-                let now = Instant::now();
-                let t0 = shared.t0_at().unwrap_or(self.start);
-                let segs = self
-                    .segs
-                    .iter()
-                    .map(|s| seg_in(s, shared, t0, now))
-                    .collect();
-                let mut m = merge(MergeIn {
-                    segs,
-                    t0_ts_ms: shared.t0_ts(),
-                    failures: self.failures,
-                    notes: self.notes,
-                    no_frames_after_ms: no_frames_after.as_millis() as u64,
-                });
-                m.t0_at = shared.t0_at();
-                Outcome::One(Box::new(m))
-            }
-        }
-    }
-
-    async fn wait_first_frame(&self) {
-        let Some(c) = &self.cur else { return };
-        let gen = self.segs[c.seg].gen;
-        let end = Instant::now() + CATCHUP_WAIT;
-        while self.policy.first_ts(&c.tab, gen).is_none() && Instant::now() < end {
-            sleep(Duration::from_millis(10)).await;
-        }
     }
 }

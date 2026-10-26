@@ -134,10 +134,16 @@ pub fn popup_closed(popup: &str, at_s: f64, opener: &str) -> String {
     format!("popup {popup} closed at {at_s:.1} s; back on opener {opener}")
 }
 
+/// Suffix `merge` gives the segment label of a tab that got no frame.
+pub const NO_FRAMES_LABEL: &str = " (no frames)";
+
 /// At stop the agent's tab and the tab the video ended on differ (only then).
+/// `video` is a segment label: a zero-frame tab's label ends with
+/// `NO_FRAMES_LABEL`, so the ids are compared without it; otherwise a
+/// zero-frame stop on the agent's own tab named that tab twice (11-03 gap 1).
 pub fn agent_vs_video(agent: Option<&str>, video: Option<&str>) -> Option<String> {
     match (agent, video) {
-        (Some(a), Some(v)) if a != v => Some(format!(
+        (Some(a), Some(v)) if a != v.strip_suffix(NO_FRAMES_LABEL).unwrap_or(v) => Some(format!(
             "agent was on tab {a} at stop; video followed tab {v}"
         )),
         _ => None,

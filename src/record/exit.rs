@@ -13,6 +13,8 @@
 //! `stop_cap`), kills as a last resort with an honest `unfinalized` outcome,
 //! and keeps the report for the next record op, prefixed
 //! `previous recording ended with the browser: `.
+//! No exit path waits for a first frame: only an agent `record-stop` does
+//! (`hub::follow::FIRST_FRAME_WAIT`, extras Some), so these bounds are unchanged.
 //!
 //! Where it is called (line numbers at the Phase 9 commit):
 //! - MCP: every Chrome shutdown goes through `boot.rs::shutdown_browser`, whose

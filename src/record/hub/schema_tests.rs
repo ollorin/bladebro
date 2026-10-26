@@ -152,3 +152,21 @@ fn docs_mention_poster_marker_timeline() {
     assert!(DOCS.contains(r#""op": "record-stop", "value""#));
     assert!(DOCS.contains(".timeline.json"));
 }
+
+/// Phase 11.1: the first-frame wait is the documented 2 s, and only the agent's
+/// stop uses it (Knobs default unset; exit paths pass zero in finish.rs).
+#[test]
+fn first_frame_wait_is_two_seconds_and_documented() {
+    use super::machine::Knobs;
+    use std::time::Duration;
+    assert_eq!(super::follow::FIRST_FRAME_WAIT, Duration::from_secs(2));
+    assert!(Knobs::default().first_frame_wait.is_none());
+    assert!(
+        DOCS.contains("`FIRST_FRAME_WAIT`"),
+        "docs lack FIRST_FRAME_WAIT"
+    );
+    assert!(
+        DOCS.contains("up to 2 s for the first frame"),
+        "docs lack the 2 s first-frame sentence"
+    );
+}

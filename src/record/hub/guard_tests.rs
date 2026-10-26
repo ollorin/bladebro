@@ -360,6 +360,7 @@ fn limit_knobs(max_duration: Option<Duration>, max_file_bytes: Option<u64>) -> K
         confirm: Some(Duration::from_millis(10)),
         popup_settle: Some(Duration::from_millis(150)),
         no_frames_after: Some(LONG),
+        first_frame_wait: None,
         max_duration,
         max_file_bytes,
     }
