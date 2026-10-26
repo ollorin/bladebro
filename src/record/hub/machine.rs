@@ -14,9 +14,10 @@ use super::follow::{
 };
 use super::msg::{self, scrub};
 use crate::record::disk::{self, FreeFn};
+use crate::record::marker::MarkerIn;
 use crate::record::{
     create_recording_file, tab_stem, Encoder, EncoderConfig, Endpoint, FrameSink, FrameSource,
-    SourceConfig, Tabs,
+    ResolvedFfmpeg, SourceConfig, Tabs,
 };
 
 // Hub stop/finish paths live in a child module (keeps this file under 500 lines).
@@ -102,6 +103,17 @@ struct Active {
     fps: u32,
     /// Free-space probe captured at start (injectable, LIFE-04).
     free: FreeFn,
+    /// The ffmpeg that wrote the video; the stop's poster run uses it (D10-1).
+    ffmpeg: ResolvedFfmpeg,
+}
+
+/// Extras of an agent `record-stop` (OUT-06): the stop instant and the marker.
+/// Only `Hub::stop_marked` passes Some. The exit paths (finish_orphan,
+/// interrupt_if, stop_on_limit) pass None: no ffmpeg spawn while a process is
+/// exiting, and their results and files stay exactly as before.
+pub struct StopExtras {
+    pub at: Instant,
+    pub marker: MarkerIn,
 }
 
 #[derive(Default)]
@@ -213,7 +225,7 @@ impl Hub {
             return false;
         };
         let path = a.path.display().to_string();
-        let (ok, finish) = match self.finish_active(a, None).await {
+        let (ok, finish) = match self.finish_active(a, None, None).await {
             Ok(t) => (true, t),
             Err(HubError::Failed(t)) | Err(HubError::Usage(t)) => (false, t),
         };
@@ -252,7 +264,7 @@ impl Hub {
         };
         let (at_s, path) = (a.started.elapsed().as_secs_f64(), a.path.clone());
         let one_file = a.enc.is_some();
-        let finish = match self.finish_active(a, None).await {
+        let finish = match self.finish_active(a, None, None).await {
             Ok(t) | Err(HubError::Failed(t)) | Err(HubError::Usage(t)) => t,
         };
         // Judged after the finalize (ffmpeg writes its output on EOF). Follow
@@ -316,6 +328,7 @@ impl Hub {
             )));
         }
         let ffmpeg = env.ffmpeg().await.map_err(|e| failed(e.to_string()))?;
+        let poster_ff = ffmpeg.clone();
         let tab = env.current_tab().await.map_err(failed)?;
 
         // Per-tab mode names every file `<stem>-tab<N>-...`; the start tab is tab 1.
@@ -412,6 +425,7 @@ impl Hub {
             started: Instant::now(),
             fps: cfg.fps,
             free,
+            ffmpeg: poster_ff,
         });
         let text = match self.orphaned.take() {
             Some((_, t)) => format!("{}\n{text}", msg::orphan_text(&t)),

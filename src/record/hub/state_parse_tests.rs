@@ -47,7 +47,24 @@ fn record_stop_takes_nothing() {
         parse_state_args(&s(&["record-stop"])).unwrap(),
         json!({"op":"record-stop"})
     );
-    usage_text(parse_state_args(&s(&["record-stop", "x"])));
+}
+
+#[test]
+fn record_stop_takes_value_flag() {
+    // OUT-06: the marker note rides in the existing `value` param (D10-2).
+    assert_eq!(
+        parse_state_args(&s(&["record-stop", "--value", "a b"])).unwrap(),
+        json!({"op":"record-stop","value":"a b"})
+    );
+}
+
+#[test]
+fn record_stop_positional_still_refused() {
+    let t = usage_text(parse_state_args(&s(&["record-stop", "x"])));
+    assert!(
+        t.contains("unexpected extra argument 'x' for record-stop"),
+        "{t}"
+    );
 }
 
 #[test]

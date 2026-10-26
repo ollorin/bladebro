@@ -157,6 +157,12 @@ impl Rig {
         }
     }
 
+    /// Also list the png encoder, so a stop runs the poster (OUT-06 extras).
+    pub(super) fn with_png(mut self) -> Rig {
+        self.env.ffmpeg = fake_ffmpeg(&self.script, &["libx264", "libvpx-vp9", "png"]);
+        self
+    }
+
     /// Script a browser that stopped answering the tab list.
     pub(super) fn fail(&self, f: bool) {
         self.list.lock().expect("list").fail = f;

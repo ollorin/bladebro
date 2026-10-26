@@ -8,7 +8,9 @@
 //! - `follow`: tab following (CAPT-03): follower task, agent-tab rule, segment sink, merge.
 //! - `follow_report`: pure per-tab stop result (CAPT-04), one compact line for every file.
 //! - `guard`: per-recording task that finalizes early on a dead browser/encoder (LIFE-02).
-//! - `machine`: `Hub` state machine (start/stop/finish_orphan, start-failure cleanup, encoder hand-back).
+//! - `machine`: `Hub` state machine (start/finish_orphan, start-failure cleanup, encoder hand-back).
+//! - `finish` (child of `machine`): stop/stop_marked/finish_orphan and the shared finish path.
+//! - `evidence`: stop extras (OUT-06): poster pick and run, marker offset on the video clock.
 //! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
 //! - `listing_tests` (tests only): recordings-dir helpers list videos, never sidecars.
 //!
@@ -20,6 +22,9 @@
 #[cfg(test)]
 mod adapter_tests;
 pub mod env;
+pub mod evidence;
+#[cfg(all(test, unix))]
+mod evidence_tests;
 #[cfg(all(test, unix))]
 #[path = "exit_tests.rs"]
 mod exit_tests;
@@ -251,7 +256,10 @@ pub async fn try_handle(args: &Value, page: &Page) -> Option<crate::error::Resul
     let mut h = hub().lock().await;
     let r = match name {
         Some(n) => h.start(&env, n).await,
-        None => h.stop(&env).await,
+        None => {
+            h.stop_marked(&env, crate::record::marker::marker_from_args(args))
+                .await
+        }
     };
     publish_active(&h);
     // LIFE-02: a started recording gets its guard (generation-checked).
