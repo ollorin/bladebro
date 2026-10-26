@@ -482,13 +482,15 @@ impl Run {
                     .iter()
                     .map(|s| seg_in(s, shared, t0, now))
                     .collect();
-                Outcome::One(Box::new(merge(MergeIn {
+                let mut m = merge(MergeIn {
                     segs,
                     t0_ts_ms: shared.t0_ts(),
                     failures: self.failures,
                     notes: self.notes,
                     no_frames_after_ms: no_frames_after.as_millis() as u64,
-                })))
+                });
+                m.t0_at = shared.t0_at();
+                Outcome::One(Box::new(m))
             }
         }
     }

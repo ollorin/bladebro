@@ -229,6 +229,7 @@ impl Tracker {
                 segments: Vec::new(),
                 notes: Vec::new(),
                 failures: vec![text],
+                t0_at: None,
             };
             Outcome::One(Box::new(one))
         };

@@ -10,6 +10,7 @@
 //! - `guard`: per-recording task that finalizes early on a dead browser/encoder (LIFE-02).
 //! - `machine`: `Hub` state machine (start/stop/finish_orphan, start-failure cleanup, encoder hand-back).
 //! - `report_tests`, `machine_tests` (tests only): outcome table; scenarios over fake ffmpeg + FakeCdp.
+//! - `listing_tests` (tests only): recordings-dir helpers list videos, never sidecars.
 //!
 //! The process-global lives here and is a thin wrapper: all logic is on `Hub`
 //! instances so tests never share state through it.
@@ -31,6 +32,8 @@ mod follow_tests;
 pub mod guard;
 #[cfg(all(test, unix))]
 mod guard_tests;
+#[cfg(all(test, unix))]
+mod listing_tests;
 pub mod live_env;
 pub mod machine;
 #[cfg(all(test, unix))]

@@ -344,6 +344,7 @@ impl Files {
                 segments: m.segments,
                 failures: m.failures,
                 closed_at: f.closed_at,
+                t0_at: f.shared.t0_at(),
             });
         }
         PerTabResult {

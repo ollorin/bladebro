@@ -58,6 +58,7 @@ fn files_in(r: &Rig) -> Vec<String> {
         .map(|d| {
             d.filter_map(|e| e.ok())
                 .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.ends_with(".webm") || n.ends_with(".mp4"))
                 .collect()
         })
         .unwrap_or_default();

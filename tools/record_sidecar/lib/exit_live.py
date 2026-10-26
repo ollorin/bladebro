@@ -186,7 +186,7 @@ def analyse(sid, path, expect_playable=True):
 
 def recordings(home):
     d = os.path.join(home, "recordings")
-    return sorted(os.path.join(d, f) for f in os.listdir(d)) if os.path.isdir(d) else []
+    return sorted(os.path.join(d, f) for f in os.listdir(d) if f.endswith((".webm", ".mp4"))) if os.path.isdir(d) else []
 
 
 # ---------------------------------------------------------------- lane drivers

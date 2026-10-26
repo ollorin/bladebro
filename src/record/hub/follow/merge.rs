@@ -10,6 +10,7 @@ use super::super::msg;
 use super::super::report::{compose, fields_line, Segment};
 use crate::record::encoder::EncoderReport;
 use crate::record::source::{SourceOutcome, SourceReport, SourceStats};
+use std::time::Instant;
 
 /// One finished capture generation.
 #[derive(Debug, Clone)]
@@ -44,6 +45,9 @@ pub struct Merged {
     pub segments: Vec<Segment>,
     pub notes: Vec<String>,
     pub failures: Vec<String>,
+    /// Video clock: arrival of the first frame the video accepted. Set by the
+    /// caller (run.rs / files.rs) from the sink; merge() only sees timestamps.
+    pub t0_at: Option<Instant>,
 }
 
 fn add(a: &mut SourceStats, b: &SourceStats) {
@@ -123,6 +127,7 @@ pub fn merge(i: MergeIn) -> Merged {
         segments,
         notes: i.notes,
         failures,
+        t0_at: None,
     }
 }
 

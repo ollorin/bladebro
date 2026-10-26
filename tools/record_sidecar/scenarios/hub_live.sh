@@ -147,7 +147,7 @@ sc_daemon_double() {
   check daemon-double "error names the active file" grep -qF "$first" <<<"$b"
   sleep 2
   "$BB" state record-stop >/dev/null 2>&1
-  check daemon-double "exactly one file in recordings" test "$(ls "$BLADE_HOME/recordings" | wc -l | tr -d ' ')" = 1
+  check daemon-double "exactly one file in recordings" test "$(ls "$BLADE_HOME/recordings" | grep -E '\.(webm|mp4)$' | wc -l | tr -d ' ')" = 1
   unset BLADE_RECORD
   end_scn daemon-double
 }

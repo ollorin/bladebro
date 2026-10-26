@@ -58,6 +58,7 @@ fn file(n: u32, tab: &str, outcome: Outcome, segs: Vec<Segment>) -> FileOutcome 
         segments: segs,
         failures: Vec::new(),
         closed_at: None,
+        t0_at: None,
     }
 }
 

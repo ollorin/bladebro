@@ -183,11 +183,24 @@ impl Mcp {
         self.child.id()
     }
 
+    /// Videos only (`.webm` / `.mp4`); sidecars are listed by `sidecars()`.
     pub fn recordings(&self) -> Vec<PathBuf> {
+        self.listed(|p| p.extension().is_some_and(|x| x == "webm" || x == "mp4"))
+    }
+
+    /// Sidecar files next to the videos (`.png` poster, `.json` timeline).
+    pub fn sidecars(&self) -> Vec<PathBuf> {
+        self.listed(|p| p.extension().is_some_and(|x| x == "png" || x == "json"))
+    }
+
+    fn listed(&self, keep: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
         let dir = self.home.join("recordings");
         match std::fs::read_dir(&dir) {
             Ok(rd) => {
-                let mut v: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).collect();
+                let mut v: Vec<PathBuf> = rd
+                    .filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| keep(p))
+                    .collect();
                 v.sort();
                 v
             }

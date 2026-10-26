@@ -387,7 +387,7 @@ sc_pertab_close() {
   n=0; while [ $n -lt 30 ] && [ "$(ffmpeg_pids | wc -w | tr -d ' ')" -gt 1 ]; do sleep 0.5; n=$((n + 1)); done
   say "[per-tab-close] ffmpeg pids after the close (recording still running): $(ffmpeg_pids)"
   check per-tab-close "only one ffmpeg left while recording continues" test "$(ffmpeg_pids | wc -w | tr -d ' ')" = 1
-  bfile=$(ls "$BLADE_HOME"/recordings/*-tab2-* 2>/dev/null | head -1)
+  bfile=$(ls "$BLADE_HOME"/recordings/*-tab2-*.webm "$BLADE_HOME"/recordings/*-tab2-*.mp4 2>/dev/null | head -1)
   say "[per-tab-close] tab 2 file: $bfile"
   dur=$("$FFPROBE" -v error -show_entries format=duration -of csv=p=0 "$bfile" 2>/dev/null)
   check per-tab-close "tab 2 file is finalized before record-stop (ffprobe duration '$dur')" python3 -I -c "import sys; float('${dur:-x}')"

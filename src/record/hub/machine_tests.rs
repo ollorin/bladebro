@@ -175,9 +175,13 @@ pub(super) fn started_path(t: &str) -> PathBuf {
     PathBuf::from(rest.split(" (tab ").next().expect("path"))
 }
 
+/// Videos only: sidecars (`.poster.png`, `.timeline.json`) are not listed.
 pub(super) fn files_in(dir: &Path) -> Vec<PathBuf> {
     match std::fs::read_dir(dir) {
-        Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path())).collect(),
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "webm" || x == "mp4"))
+            .collect(),
         Err(_) => vec![],
     }
 }

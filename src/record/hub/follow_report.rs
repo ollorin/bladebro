@@ -30,6 +30,8 @@ pub struct FileOutcome {
     pub failures: Vec<String>,
     /// Seconds into the recording at which the tab closed, if it did.
     pub closed_at: Option<f64>,
+    /// Video clock of this file: arrival of its first accepted frame.
+    pub t0_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone, Default)]

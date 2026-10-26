@@ -518,3 +518,15 @@ async fn source_is_finished_after_the_connection_closes() {
     }
     assert!(done, "closed connection must be noticed within 1 s");
 }
+
+#[test]
+fn merge_leaves_t0_at_unset() {
+    // The video clock Instant is set by the caller (run.rs) after the merge:
+    // merge() only sees timestamps, so it must start with None.
+    let cap = SourceOutcome::Captured;
+    let m = merge(input(
+        vec![seg("A", Some(10_000), 0, 4200, rep(10, cap, None), true)],
+        Some(10_000),
+    ));
+    assert!(m.t0_at.is_none());
+}
