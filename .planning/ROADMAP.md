@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Frame Source** - Ack-first screencast capture with a bounded, drop-counting queue and blank-video detection, stealth-neutral
 - [x] **Phase 7: RecordHub and state Ops** - `state` `record-start` / `record-stop` with full stop report; zero behavior change when off
 - [ ] **Phase 8: Tab Following** - One recording follows the active tab with segment boundaries; opt-in per-tab files
-- [ ] **Phase 8.1: Follow Every Popup (INSERTED)** - A click-opened or script-opened popup becomes a segment without `switch-tab`; the video returns to the opener when it closes; `state tabs` and the segments agree (user decision 2026-10-26; runs after Phase 9 is verified)
+- [x] **Phase 8.1: Follow Every Popup (INSERTED)** (verified 2026-10-26, macOS, opus passed) - A click-opened or script-opened popup becomes a segment without `switch-tab`; the video returns to the opener when it closes; `state tabs` and the segments agree (user decision 2026-10-26; runs after Phase 9 is verified)
 - [x] **Phase 9: Finalization on Every Exit Path** (verified 2026-10-26, macOS) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [ ] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [ ] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
@@ -190,8 +190,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 08.1-01: Popup detection (opener relationship) and rebind/return in default mode + fixtures/tests
-- [ ] 08.1-02: Agent-vs-video tab agreement in `state tabs`/stop report, per-tab mode, docs, live checks
+- [x] 08.1-01: Popup detection (opener relationship) and rebind/return in default mode + fixtures/tests
+- [x] 08.1-02: Agent-vs-video tab agreement in `state tabs`/stop report, per-tab mode, docs, live checks
 
 ### Phase 9: Finalization on Every Exit Path
 **Goal**: However a session ends, the recording is finalized or honestly reported as interrupted, and no ffmpeg process is left behind
