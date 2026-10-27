@@ -1,0 +1,16 @@
+# 12-02 gate  2026-10-27T10:05:42Z  git e4648a9  bladebro v4.6.5 (e4648a9-dirty)  macOS 26.7.1 arm64  Google Chrome 156.0.8078.48 
+## cargo fmt --check
+clean
+## cargo clippy --release --all-targets -- -D warnings
+clippy_all_targets_exit=0
+## cargo clippy --release -- -D warnings (CI form)
+clippy_ci_exit=0
+test_off_exit=0
+## cargo test --release --no-fail-fast (recording off)
+# totals off: passed=903 failed=0 ignored=18
+test_on_exit=0
+## BLADE_RECORD=1 cargo test --release --no-fail-fast (recording on)
+# totals on: passed=903 failed=0 ignored=18
+## scope: files changed by phase 12 outside tools/docs/.planning (must be empty)
+## HOOKS.md diff lines
+hooks_diff=0
