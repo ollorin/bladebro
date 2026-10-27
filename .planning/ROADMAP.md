@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Finalization on Every Exit Path** (verified 2026-10-26, macOS) - Recordings finalize on every exit, crashes are reported honestly, no orphan ffmpeg, disk-low stop
 - [x] **Phase 10: Evidence Extras** - Poster frame, agent markers and an action timeline sidecar aligned to the video
 - [x] **Phase 11: Integration Docs** - How the Claude Code GSD flow and the DSH plugin enable recording per test case
-- [ ] **Phase 11.1: Short-Case Frame Guarantee (INSERTED)** - A short static QA case still leaves a playable video; two small honest-report fixes
+- [x] **Phase 11.1: Short-Case Frame Guarantee (INSERTED)** - A short static QA case still leaves a playable video; two small honest-report fixes
 - [ ] **Phase 12: Full Instrument Gate** - Test-suite completeness plus the full stealth, cross-platform and regression gate with recording on
 
 ## Phase Details
@@ -252,7 +252,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 11.1-01: First-frame wait at stop, agent_vs_video id fix, tests, live short-case check, docs
+- [x] 11.1-01: First-frame wait at stop, agent_vs_video id fix, tests, live short-case check, docs
 
 ### Phase 12: Full Instrument Gate
 **Goal**: The milestone is proven ready to merge into the fork's main: complete tests, green on all platforms, stealth unchanged with recording on, and upstream updates still merge cleanly

@@ -1,3 +1,4 @@
+> **Phase 11.1 verified (2026-10-27, macOS headless; opus passed 7/7; 903 tests (893+10); audit 100/100; qol 120/122; no upstream hooks, HOOKS.md unchanged).** First-frame wait (2 s, agent stop only) + agent_vs_video bare ids. Next: Phase 12.
 # Project State
 
 > **RESUMED (user, 2026-10-27):** verify Phase 11.1 (sonnet, then opus), mark complete, then Phase 12.
