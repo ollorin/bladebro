@@ -125,8 +125,11 @@ pub fn build_args(
     check_out_path(out, spec.format)?;
     let (w, h) = even_size(spec.size);
     let fps = clamp_fps(spec.fps);
+    // in_range=pc:out_range=tv: Chrome's screencast JPEGs are full range. Written as full-range VP9
+    // (inter frames) Chrome plays only the first frame and ends at once, so the progress bar hits 100%
+    // in about a second of a 7 s file; limited range plays in real time. Reproduced on Chrome 156.
     let vf = format!(
-        "scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+        "scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2:in_range=pc:out_range=tv,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
     );
     let legacy_vsync = matches!(version, FfmpegVersion::Release { major, .. } if *major <= 5);
     let (codec_flags, muxer) = match spec.format {
@@ -204,7 +207,7 @@ mod tests {
         a.iter().map(|s| s.to_string_lossy().into_owned()).collect()
     }
 
-    const HEAD: &str = "-hide_banner -nostats -loglevel error -y -f image2pipe -framerate 10 -c:v mjpeg -i pipe:0 -vf scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p -fps_mode passthrough -an";
+    const HEAD: &str = "-hide_banner -nostats -loglevel error -y -f image2pipe -framerate 10 -c:v mjpeg -i pipe:0 -vf scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2:in_range=pc:out_range=tv,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p -fps_mode passthrough -an";
 
     fn expected(tail: &str, out: &Path) -> Vec<OsString> {
         let mut v: Vec<OsString> = format!("{HEAD} {tail}")

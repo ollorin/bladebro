@@ -12,7 +12,7 @@ use crate::record::encoder::test_util::{pid_gone, Scratch};
 use crate::record::{build_args, EncodeSpec, FfmpegVersion, Format, FrameSize};
 
 const NAME: &str = "demo-20250101T120000Z-a1b2c3.webm";
-const HEAD: &str = "-hide_banner -nostats -loglevel error -y -f image2pipe -framerate 10 -c:v mjpeg -i pipe:0 -vf scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p -fps_mode passthrough -an";
+const HEAD: &str = "-hide_banner -nostats -loglevel error -y -f image2pipe -framerate 10 -c:v mjpeg -i pipe:0 -vf scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2:in_range=pc:out_range=tv,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p -fps_mode passthrough -an";
 
 fn line(prog: &str, muxer: &str, out: &str) -> String {
     format!("{prog} {HEAD} -c:v libvpx-vp9 -deadline realtime -f {muxer} {out}")
