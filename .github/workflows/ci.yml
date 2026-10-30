@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     # Docs-only pushes don't need CI — see status.md §0/§4 CI discipline.
@@ -21,6 +22,7 @@ jobs:
   lint-test-build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust-version: ["stable"]
@@ -34,12 +36,14 @@ jobs:
           toolchain: ${{ matrix.rust-version }}
           components: clippy, rustfmt
 
-      - name: Install Chromium (Linux)
+      - name: Install Chrome (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
           echo "deb http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update && sudo apt-get install -y google-chrome-stable xvfb
+          # Use the browser installed for this fixture, not a runner's Chromium wrapper.
+          echo "CHROME_PATH=$(command -v google-chrome-stable)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry
         uses: actions/cache@v6
@@ -58,6 +62,9 @@ jobs:
       - name: Format check
         run: cargo fmt --check
 
+      - name: Oracle evidence parser
+        run: python tools/diff_oracle/test_oracle.py
+
       - name: Clippy
         run: cargo clippy --release -- -D warnings
 
@@ -67,6 +74,79 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Install Node for native DSH integration
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Verify native DSH package and browser lifecycle
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -e
+          npm pack ./npm/bladebro --pack-destination .
+          version=$(node -p "require('./npm/bladebro/package.json').version")
+          # Test unpublished versions using this job's real native binary.
+          platform=$(node -p "(process.platform === 'win32' ? 'windows' : process.platform) + '-' + process.arch")
+          binary=$(node -p "'bladebro' + (process.platform === 'win32' ? '.exe' : '')")
+          cp "target/release/$binary" "npm/bladebro-$platform/$binary"
+          npm pack "./npm/bladebro-$platform" --pack-destination .
+          npm install --prefix target/dsh-runtime --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.0-rc.2 "./bladebro-${version}.tgz" "./bladebro-${platform}-${version}.tgz"
+          node tools/dsh_probe/package.mjs
+          node tools/dsh_probe/package.mjs
+          export DSH_RUNTIME=target/dsh-runtime
+          export BLADEBRO=$(node -p "require('path').resolve('target/release/bladebro' + (process.platform === 'win32' ? '.exe' : ''))")
+          node tools/dsh_probe/run.mjs
+          node tools/dsh_probe/run.mjs
+
+      - name: Authenticated cross-origin downloads — native browser
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          export BLADEBRO=$(node -p "require('path').resolve('target/release/bladebro' + (process.platform === 'win32' ? '.exe' : ''))")
+          python tools/reliability_probe/download.py
+          python tools/reliability_probe/download.py
+
+      - name: Agent UX and mutation honesty — native browser
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          export BLADEBRO=$(node -p "require('path').resolve('target/release/bladebro' + (process.platform === 'win32' ? '.exe' : ''))")
+          BLADE_INCOGNITO=0 POLISH_OUT=work/polish-native.json python tools/reliability_probe/polish.py
+          BLADE_INCOGNITO=1 POLISH_OUT=work/polish-incognito.json python tools/reliability_probe/polish.py
+
+      - name: Live report regressions — native browser
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          export BLADEBRO=$(node -p "require('path').resolve('target/release/bladebro' + (process.platform === 'win32' ? '.exe' : ''))")
+          BLADE_INCOGNITO=0 POLISH_OUT=work/live464-native.json python tools/reliability_probe/live464.py
+          BLADE_INCOGNITO=1 POLISH_OUT=work/live464-incognito.json python tools/reliability_probe/live464.py
+
+      - name: Root waits and toggle fill — native browser
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          export BLADEBRO=$(node -p "require('path').resolve('target/release/bladebro' + (process.platform === 'win32' ? '.exe' : ''))")
+          BLADE_INCOGNITO=0 POLISH_OUT=work/qol465-native.json python tools/reliability_probe/qol465.py
+          BLADE_INCOGNITO=1 POLISH_OUT=work/qol465-incognito.json python tools/reliability_probe/qol465.py
+
+      # 4.6.1: real runtime stealth validation on every OS — the built binary
+      # drives its own vectors page through a real browser and exits non-zero
+      # on any FAIL (the audit is a gate since 4.6.1). Kills the class of
+      # "green CI, broken lane on macOS/Windows".
+      - name: Stealth audit — real browser, all OSes
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          binary="./target/release/bladebro"
+          if [ "${RUNNER_OS}" = "Windows" ]; then binary="$binary.exe"; fi
+          export BLADE_HOME="${RUNNER_TEMP:-/tmp}/bb-audit"
+          export BLADE_NO_WARMING=1
+          "$binary" audit
+          # Default headful launches skip the notification mask. Exercise its
+          # native argument/promise contract explicitly on every desktop OS.
+          BLADE_PERMS=patch BLADE_MEDIA=patch BLADE_INCOGNITO=1 "$binary" audit
   msrv:
     runs-on: ubuntu-latest
     steps:
@@ -83,3 +163,29 @@ jobs:
         run: |
           rustc --version | grep -E '^rustc 1[.]86[.]0 '
           cargo check --locked --all-targets
+
+  # The android cfg gates are source-level support (no Android artifact is
+  # published), so the guard is compilation: the runner's NDK provides the
+  # bionic sysroot that ring's C needs.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "stable"
+          targets: "aarch64-linux-android"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cargo/registry
+          key: android-aarch64-registry-${{ hashFiles('Cargo.lock') }}
+      - name: Point cc-rs at the NDK toolchain
+        run: |
+          ndk="${ANDROID_NDK_LATEST_HOME:-$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/ndk/* | sort -V | tail -1)}"
+          bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cc="$(ls "$bin" | grep -E '^aarch64-linux-android[0-9]+-clang$' | sort -V | tail -1)"
+          test -n "$cc"
+          echo "CC_aarch64-linux-android=$bin/$cc" >> "$GITHUB_ENV"
+          echo "AR_aarch64-linux-android=$bin/llvm-ar" >> "$GITHUB_ENV"
+      - name: Check the android target
+        run: cargo check --locked --target aarch64-linux-android

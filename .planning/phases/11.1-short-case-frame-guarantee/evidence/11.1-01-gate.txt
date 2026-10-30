@@ -1,0 +1,34 @@
+# 11.1-01 gate 2026-10-26T17:04:41Z git 013eb94
+## cargo fmt --check
+clean
+## clippy
+clippy_exit=0
+## cargo test --release --no-fail-fast
+test result: ok. 857 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.41s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.15s
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+## scope (must be empty)
+## HOOKS.md diff lines
+hooks_diff=0
+## line counts
+     448 src/record/hub/follow/run.rs
+     110 src/record/hub/follow/stop.rs
+     223 src/record/hub/first_frame_tests.rs
+     329 src/record/hub/report_tests.rs
+     248 src/record/source/fake_cdp.rs
+     278 src/record/hub/follow.rs
+     449 src/record/hub/machine.rs
+    2085 total

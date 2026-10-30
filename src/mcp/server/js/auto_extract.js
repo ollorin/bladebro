@@ -7,7 +7,7 @@ const HOST=location.hostname;const IS_REDDIT=HOST.includes('reddit.com');const I
 const ACT_PAT=/^(vote|upvote|downvote|comment|comments|discuss|reply|replies|share|save|hide|flag|report|favorite|fav|like|dislike|follow|Subscribe|Pin|Unpin|More|less|edit|delete|remove|add|new|open|show|expand|collapse|permalink|embed|cite|parent|context|full story|read more|continue reading|view|all|next|prev|previous)$/i;
 const ACT_HREF=/\/vote|\/comment|\/reply|\/action|javascript:|#comment|#respond|#reply/i;
 function sig(el){const k=[...el.children].map(c=>c.tagName).join(',');return el.tagName+'['+k+']';}
-function txt(el){return(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();}
+function txt(el){return(el.innerText||'').replace(/\s+/g,' ').trim();}
 function vtxt(el){return(el.innerText||'').replace(/\s+/g,' ').trim();}
 function links(el){const r=[...el.querySelectorAll('a[href]')];if(el.matches&&el.matches('a[href]'))r.unshift(el);return r;}
 function extLink(el){return links(el).find(a=>a.hostname&&a.hostname!==HOST);}
@@ -30,6 +30,26 @@ if(tn){const match=lnks.find(a=>{const an=norm(txt(a));return an&&tn.includes(an
 }
 return lnks.reduce((best,a)=>{const at=txt(a).length,bt=txt(best).length;return at>bt?a:best;},lnks[0]);
 }
+// Redirect/tracking wrappers (Amazon /sspa/click?url=, Google /url?q=,
+// eBay /clk, ad /aclk, ...): the real destination is recoverable, and an
+// agent can do nothing with a wrapper URL — it is an interstitial, not the
+// item. Unwrap up to 2 hops; shapes we don't recognise pass through intact.
+const REDIRECT_PATH=/\/(?:sspa|gp)\/click|\/aclk\/?$|\/clk\/?$|\/url\/?$|\/redirect(?:or)?\/?$|\/linkout|\/l\.php$|\/away\/?$|\/out\/?$|\/goto\/?$|\/go\/?$|servlet\/redirect/i;
+const REDIRECT_PARAMS=['url','u','q','target','to','redirect','redirect_uri','link','dest','destination','href'];
+function canonicalURL(href){try{let u=new URL(href,location.href);for(let i=0;i<2&&REDIRECT_PATH.test(u.pathname);i++){let next=null;for(const p of REDIRECT_PARAMS){const v=u.searchParams.get(p);if(!v)continue;let d=v;if(!/^https?:\/\//i.test(d)&&d.charAt(0)!=='/'){try{d=decodeURIComponent(v);}catch(e){}}
+if(/^https?:\/\//i.test(d)){next=d;break;}if(d.charAt(0)==='/'){next=new URL(d,u).href;break;}}
+if(!next)break;try{u=new URL(next);}catch(e){break;}}
+return u.href;}catch(e){return href;}}
+// Real articles can end in /URL too; a path alone is not a redirect.
+function wrappedURL(href){try{const u=new URL(href,location.href);return /^https?:$/.test(u.protocol)&&REDIRECT_PATH.test(u.pathname)&&REDIRECT_PARAMS.some(p=>!!u.searchParams.get(p));}catch(e){return false;}}
+// How many results the page TEXT claims vs. how many are in the DOM. This is
+// the lazy-load/pagination tell: a page that says 3,412 with 24 items loaded
+// answers a "show me the results" question with a fraction of them. Advisory
+// only — it never invents items, it reports what the page itself states.
+function pageClaim(){const t=(document.body&&document.body.innerText?document.body.innerText:'').slice(0,60000);
+const pats=[[/showing\s+[\d.,]+\s*[-\u2013\u2014]\s*[\d.,]+\s+of\s+([\d.,]+)/i,true],[/[\d.,]+\s+of\s+([\d.,]+)\s+(?:results?|items?|listings|products|entries|matches|hits)/i,true],[/(?:about|over|more than)\s+([\d.,]+)\s+(?:results?|items?|listings|products|entries|matches|hits)/i,false],[/([\d.,]+)\s+(?:results?|listings|products|entries|matches|hits)\b/i,false]];
+for(const pp of pats){const m=t.match(pp[0]);if(m){const v=parseInt(m[1].replace(/[.,]/g,''),10);if(v>=20&&v<1e9)return {total:v,paged:pp[1]};}}
+return null;}
 // Shopping field extraction (universal e-commerce enhancement).
 function rating(el){const a=el.querySelector('[aria-label*="star"],[aria-label*="rating"]');if(a){const al=a.getAttribute('aria-label')||'';const m=al.match(/(\d+\.?\d*)\s*out of\s*\d+/i)||al.match(/(\d+\.?\d*)/);if(m)return parseFloat(m[1]);}const r=el.querySelector('[data-testid*="rating"],[class*="rating"],[class*="star"],[data-hook*="rating"],i[class*="a-icon-star"],span[class*="a-icon-alt"]');if(r){const m=(r.innerText||'').match(/(\d+\.?\d*)/);if(m)return parseFloat(m[1]);}const t=txt(el);const tm=t.match(/(\d+\.?\d*)\s*(?:out of\s*5|\/5|stars?)/i);if(tm)return parseFloat(tm[1]);return null;}
 function reviews(el){const t=txt(el);let m=t.match(/(\d[\d,]*)\s*(?:global\s+)?(?:ratings?|reviews?)/i);if(m)return parseInt(m[1].replace(/,/g,''),10);m=t.match(/(\d[\d,]*)\s*(?:ratings?|reviews?)/i);if(m)return parseInt(m[1].replace(/,/g,''),10);m=t.match(/(\d[\d,]*)\+?\s*(?:bought|purchased|sold)/i);if(m)return parseInt(m[1].replace(/,/g,''),10);return null;}
@@ -49,7 +69,32 @@ function ghLabels(el){const ls=el.querySelectorAll('a[href*="label%3A"],a[data-n
 function ghNumber(el){const a=el.querySelector('a[data-testid="issue-pr-title-link"],a[href*="/issues/"],a[href*="/pull/"]');if(a){const m=(a.getAttribute('href')||'').match(/\/(?:issues|pull)\/(\d+)/);if(m)return parseInt(m[1],10);}const t=txt(el);const m=t.match(/#(\d+)/);if(m)return parseInt(m[1],10);return null;}
 function ghStatus(el){const oc=el.querySelector('svg[class*="octicon-issue-open"]');if(oc)return 'open';const occ=el.querySelector('svg[class*="octicon-issue-closed"],svg[class*="octicon-skip"]');if(occ)return 'closed';const t=txt(el);const m=t.match(/Status:\s*(\w+)/i);if(m)return m[1].toLowerCase();if(el.querySelector('[data-testid="open-issue"],[class*="open-issue"],[aria-label*="open"]'))return 'open';if(el.querySelector('[data-testid="closed-issue"],[class*="closed-issue"],[aria-label*="closed"]'))return 'closed';return null;}
 function isProductPage(){const b=document.body;if(!b)return false;const t=(b.innerText||'').toLowerCase();const hp=/[$€£¥₹]\s?\d/.test(t);const cb=document.querySelector('#add-to-cart-button,#buy-now-button,[data-testid*="add-to-cart"],[data-testid*="buy-now"],button[name*="cart"],input[name*="cart"],#add-to-cart,#buy-now');const hc=/add to cart|buy now|add to basket|add to bag|in winkelwagen|au panier/i.test(t);const u=location.href.toLowerCase();const pu=PROD_URL.test(u);const h1=document.querySelector('h1');const hh=h1&&h1.innerText.trim().length>5;return hp&&hh&&(pu||cb||hc);}
-function extractProduct(){const o={};const h1=document.querySelector('h1');const title=h1?h1.innerText.trim():document.title;if(title)o.title=title.slice(0,300);o.url=location.href;const pe=document.querySelector('#priceblock_ourprice,#priceblock_dealprice,.a-price .a-offscreen,[data-testid*="price"],[class*="price"]:not([class*="was"]):not([class*="original"]):not([class*="save"]),[id*="price"]:not([id*="was"]):not([id*="original"])');if(pe){const m=(pe.innerText||'').match(PRICE);if(m)o.price=m[0];}if(!o.price){const m=(document.body.innerText||'').match(PRICE);if(m)o.price=m[0];}const op=origPrice(document.body);if(op)o.original_price=op;const rt=rating(document.body);if(rt!==null)o.rating=rt;const rv=reviews(document.body);if(rv!==null)o.reviews=rv;const av=avail(document.body);if(av)o.availability=av;const img=document.querySelector('#landingImage,#imgBlkFront,[data-testid*="product-image"],.product-image img,img[class*="product"]:not([src*="logo"]):not([src*="icon"]):not([src*="sprite"])');if(img&&img.src){o.image=img.src;if(img.alt)o.image_alt=img.alt.slice(0,100);}const fs=[];const sec=document.querySelector('#feature-bullets,#productOverview_feature_div,#detailBullets_feature_div,[data-feature-name="productDescription"],#productDescription,#aplus,.product-facts-details,[data-testid="featureBullets"]')||(h1||pe||document.body).closest('section,div,main,[role="main"]')||document.body;if(sec){const bs=sec.querySelectorAll('li,[role="listitem"],span.a-list-item');for(const b of bs){const bt=(b.innerText||'').trim();if(bt.length>10&&bt.length<300&&fs.length<10&&!/add to cart|buy now|sign in|subscribe|follow|see more|show more/i.test(bt))fs.push(bt);}}if(fs.length>0)o.features=fs;return o;}
+function offerBox(){const b=document.querySelector('#add-to-cart-button,#buy-now-button,[data-testid*="add-to-cart"],[data-testid*="buy-now"],button[name*="cart"],input[name*="cart"],#add-to-cart,#buy-now');if(!b)return null;let p=b;for(let i=0;i<7&&p&&p!==document.body;i++){p=p.parentElement;if(!p)break;const t=txt(p);if(t.length<4000&&PRICE.test(t))return p;}return b.closest('form,section,main,[role="main"]');}
+function desc(el){if(!el||!el.tagName)return '';let s=el.tagName.toLowerCase();try{const id=el.getAttribute&&el.getAttribute('id');if(id&&id.length<=30)return s+'#'+id;const cl=(typeof el.className==='string'&&el.className.trim())?el.className.trim().split(/\s+/)[0]:'';if(cl&&cl.length<=24)s+='.'+cl;}catch(e){}return s;}
+function selVariant(){const out=[];try{for(const op of document.querySelectorAll('option:checked')){const t=txt(op);if(t&&t.length<=120)out.push(t);}}catch(e){}try{for(const e of document.querySelectorAll('[aria-selected="true"],[aria-checked="true"],[data-selected="true"]')){if(e.tagName==='OPTION')continue;if(e.closest('nav,[role="tablist"],header'))continue;const t=txt(e);if(t&&t.length>=2&&t.length<=120)out.push(t);}}catch(e){}return out;}
+function variantTable(needle){const nn=norm(needle);if(nn.length<2)return null;let tables=[];try{tables=[...document.querySelectorAll('table')].slice(0,5);}catch(e){return null;}for(const t of tables){const rows=[...t.querySelectorAll('tr')];if(rows.length<3)continue;const hdr=[...rows[0].querySelectorAll('th,td')].map(c=>norm(txt(c)));let j=-1,dup=false;for(let i=0;i<hdr.length;i++){if(hdr[i]&&(hdr[i].includes(nn)||nn.includes(hdr[i]))){if(j>=0){dup=true;break;}j=i;}}if(j<0||dup)continue;const specs=[];for(let r=1;r<rows.length&&specs.length<24;r++){const cs=[...rows[r].querySelectorAll('th,td')];if(cs.length<=j||!cs[j])continue;const k=txt(cs[0]).slice(0,80);const v=txt(cs[j]).slice(0,120);if(k)specs.push(k+': '+v);}if(specs.length>=2)return {column:txt(rows[0].querySelectorAll('th,td')[j]).slice(0,80),specs:specs};}return null;}
+function sellerOf(box){if(!box)return null;const pats=['#sellerProfileTriggerId','[data-testid*="seller"]','[class*="seller"]','[id*="seller"]','[class*="merchant"]','[data-testid*="merchant"]'];for(const p of pats){const e=box.querySelector(p);if(e){const t=txt(e).slice(0,80);if(t&&t.length>1)return t;}}const m=txt(box).match(/(?:sold by|seller)\s*:?\s*([^.;\n]{2,60})/i);return m?m[1].trim():null;}
+function deliveryOf(box){const b=box||document.body;const pats=['[data-testid*="delivery"]','[class*="delivery"]','[id*="delivery"]','[class*="shipping"]','[id*="shipping"]'];for(const p of pats){const e=b.querySelector(p);if(e){const t=txt(e).slice(0,120);if(t&&t.length>3)return t;}}const m=txt(b).match(/(deliver(?:y|s)? to[^.\n]{0,60}|ships? to[^.\n]{0,60}|cannot be shipped to[^.\n]{0,60}|does not ship to[^.\n]{0,60}|free (?:delivery|shipping)[^.\n]{0,40})/i);return m?m[1].trim():null;}
+function extractProduct(){const o={};const notes=[];const h1=document.querySelector('h1');const title=h1?h1.innerText.trim():document.title;if(title)o.title=title.slice(0,300);o.url=location.href;
+// Offer binding (G07): price first from the smallest ancestor of the buy
+// button that carries one - a document-wide first match misattributes
+// variant/related prices.
+const box=offerBox();
+const PRICE_SEL='#priceblock_ourprice,#priceblock_dealprice,.a-price .a-offscreen,[data-testid*="price"],[class*="price"]:not([class*="was"]):not([class*="original"]):not([class*="save"]),[id*="price"]:not([id*="was"]):not([id*="original"])';
+let pe=box?box.querySelector(PRICE_SEL):null;if(!pe)pe=document.querySelector(PRICE_SEL);
+if(pe){const m=(pe.innerText||'').match(PRICE);if(m){o.price=m[0];o.price_from=desc(pe);}}
+if(!o.price){const dead=[...document.querySelectorAll('del,s,[class*="was-price"],[class*="original-price"],[class*="list-price"],[style*="line-through"]')].map(e=>(e.innerText||'').trim()).filter(Boolean);const ms=[...(document.body.innerText||'').matchAll(new RegExp(PRICE.source,'g'))].map(mm=>mm[1]);const pick=ms.find(pp=>!dead.some(dd=>dd.includes(pp)));if(pick){o.price=pick;o.price_from='page text';o.price_confidence='text-fallback';}else if(ms.length){notes.push('only crossed-out prices found on the page');}}
+const op=origPrice(document.body);if(op)o.original_price=op;const rt=rating(document.body);if(rt!==null)o.rating=rt;const rv=reviews(document.body);if(rv!==null)o.reviews=rv;const av=avail(document.body);if(av)o.availability=av;const img=document.querySelector('#landingImage,#imgBlkFront,[data-testid*="product-image"],.product-image img,img[class*="product"]:not([src*="logo"]):not([src*="icon"]):not([src*="sprite"])');if(img&&img.src){o.image=img.src;if(img.alt)o.image_alt=img.alt.slice(0,100);}
+const fs=[];const sec=document.querySelector('#feature-bullets,#productOverview_feature_div,#detailBullets_feature_div,[data-feature-name="productDescription"],#productDescription,#aplus,.product-facts-details,[data-testid="featureBullets"]')||(h1||pe||document.body).closest('section,div,main,[role="main"]')||document.body;if(sec){const bs=sec.querySelectorAll('li,[role="listitem"],span.a-list-item');for(const b of bs){const bt=(b.innerText||'').trim();if(bt.length>10&&bt.length<300&&fs.length<10&&!/add to cart|buy now|sign in|subscribe|follow|see more|show more/i.test(bt))fs.push(bt);}}if(fs.length>0)o.features=fs;
+// Selected variant (single, unambiguous) + its spec-table column (G07):
+// the benchmark defect - a default 500GB variant's speed attributed to the
+// requested 2TB product. Multiple markers = ambiguity, reported as such.
+const vuniq=[];for(const sv of selVariant()){const nv=norm(sv);if(nv&&nv.length>1&&!vuniq.some(u=>norm(u)===nv))vuniq.push(sv);}
+if(vuniq.length===1){o.selected_variant=vuniq[0].slice(0,120);const vt=variantTable(vuniq[0]);if(vt){o.variant_column=vt.column;o.variant_specs=vt.specs;}}
+else if(vuniq.length>1){o.variants_ambiguous=vuniq.slice(0,4).map(s2=>s2.slice(0,80));notes.push('multiple selected markers - price/spec binding to one variant is unverified');}
+if(box){const se=sellerOf(box);if(se)o.seller=se;const dl=deliveryOf(box);if(dl)o.delivery=dl;o.offer_area=desc(box);}
+if(notes.length)o.binding_note=notes.join('; ');
+return o;}
 function isRepoPage(){if(location.hostname!=='github.com')return false;const p=location.pathname.split('/').filter(Boolean);if(p.length<2)return false;if(['search','trending','explore','login','signup','settings','notifications','pulls','issues','orgs','features','marketplace','pricing','about','customer-stories','sessions','collections','topics','sponsors','new','dashboard','stars','pull','commit'].includes(p[0]))return false;if(p.length===2)return true;if(p.length>2&&['tree','blob'].includes(p[2]))return true;return false;}
 function extractRepo(){const o={};const p=location.pathname.split('/').filter(Boolean);if(p.length>=2)o.title=p[0]+'/'+p[1];o.url=location.origin+'/'+p[0]+'/'+p[1];const og=document.querySelector('meta[property="og:description"]');const de=document.querySelector('p.f4,.BorderGrid-cell p,[itemprop="about"]');let dtx=og&&og.content?og.content.trim():(de?vtxt(de):'');if(dtx&&o.title&&dtx.endsWith(' - '+o.title))dtx=dtx.slice(0,dtx.length-o.title.length-3);if(dtx&&dtx.length>3)o.description=dtx.slice(0,300);const sc=document.querySelector('#repo-stars-counter-star');if(sc){const v=vtxt(sc).match(/[\d.,]+[KkMm]?/);if(v&&!isNaN(parseCount(v[0])))o.stars=parseCount(v[0]);}const fo=document.querySelector('#repo-network-counter');if(fo){const v=vtxt(fo).match(/[\d.,]+[KkMm]?/);if(v&&!isNaN(parseCount(v[0])))o.forks=parseCount(v[0]);}const lg=document.querySelector('[itemprop="programmingLanguage"]')||document.querySelector('a[href*="/search?l="]');if(lg){const t=vtxt(lg);if(t&&t.length<30)o.language=t;}const tp=[...document.querySelectorAll('a[href^="/topics/"]')].map(e=>vtxt(e)).filter(Boolean).slice(0,10);if(tp.length)o.topics=tp;return o;}
 const SKIP_TAGS=new Set(['STYLE','SCRIPT','HEAD','NOSCRIPT','SVG','TEMPLATE','LINK','META','BR','HR','PATH','DEFS','USE','G','RECT','CIRCLE','LINE','POLYGON','POLYLINE']);
@@ -62,7 +107,7 @@ const SKIP_TAGS=new Set(['STYLE','SCRIPT','HEAD','NOSCRIPT','SVG','TEMPLATE','LI
  // Post pages: hand off to the Rust comment sweep (reddit.rs) — it reads the
  // thread's own JSON endpoints and returns EVERY comment (collapsed replies
  // included) in one call. The DOM path below remains as the fallback.
- if(__POST_MARKER__&&isCp){var rbase=(location.pathname.match(/^(.*?\/comments\/[a-z0-9]+)/i)||[])[1];if(rbase){var rsort='confidence';var rsel=document.querySelector('[aria-selected=true],[aria-checked=true]');if(rsel){var rp=rsel;for(var ri=0;ri<6&&rp&&rp!==document.body;ri++){if(rp.tagName==='DATA'&&rp.getAttribute('value')){rsort=rp.getAttribute('value').toLowerCase();break;}rp=rp.parentElement;}}return JSON.stringify({container:'reddit-post-page',permalink:rbase,sort:rsort});}}
+ if(__POST_MARKER__&&isCp){var rbase=(location.pathname.match(/^(.*?\/comments\/[a-z0-9]+)/i)||[])[1];if(rbase){var rsort=new URLSearchParams(location.search).get('sort')||'confidence';var rsel=document.querySelector('[aria-selected=true],[aria-checked=true]');if(rsel){var rp=rsel;for(var ri=0;ri<6&&rp&&rp!==document.body;ri++){if(rp.tagName==='DATA'&&rp.getAttribute('value')){rsort=rp.getAttribute('value').toLowerCase();break;}rp=rp.parentElement;}}return JSON.stringify({container:'reddit-post-page',permalink:rbase,sort:rsort});}}
  // Search pages: fully client-rendered SDUI units (no `shreddit-post` ever
  // appears here), and the router swaps the results AFTER the url moves —
  // reading the mounted DOM is exactly the stale window. Hand off to the Rust
@@ -153,6 +198,9 @@ if(score>bestScore){bestScore=score;best=c;bestSig=s;}
 }
 if(!best){if(IS_GITHUB&&isRepoPage()){const r=extractRepo();if(Object.keys(r).length>1)return JSON.stringify({container:'github-repo',count:1,items:[r]});}return JSON.stringify({error:'no repeated list found',items:[]});}
 // Field extraction: clean, typed, deduplicated. No 'text' field.
+// P1 counters: redirect unwraps and paid placements are reported in the
+// envelope instead of silently reshaping the payload.
+let unwrapped=0,sponsored=0,unresolved=0;
 const items=[...best.children].filter(k=>k.nodeType===1&&sig(k)===bestSig).map(item=>{
 if(item.tagName==='SHREDDIT-AD-POST'||item.querySelector('shreddit-ad-post'))return {};
 const fullText=vtxt(item);const o={};
@@ -160,14 +208,14 @@ const fullText=vtxt(item);const o={};
 const h=item.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"]');
 let title=h?vtxt(h):'';
 const link=bestLink(item,title);
-if(link){const lt=vtxt(link);if(lt&&(!title||title.length<10||lt.length>title.length*1.5))title=lt.slice(0,200);}
+if(link){const lt=vtxt(link);if(lt&&(!title||(!h&&title.length<10)))title=lt.slice(0,200);}
 if(!title){const sentence=fullText.split(/\.|!|\?/)[0];title=(sentence&&sentence.length>10?sentence:fullText).slice(0,200);}
 // Numeric/unit-like fragments ("2 units", "3 beds") are not titles.
 if(title&&/^\s*[\d.,]+\s*(units?|beds?|baths?|ba|bd|mi|miles?|sq\.?\s?ft|sqft|acres?)?\s*$/i.test(title)){const lt2=fullText.replace(/\s+/g,' ').trim();if(lt2.length>title.length+6)title=lt2.slice(0,200);}
 // A price glued into the title (listing-card text) is a field, not a name.
 if(title){const pi=title.search(PRICE);if(pi>=10)title=title.slice(0,pi).trim();}
 if(title)o.title=title.slice(0,200);
-if(link)o.url=link.href;
+if(link){const cu=canonicalURL(link.href);if(cu!==link.href)unwrapped++;o.url=cu;if(wrappedURL(cu)){o.url_wrapped=true;unresolved++;}}
 // Image.
 const img=item.querySelector('img[src]');
 if(img){o.image=img.src;if(img.alt)o.image_alt=img.alt.slice(0,100);}
@@ -180,18 +228,29 @@ const nonTitle=fullText.slice((title||'').length);
 const dt=(nonTitle.match(DATE)||[])[0];
 if(dt)o.date=dt;
 // Description: non-link, non-heading text. Only if different from title.
-const clone=item.cloneNode(true);
-clone.querySelectorAll('a,script,style,noscript,svg').forEach(e=>e.remove());
-const hd=clone.querySelector('h1,h2,h3,h4,h5,h6');
-if(hd)hd.remove();
-const desc=(clone.innerText||'').replace(/\s+/g,' ').trim();
-if(desc&&desc.length>15){const dn=norm(desc),tn=norm(title||'');if(dn&&!tn.includes(dn)&&!dn.includes(tn))o.description=desc.slice(0,300);}
+const parts=[];let scanned=0;
+const readDesc=n=>{if(++scanned>20000)return;if(n.nodeType===3){parts.push(n.textContent);return;}if(n.nodeType!==1)return;if(n.matches('a,h1,h2,h3,h4,h5,h6,script,style,noscript,svg,[hidden]'))return;const cs=n.ownerDocument.defaultView.getComputedStyle(n);if(cs.display==='none'||cs.visibility==='hidden'||cs.opacity==='0')return;for(const ch of n.childNodes)readDesc(ch);if(n.shadowRoot)for(const ch of n.shadowRoot.childNodes)readDesc(ch);};
+readDesc(item);
+const description=parts.join(' ').replace(/\s+/g,' ').trim();
+if(description&&description.length>15){const dn=norm(description),tn=norm(title||'');if(dn&&!tn.includes(dn)&&!dn.includes(tn))o.description=description.slice(0,300);}
 // Site-specific fields.
 if(IS_REDDIT){var sp=item.tagName==='SHREDDIT-POST'?item:item.querySelector('shreddit-post');var sc0=item.tagName==='SHREDDIT-COMMENT'?item:item.querySelector('shreddit-comment');if(sp){var sps=sp.getAttribute('score');if(sps)o.fuzzed_score=parseInt(sps,10);var spc=sp.getAttribute('comment-count');if(spc)o.comments=parseInt(spc,10);var spa=sp.getAttribute('author');if(spa)o.author='u/'+spa;var spsub=sp.getAttribute('subreddit-prefixed-name');if(spsub)o.subreddit=spsub;var spt=sp.getAttribute('post-title');if(spt)o.title=spt.slice(0,200);var spl=sp.getAttribute('permalink');if(spl)o.url='https://www.reddit.com'+(spl.charAt(0)==='/'?spl:'/'+spl);var spts=sp.getAttribute('created-timestamp');if(spts)o.date=spts.slice(0,16).replace('T',' ');}else if(sc0){var sca=sc0.getAttribute('author');if(sca)o.author='u/'+sca;var scs=sc0.getAttribute('score');if(scs!=='')o.fuzzed_score=parseInt(scs,10);var scd=sc0.getAttribute('depth');if(scd!=='')o.depth=parseInt(scd,10);var scb=sc0.querySelector('[slot="comment"]');var sct=scb?vtxt(scb).slice(0,400):'';if(sct)o.text=sct;}else if(item.classList&&item.classList.contains('thing')){var g2=n=>item.getAttribute(n)||'';var gs2=g2('data-score');if(gs2)o.score=parseInt(gs2,10);var gc2=g2('data-comments-count');if(gc2)o.comments=parseInt(gc2,10);var ga2=g2('data-author');if(ga2)o.author='u/'+ga2;var gsb2=g2('data-subreddit');if(gsb2)o.subreddit='r/'+gsb2;var gp2=g2('data-permalink');if(gp2)o.url='https://www.reddit.com'+gp2;var gtl=item.querySelector('a.title');if(gtl)o.title=vtxt(gtl).slice(0,200);}else{var rsc=rdScore(item);if(rsc!==null)o.fuzzed_score=rsc;var rcm=rdComments(item);if(rcm!==null)o.comments=rcm;var rau=rdAuthor(item);if(rau)o.author=rau;var rsu=rdSub(item);if(rsu)o.subreddit=rsu;var rcl=item.querySelector('a[href*="/comments/"]');if(rcl){o.url=rcl.href;var rclt=vtxt(rcl);if(rclt&&rclt.length>5&&rclt.length<300)o.title=rclt.slice(0,200);}}}
 else if(IS_GITHUB){const st=ghStars(item);if(st!==null)o.stars=st;const fk=ghForks(item);if(fk!==null)o.forks=fk;const sd=ghStarsToday(item);if(sd!==null)o.stars_today=sd;const lb=ghLabels(item);if(lb.length>0)o.labels=lb;const nm=ghNumber(item);if(nm!==null)o.number=nm;const gs=ghStatus(item);if(gs)o.status=gs;}
-else{const rt=rating(item);if(rt!==null)o.rating=rt;const rv=reviews(item);if(rv!==null)o.reviews=rv;const av=avail(item);if(av)o.availability=av;const op=origPrice(item);if(op)o.original_price=op;if(isSponsored(item))o.sponsored=true;}
+else{const rt=rating(item);if(rt!==null)o.rating=rt;const rv=reviews(item);if(rv!==null)o.reviews=rv;const av=avail(item);if(av)o.availability=av;const op=origPrice(item);if(op)o.original_price=op;if(isSponsored(item)){o.sponsored=true;sponsored++;}}
 return o;
 }).filter(o=>Object.keys(o).length>0).slice(0,__LIMIT__);
-const lowConf=items.length>0&&items.every(o=>!o.url)&&(items.reduce((a,o)=>a+(o.title||'').length,0)/items.length)<25;
-return JSON.stringify(lowConf?{container:best.tagName.toLowerCase(),count:items.length,items,confidence:'low',note:'no clear list found — items may be page fragments; verify before relying on them'}:{container:best.tagName.toLowerCase(),count:items.length,items});
+// Dedupe: the same item is common on listing pages (variant cards, an ad
+// resurfacing an organic result). Key by canonical URL, else by normalized
+// title; keyless items stay (they have nothing to collide with).
+const uniq=[];const seen=new Set();let dupes=0;
+for(const it of items){const key=it.url?it.url.split('#')[0]:(it.title?'t:'+norm(it.title):'i:'+uniq.length);if(key&&seen.has(key)){dupes++;continue;}if(key)seen.add(key);uniq.push(it);}
+const lowConf=uniq.length>0&&uniq.every(o=>!o.url)&&(uniq.reduce((a,o)=>a+(o.title||'').length,0)/uniq.length)<25;
+const out={container:best.tagName.toLowerCase(),count:uniq.length,items:uniq};
+if(sponsored>0)out.sponsored=sponsored;
+if(dupes>0)out.duplicates_removed=dupes;
+if(unwrapped>0)out.redirects_unwrapped=unwrapped;if(unresolved>0){out.redirects_unresolved=unresolved;out.note=unresolved+' unresolved redirect URL(s); destination is opaque - follow the link and read its final URL';}
+const claim=pageClaim();
+if(claim){out.page_total=claim.total;if(claim.total>uniq.length){out.partial=true;if(claim.paged)out.paged=true;}}
+if(lowConf){out.confidence='low';out.note='no clear list found — items may be page fragments; verify before relying on them';}
+return JSON.stringify(out);
 })()

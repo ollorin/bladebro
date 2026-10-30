@@ -1,0 +1,97 @@
+09-02 kill -9 / crash experiments (real bladebro daemon, real Chrome 154 headless, real ffmpeg, macOS arm64)
+Script: scratchpad k9.sh (not committed; 09-03 adds tools/record_sidecar/scenarios/exit_live.sh). Safety: scratch BLADE_HOME per
+scenario (mktemp), BLADE_HEADLESS=1 BLADE_RECORD=1 BLADE_NO_UPDATE_CHECK=1, fixtures on 127.0.0.1:18766 only (tools/record_sidecar/fixtures),
+only pids found under the scratch home were signalled. Binary: target/release/bladebro at the 09-02 tree.
+
+Unit-level companion: cargo test --release --lib record::encoder::real parent_death_eof_finalizes
+  -> real ffmpeg with the exact Encoder argv, 20 JPEG frames, stdin dropped (no finish): "ffmpeg exited exit status: 0 61 ms after EOF", ffprobe duration > 0, full decode exit 0.
+
+Harness note: an earlier run of this script stopped the fixture server between scenarios (bb_cleanup killed it), so scenarios B and C
+recorded a chrome-error page; the numbers below are from the fixed script (fixture stays up). The "browse after" chrome-error seen once
+in that earlier run was the dead fixture, reproduced identically with recording OFF.
+
+=== A: kill -9 of the daemon mid-recording
+-- scratch BLADE_HOME=<tmp>/bbk9.qX3by0rNP0
+record-start: recording started: <tmp>/bbk9.qX3by0rNP0/recordings/k9a-20261023T093715Z-c890a0.webm (tab 0C19919BE52B617226FE680EC31D5C8B); first frame not awaited. record-stop saves it.
+daemon pid=19054 ffmpeg pid(s)=19075 chrome main=19055
+19054     1 19054 /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro daemon
+19075 19054 19075 /Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg -hide_banner -nostats -loglevel error -y -f
+kill -9 19054 sent
+ffmpeg exit ms after kill -9: 157 (alive=0)
+-rw-------@ 1 sokolov.st@brainrocket.com  staff  37866 Oct 23 11:37 <tmp>/bbk9.qX3by0rNP0/recordings/k9a-20261023T093715Z-c890a0.webm
+3.000000
+full decode exit=0
+leftovers right after (ffmpeg/chrome/bladebro under scratch home):
+19055     1 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --disable-extensions --no-first-run --disable-dev-shm-usage --disab
+19059 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19060 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19061 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19063 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19066 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19067 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19069 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19095 19055 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+-- starting a new daemon on the same home (the reaper runs on launch)
+[bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+outcome: navigated → http://127.0.0.1:18766/idle.html
+Page: 127.0.0.1:18766/idle.html | phase: ready | 0 actionable
+leftovers after new daemon launch:
+19171 19140 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --disable-extensions --no-first-run --disable-dev-shm-usage --disab
+19177 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19178 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19179 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19181 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19183 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19184 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+19185 19171 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/154.0.8037.58/Helpers/Google Chro
+ffmpeg after: 
+record-stop on the new daemon: ✗ error: no active recording; record-start <name> first.
+leftovers after stop: []
+=== B: kill -9 of Chrome mid-recording
+-- scratch BLADE_HOME=<tmp>/bbk9.gn0vf8VGk1
+record-start: recording started: <tmp>/bbk9.gn0vf8VGk1/recordings/k9b-20261023T093724Z-9af950.webm (tab 58B40824BC248F9706F1A44D7C1FCD3F); first frame not awaited. record-stop saves it.
+chrome main=19221 ffmpeg=19243
+ffmpeg exit ms after Chrome kill -9 (no agent call): 1041 (alive=0)
+-rw-------@ 1 sokolov.st@brainrocket.com  staff  42597 Oct 23 11:37 <tmp>/bbk9.gn0vf8VGk1/recordings/k9b-20261023T093724Z-9af950.webm
+3.900000
+full decode exit=0
+record-stop (rc, text):
+✗ error: previous recording interrupted: browser connection lost at 4.0 s; partial file kept: <tmp>/bbk9.gn0vf8VGk1/recordings/k9b-20261023T093724Z-9af950.webm. recording not clean: browser connection lost at 3.7 s; capture interrupted: the recorder's CDP connection closed after 3 s (tab closed or browser gone); 187 frames received before that; <tmp>/bbk9.gn0vf8VGk1/recordings/k9b-20261023T093724Z-9af950.webm (bytes 42597, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 58B40824BC2
+rc=1
+browse after: outcome: navigated → http://127.0.0.1:18766/idle.html
+Page: 127.0.0.1:18766/idle.html | phase: ready | 0 actionable
+record-start again: recording started: <tmp>/bbk9.gn0vf8VGk1/recordings/k9b2-20261023T093730Z-352d29.webm (tab B97C0677D2BADC98EAB56543AA066C4E); first frame not awaited
+record-stop: recording saved: <tmp>/bbk9.gn0vf8VGk1/recordings/k9b2-20261023T093730Z-352d29.webm (bytes 9370, duration 2.0 s, frames 20, dropped 0, segments [0.0 
+leftovers after stop: [] ffmpeg: []
+=== C: kill -9 of ffmpeg mid-recording
+-- scratch BLADE_HOME=<tmp>/bbk9.A8Rz03UdSI
+record-start: recording started: <tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm (tab FD4AF263BE2C1C60BE6FCAFD7F8D731A); first frame not awaited. record-stop saves it.
+ffmpeg=19398
+ffmpeg after: []
+-rw-------@ 1 sokolov.st@brainrocket.com  staff  0 Oct 23 11:37 <tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm
+[matroska,webm @ 0xb7903c000] EBML header parsing failed
+<tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm: Invalid data found when processing input
+[in#0 @ 0x8acc20000] EBML header parsing failed
+[in#0 @ 0x8acc1c000] Error opening input: Invalid data found when processing input
+Error opening input file <tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm.
+Error opening input files: Invalid data found when processing input
+full decode exit=183
+record-stop (rc, text):
+✗ error: previous recording interrupted: encoder exited at 4.0 s; file is empty, nothing playable: <tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm. recording not clean: recording failed: ffmpeg exited with signal: 9 (SIGKILL) after 30 frames; <tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm may be incomplete and was not verified. ffmpeg said: nothing; <tmp>/bbk9.A8Rz03UdSI/recordings/k9c-20261023T093735Z-69d180.webm (bytes 0, duration 3.0 s, frames 30, dropped 9, segments [0.0 s tab FD4AF263BE2C1C60BE6FCA
+rc=1
+record-start again: recording started: <tmp>/bbk9.A8Rz03UdSI/recordings/k9c2-20261023T093742Z-c39a41.webm (tab FD4AF263BE2C1C60BE6FCAFD7F8D731A); first frame not awaited
+record-stop: recording saved: <tmp>/bbk9.A8Rz03UdSI/recordings/k9c2-20261023T093742Z-c39a41.webm (bytes 30517, duration 2.1 s, frames 21, dropped 0, segments [0.0
+leftovers after stop: []
+
+
+CONCLUSION
+A kill -9 of the daemon mid-recording: ffmpeg exit ms = 157 after the kill (second run 94-97 ms); ffprobe duration 3.000000 s;
+   full decode exit 0; ffmpeg left: 0. The orphaned scratch Chrome (parent gone) stays until the next launch: the next daemon on the same
+   home reaped it (ps: only the new Chrome). The new session has no record of the old recording (record-stop: "no active recording").
+   No sweeper action was needed: ffmpeg finalized itself on stdin EOF.
+B kill -9 of Chrome: ffmpeg gone 1041 ms after the kill with no agent call (follower: 3 failed tab-list reads, then guard tick); file decodes in full
+   (full decode exit 0, 3.9 s). record-stop text: "previous recording interrupted: browser connection lost at 4.0 s; partial file kept: <path>. recording not clean: ..." (rc=1).
+   Browsing afterwards works (nav to the fixture OK), record-start again works and its stop says "recording saved". Leftovers: 0.
+C kill -9 of ffmpeg: guard noticed within its 2 s tick; text "previous recording interrupted: encoder exited at 4.0 s; file is empty, nothing playable: <path>. recording not clean: recording failed: ffmpeg exited with signal: 9 (SIGKILL) after 30 frames; ..." (rc=1).
+   The 0-byte file is expected: VP9 realtime output is written at finalize and a SIGKILLed ffmpeg never writes it; full decode exit 183 (EBML header parsing failed) on that file.
+   record-start again works. Leftovers: 0.

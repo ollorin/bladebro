@@ -18,10 +18,11 @@ use super::SessionProfile;
 /// bladebro died (SIGKILL, OOM, panic), the next launch
 /// cleans up after it.
 pub fn reap_orphans() {
+    crate::record::orphans::sweep(); // fork hook (record): see .planning/HOOKS.md
     reap_orphans_at(&platform::blade_dir());
 
     // Stale Xvfb locks + orphan Xvfb processes (Linux).
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         reap_xvfb();
     }
@@ -200,7 +201,7 @@ fn read_singleton_pid(dir: &Path) -> Option<u32> {
 /// Does process `pid` have `dir` in its command line?
 /// Guards against killing a recycled pid.
 fn process_uses_dir(pid: u32, dir: &Path) -> bool {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         std::fs::read_to_string(format!("/proc/{pid}/cmdline"))
             .map(|c| c.contains(&dir.display().to_string()))
@@ -225,14 +226,15 @@ fn process_uses_dir(pid: u32, dir: &Path) -> bool {
     }
 }
 
-/// Only a dead Bladebro display claim authorizes cleanup. PID 1 also
-/// parents system services, so an orphaned Xvfb alone proves no ownership.
-#[cfg(target_os = "linux")]
+/// Only a dead Bladebro display claim authorizes cleanup. Orphanhood alone
+/// proves no ownership, and neither does the executable: the claim, the exact
+/// Xvfb cmdline and the display number must all agree.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn reap_xvfb() {
     reap_xvfb_at(Path::new("/tmp"));
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn reap_xvfb_at(tmp: &Path) {
     for n in 99..200 {
         let claim = tmp.join(format!(".blade-x{n}-claim"));
@@ -242,6 +244,15 @@ fn reap_xvfb_at(tmp: &Path) {
         let Some(_) = owner.filter(|&pid| pid > 1 && !platform::process_alive(pid)) else {
             continue;
         };
+        // The sibling Xauthority file (if any) dies with its claim's owner.
+        if let Ok(rd) = std::fs::read_dir(tmp) {
+            let prefix = format!(".blade-x{n}-xauth-");
+            for e in rd.flatten() {
+                if e.file_name().to_string_lossy().starts_with(&prefix) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
         let lock = tmp.join(format!(".X{n}-lock"));
         let content = match std::fs::read_to_string(&lock) {
             Ok(c) => c,
@@ -255,9 +266,9 @@ fn reap_xvfb_at(tmp: &Path) {
             Err(_) => continue,
         };
         if platform::process_alive(pid) {
-            // Alive — but orphaned? ppid 1 means the owning
-            // bladebro died and init adopted it.
-            if proc_ppid(pid) == 1 && proc_is_xvfb_on_display(pid, n) {
+            // Alive — but orphaned? The owner died and the system manager
+            // adopted it (see `is_orphaned`).
+            if is_orphaned(pid) && proc_is_xvfb_on_display(pid, n) {
                 platform::kill_process_force(pid);
                 let _ = std::fs::remove_file(&lock);
                 eprintln!("[bladebro] reaped orphaned Xvfb :{n} (pid {pid})");
@@ -276,8 +287,37 @@ fn reap_xvfb_at(tmp: &Path) {
     }
 }
 
+/// Is this process an orphan — adopted by the system manager because the
+/// process that owned it died?
+///
+/// On a systemd host an orphan is reparented to the *user* manager
+/// (`systemd --user`), NOT to PID 1, so a bare `ppid == 1` test misses every
+/// orphan on Arch/Ubuntu/Fedora-class systems. Found live 2026-10-13 on Arch:
+/// a deliberately orphaned Xvfb had PPID 1080 = `/usr/lib/systemd/systemd
+/// --user`, so `reap_xvfb` removed the claim and left the display running
+/// forever (the unit test failed on the same assumption).
+///
+/// Conservative by construction: `1` (classic init adoption) or a parent whose
+/// comm is `systemd` (the manager). A live owner is named `bladebro`,
+/// `chromium` or `Xvfb` — never the manager — and an unreadable parent means
+/// NOT orphaned.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn is_orphaned(pid: u32) -> bool {
+    let ppid = proc_ppid(pid);
+    if ppid == 1 {
+        return true;
+    }
+    if ppid <= 1 {
+        // Unreadable / unparseable / self-parented: never authorize a kill.
+        return false;
+    }
+    std::fs::read_to_string(format!("/proc/{ppid}/comm"))
+        .map(|c| c.trim() == "systemd")
+        .unwrap_or(false)
+}
+
 /// Parent pid of a process (0/1 = orphaned or init).
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn proc_ppid(pid: u32) -> u32 {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
     // Format: pid (comm) state ppid ... — comm can contain
@@ -290,14 +330,14 @@ fn proc_ppid(pid: u32) -> u32 {
 }
 
 /// Is this pid an Xvfb process?
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn proc_is_xvfb_on_display(pid: u32, display: u16) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/cmdline"))
         .map(|c| xvfb_cmdline_matches(&c, display))
         .unwrap_or(false)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn xvfb_cmdline_matches(cmdline: &str, display: u16) -> bool {
     let mut args = cmdline.split('\0');
     args.next()
@@ -308,7 +348,7 @@ fn xvfb_cmdline_matches(cmdline: &str, display: u16) -> bool {
 
 /// Kill any Xvfb process serving display `:<n>` whose parent
 /// is dead (orphaned). Identified via /proc cmdline scan.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn kill_xvfb_on_display(display: u16) {
     let procs = match std::fs::read_dir("/proc") {
         Ok(d) => d,
@@ -326,7 +366,7 @@ fn kill_xvfb_on_display(display: u16) {
         if !xvfb_cmdline_matches(&cmdline, display) {
             continue;
         }
-        if proc_ppid(pid) == 1 {
+        if is_orphaned(pid) {
             platform::kill_process_force(pid);
         }
     }
@@ -382,10 +422,10 @@ mod xvfb_tests {
         std::fs::create_dir_all(&root).unwrap();
         let display = OrphanDisplay { pid, number, root };
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !Path::new(&format!("/tmp/.X11-unix/X{number}")).exists() || proc_ppid(pid) != 1 {
+        while !Path::new(&format!("/tmp/.X11-unix/X{number}")).exists() || !is_orphaned(pid) {
             assert!(
                 Instant::now() < deadline,
-                "test Xvfb must start and be adopted by PID 1"
+                "test Xvfb must start and be adopted by the system manager"
             );
             std::thread::sleep(Duration::from_millis(25));
         }
@@ -399,7 +439,8 @@ mod xvfb_tests {
 
     #[test]
     fn xvfb_identity_requires_exact_executable_and_display_arguments() {
-        assert!(xvfb_cmdline_matches("/usr/bin/Xvfb\0:99\0-screen\00\0", 99));
+        let cmdline = format!("{}\0", ["/usr/bin/Xvfb", ":99", "-screen", "0"].join("\0"));
+        assert!(xvfb_cmdline_matches(&cmdline, 99));
         assert!(!xvfb_cmdline_matches("/usr/bin/Xvfb\0:199\0", 19));
         assert!(!xvfb_cmdline_matches("/usr/bin/sh\0Xvfb\0:99\0", 99));
         assert!(!xvfb_cmdline_matches(

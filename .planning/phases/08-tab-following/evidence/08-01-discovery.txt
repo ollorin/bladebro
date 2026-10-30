@@ -1,0 +1,262 @@
+# discovery 2026-10-22T13:48:08Z headless chrome: bladebro 4.6.5
+== (i) switch / open-tab
+$ state record-start d
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/d-20261022T134809Z-267608.webm (tab 89DF15FAD7736B0319C7FC7939AD1AB2); first frame not awaited. record-stop saves it.
+-- list after record-start (A recorded)
+   #0 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #1 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #2 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #3 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #4 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+* 89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+(* = current tab; switch-tab <target_id> to change)
+$ state open-tab b.html
+✓ opened + switched to tab 574CB975CA8DA5BA69A131C43F50E473
+Page: 127.0.0.1:8791/b.html | phase: ready | 1 actionable
+title: B
+e1 button "Toggle"
+
+-- list immediately after open-tab
+   #0 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #1 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #2 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #3 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #4 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #5 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+-- list +1s
+   #0 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #1 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #2 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #3 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #4 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #5 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+  89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+* 574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+(* = current tab; switch-tab <target_id> to change)
+A id=89DF15FAD7736B0319C7FC7939AD1AB2
+$ state switch-tab A
+✓ switched to tab 89DF15FAD7736B0319C7FC7939AD1AB2
+Page: 127.0.0.1:8791/a.html | phase: ready | 1 actionable
+title: A
+e1 button "Toggle"
+
+-- list immediately after switch-tab (t0)
+   #0 7E08520B other attached=None about:blank
+   #1 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #2 89CB8634 other attached=None 
+   #3 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #4 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #5 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #6 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #7 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+-- list t0+50ms
+   #0 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #1 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #2 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #3 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #4 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #5 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+-- list t0+100ms
+   #0 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #1 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #2 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #3 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #4 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #5 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+* 89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+  574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+(* = current tab; switch-tab <target_id> to change)
+$ record-stop
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/d-20261022T134809Z-267608.webm (bytes 11817, duration 3.2 s, frames 32, dropped 0, segments [0.0 s tab 89DF15FAD7736B0319C7FC7939AD1AB2], captured 18)
+== (ii) popup
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/p-20261022T134813Z-152ea9.webm (tab 89DF15FAD7736B0319C7FC7939AD1AB2); first frame not awaited. record-stop saves it.
+-- before click
+   #0 89DF15FA page  attached=None http://127.0.0.1:8791/popup.html
+   #1 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #2 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #3 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #4 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #5 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+$ act click link
+outcome: new tab opened — C (tab 80E516CFFADDB1590DF19164227821A8)
+Page: 127.0.0.1:8791/popup.html | phase: ready | 2 actionable
+title: Popup
+  e2 link "open c" → http://127.0.0.1:8791/c.html
+  e1 button "window"
+
+-- after click
+   #0 89DF15FA page  attached=None http://127.0.0.1:8791/popup.html
+   #1 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #2 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #3 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #4 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #5 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #6 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+-- after click +300ms
+   #0 89DF15FA page  attached=None http://127.0.0.1:8791/popup.html
+   #1 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #2 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #3 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #4 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #5 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #6 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+  574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+  80E516CFFADDB1590DF19164227821A8  C — http://127.0.0.1:8791/c.html
+* 89DF15FAD7736B0319C7FC7939AD1AB2  Popup — http://127.0.0.1:8791/popup.html
+(* = current tab; switch-tab <target_id> to change)
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/p-20261022T134813Z-152ea9.webm (bytes 13634, duration 3.0 s, frames 30, dropped 0, segments [0.0 s tab 89DF15FAD7736B0319C7FC7939AD1AB2], captured 3)
+$ act click button (window.open)
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/p2-20261022T134817Z-6ff362.webm (tab 89DF15FAD7736B0319C7FC7939AD1AB2); first frame not awaited. record-stop saves it.
+outcome: new tab opened — C (tab F3776270B551A4BB31E1EEAA5D0BBC1E)
+Page: 127.0.0.1:8791/popup.html | phase: ready | 2 actionable
+title: Popup
+  e2 link "open c" → http://127.0.0.1:8791/c.html
+  e1 button "window"
+
+-- after button click
+   #0 8D3D38E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #1 D1E3A1E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #2 F3776270 page  attached=None http://127.0.0.1:8791/c.html
+   #3 89DF15FA page  attached=None http://127.0.0.1:8791/popup.html
+   #4 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #5 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #6 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #7 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #8 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #9 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+-- +300ms
+   #0 8D3D38E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #1 D1E3A1E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #2 F3776270 page  attached=None http://127.0.0.1:8791/c.html
+   #3 89DF15FA page  attached=None http://127.0.0.1:8791/popup.html
+   #4 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #5 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #6 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #7 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #8 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #9 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+  574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+  F3776270B551A4BB31E1EEAA5D0BBC1E  C — http://127.0.0.1:8791/c.html
+  80E516CFFADDB1590DF19164227821A8  C — http://127.0.0.1:8791/c.html
+* 89DF15FAD7736B0319C7FC7939AD1AB2  Popup — http://127.0.0.1:8791/popup.html
+(* = current tab; switch-tab <target_id> to change)
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/p2-20261022T134817Z-6ff362.webm (bytes 11745, duration 2.3 s, frames 23, dropped 0, segments [0.0 s tab 89DF15FAD7736B0319C7FC7939AD1AB2], captured 4)
+== (iii) cross-origin nav on the recorded tab
+  574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+* 89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+  F3776270B551A4BB31E1EEAA5D0BBC1E  C — http://127.0.0.1:8791/c.html
+  80E516CFFADDB1590DF19164227821A8  C — http://127.0.0.1:8791/c.html
+(* = current tab; switch-tab <target_id> to change)
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/x-20261022T134820Z-676093.webm (tab 89DF15FAD7736B0319C7FC7939AD1AB2); first frame not awaited. record-stop saves it.
+-- before xorigin nav
+   #0 8D3D38E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #1 D1E3A1E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #2 F3776270 page  attached=None http://127.0.0.1:8791/c.html
+   #3 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #4 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #5 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #6 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #7 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #8 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #9 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+$ nav http://localhost:8791/b.html
+
+--- content ---
+Tab B Toggle idle
+-- after xorigin nav
+   #0 8D3D38E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #1 D1E3A1E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #2 F3776270 page  attached=None http://127.0.0.1:8791/c.html
+   #3 89DF15FA page  attached=None http://localhost:8791/b.html
+   #4 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #5 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #6 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #7 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #8 8F8E0A2D background_page attached=None chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html
+   #9 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+-- +3s
+   #0 8D3D38E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #1 D1E3A1E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #2 F3776270 page  attached=None http://127.0.0.1:8791/c.html
+   #3 89DF15FA page  attached=None http://localhost:8791/b.html
+   #4 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #5 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #6 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #7 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #8 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/x-20261022T134820Z-676093.webm (bytes 37054, duration 4.7 s, frames 47, dropped 0, segments [0.0 s tab 89DF15FAD7736B0319C7FC7939AD1AB2])
+file: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/x-20261022T134820Z-676093.webm
+width=1280
+height=720
+nb_read_frames=47
+duration=4.700000
+   color at 0.5s:  251 0 0 
+   color at 2.5s:  2 1 254 
+   color at 4.5s:  2 1 254 
+== (iv) close recorded tab
+✓ opened + switched to tab 99F2086A8A442E0E3CDC690CC594E83C
+Page: 127.0.0.1:8791/b.html | phase: ready | 1 actionable
+title: B
+e1 button "Toggle"
+
+  574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+  89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+  F3776270B551A4BB31E1EEAA5D0BBC1E  C — http://127.0.0.1:8791/c.html
+  80E516CFFADDB1590DF19164227821A8  C — http://127.0.0.1:8791/c.html
+* 99F2086A8A442E0E3CDC690CC594E83C  B — http://127.0.0.1:8791/b.html
+(* = current tab; switch-tab <target_id> to change)
+$ record-start (recorded = b, agent on b)
+recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/c-20261022T134826Z-7a6184.webm (tab 99F2086A8A442E0E3CDC690CC594E83C); first frame not awaited. record-stop saves it.
+current tab: 99F2086A8A442E0E3CDC690CC594E83C
+  574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+  89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+  F3776270B551A4BB31E1EEAA5D0BBC1E  C — http://127.0.0.1:8791/c.html
+  80E516CFFADDB1590DF19164227821A8  C — http://127.0.0.1:8791/c.html
+* 99F2086A8A442E0E3CDC690CC594E83C  B — http://127.0.0.1:8791/b.html
+(* = current tab; switch-tab <target_id> to change)
+$ close-tab current
+✓ closed tab 99F2086A8A442E0E3CDC690CC594E83C (was current; switched to 574CB975CA8DA5BA69A131C43F50E473)
+Page: 127.0.0.1:8791/b.html | phase: ready | 1 actionable
+title: B
+e1 button "Toggle"
+
+-- list after close
+   #0 574CB975 page  attached=None http://127.0.0.1:8791/b.html
+   #1 8D3D38E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #2 D1E3A1E4 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #3 F3776270 page  attached=None http://127.0.0.1:8791/c.html
+   #4 89DF15FA page  attached=None http://127.0.0.1:8791/a.html
+   #5 80E516CF page  attached=None http://127.0.0.1:8791/c.html
+   #6 D79B3D96 browser_ui attached=None chrome://omnibox-popup.top-chrome/
+   #7 DBCDEFF2 browser_ui attached=None chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+   #8 869C001B service_worker attached=None chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js
+* 574CB975CA8DA5BA69A131C43F50E473  B — http://127.0.0.1:8791/b.html
+  89DF15FAD7736B0319C7FC7939AD1AB2  A — http://127.0.0.1:8791/a.html
+  F3776270B551A4BB31E1EEAA5D0BBC1E  C — http://127.0.0.1:8791/c.html
+  80E516CFFADDB1590DF19164227821A8  C — http://127.0.0.1:8791/c.html
+(* = current tab; switch-tab <target_id> to change)
+$ record-stop
+✗ error: recording not clean: capture interrupted: the recorder's CDP connection closed after 1 s (tab closed or browser gone); 68 frames received before that; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.ulmV7WpSbS/recordings/c-20261022T134826Z-7a6184.webm (bytes 10896, duration 3.2 s, frames 32, dropped 0, segments [0.0 s tab 99F2086A8A442E0E3CDC690CC594E83C], captured 13). Note: agent is now on tab 574CB975CA8DA5BA69A131C43F50E473; the video shows only tab 99F2086A8A442E0E3CDC690CC594E83C (tab following is not implemented yet)
+daemon stopped
+
+== second probe (raw /json/list entries, recorder connected, headless, port 8792)
+{"description": "", "id": "CE7E69CE...", "title": "Popup", "type": "page", "url": ".../popup.html"}    <- no "attached" key at all
+after window.open(...,'width=500,height=400'): popup 1C6F1172 (c.html) is listed BEFORE the opener CE7E69CE and stays first
+(the agent's Page re-activates the opener, `state tabs` still marks the opener current). After a 2nd window.open the newest popup is first.
+
+== CONCLUSION (executor, 2026-10-22, Chrome of the day, headless macOS)
+1. Rule::Attached INVALID here: /json/list never emits an `attached` key (absent for every target, including the tab the recorder is
+   connected to and the agent's tab), so TargetInfo.attached is always false. The plan's contingency applies:
+   const RULE = Rule::ListOrder (first page-type, non-devtools entry in /json order).
+2. List order: open-tab puts the new page first (immediately); switch-tab puts the target first within 50 ms (a transient
+   about:blank `other` target appears first at t0, type != page, filtered); close-tab of the current tab leaves the tab the agent
+   was switched to (tabs.first()) first. target=_blank link popup: opener stays first (new tab inserted after it) -> no flip.
+3. window.open popup WITH window features: the popup is listed first and stays first even after the opener is re-activated
+   (act click activates the opener BEFORE the click; the popup opens afterwards). It returns to the opener only at the agent's next
+   input action (activate() = bringToFront). So ListOrder follows such a popup until the next input action; documented limitation.
+   Mitigation built: a baseline (a head that differs from the bound tab at record-start is ignored until the head changes once).
+4. Cross-origin (127.0.0.1 -> localhost): target id UNCHANGED (89DF15FA...), WS survived, frames continued (47 frames, 4.7 s,
+   colours red -> blue at 2.5 s and 4.5 s, clean stop). The D8-4 cross-origin contingency (re-send Page.startScreencast) is NOT needed.
+5. Close of the recorded tab (current): Phase 7 binary ends "recording not clean: capture interrupted ... (tab closed or browser gone)"
+   with only the first segment; list shows the agent's next tab (574CB975) first. Following must rebind to it with a note.
+6. The `attached` finding also means the Phase 7 own_target/is_current hook (state tabs marker) is still required; unchanged.

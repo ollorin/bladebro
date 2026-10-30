@@ -1,6 +1,6 @@
 //! `see` + `logs` handlers — the reading surface.
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::error::{BladeError, Result};
 use crate::page::Page;
@@ -9,11 +9,84 @@ use super::artifact_hint;
 use super::extract::{handle_auto_extract, handle_template_extract};
 use super::resolve::miss_diag_note;
 
-pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
-    // Context pruning: a `see` call means the agent is re-orienting.
-    // Reset the act counter so the next `act` gets a full response.
-    page.reset_act_turn();
+/// G08: detect that the current page is a PDF document (Chrome's viewer).
+/// Three observations, so the guidance stays honest about what was seen:
+/// content type, the viewer's embed element, or a .pdf URL.
+const PDF_STATE_EXPR: &str = "(()=>{try{const ct=(document.contentType||'').toLowerCase();if(ct==='application/pdf')return 'pdf';const emb=document.querySelector('embed[type=\"application/pdf\"],embed[type*=\"pdf\" i]');if(emb)return 'pdf-embed';const u=(location.href||'').split(/[?#]/)[0].toLowerCase();if(u.endsWith('.pdf'))return 'pdf-url';return '';}catch(e){return '';}})()";
 
+/// Evaluate [`PDF_STATE_EXPR`]; best-effort (None on any hiccup).
+async fn pdf_document_state(page: &Page) -> Option<String> {
+    let res = page
+        .cdp_ref()
+        .send(
+            "Runtime.evaluate",
+            Some(json!({ "expression": PDF_STATE_EXPR, "returnByValue": true })),
+        )
+        .await
+        .ok()?;
+    let s = res
+        .get("result")
+        .and_then(|r| r.get("value"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
+/// G08: the honest read contract for a PDF page. The text is not in the DOM;
+/// the supported paths are the download (an artifact the host reads with its
+/// own tools) and vision. The driver does not claim text extraction - a PDF
+/// parser is a packaging/maintenance cost that buys the host nothing over
+/// handing it the bytes.
+fn pdf_read_message(url: &str) -> String {
+    format!(
+        "this page is a PDF document: {url} is rendered by Chrome's PDF viewer and its text is NOT in the page DOM, so text reads return nothing. Supported paths: act download url=\"{url}\" saves the PDF file and returns its path for your own reader, or vision for a screenshot of the viewer. Scanned PDFs have no text layer anywhere - that is the document, not the read; a viewer load error does not affect the download path."
+    )
+}
+
+pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
+    super::validate::see(args)?;
+    // NOTE (4.4.0): `see` deliberately does NOT reset the act-loop counter.
+    // It used to, which kept the dominant act→see→act→see loop permanently
+    // fresh: every post-read act got the full budget and re-sent a delta the
+    // read had just delivered. A full `see` leaves the agent holding the
+    // page state, so the next act's budget-capped delta is the correct,
+    // cheap shape. Resets remain where prior context is truly invalidated:
+    // navigation and act-error recapture (both in act.rs). `state
+    // op=compress mode=off` restores always-full responses.
+    if args.get("preview").and_then(Value::as_bool) == Some(true)
+        && args.get("extract").and_then(Value::as_str) != Some("auto")
+    {
+        return Err(BladeError::Usage(
+            "preview=true requires extract=auto".into(),
+        ));
+    }
+    if args.get("items").and_then(Value::as_bool) == Some(true)
+        && args
+            .get("artifact")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        return Err(BladeError::Usage(
+            "items=true requires artifact=path".into(),
+        ));
+    }
+    if args.get("changes").and_then(Value::as_bool) == Some(true)
+        && ["extract", "logs", "artifact", "scope", "find"]
+            .iter()
+            .any(|k| {
+                args.get(k)
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty())
+            })
+    {
+        return Err(BladeError::Usage(
+            "changes=true is a model delta read; omit extract/logs/artifact/scope/find".into(),
+        ));
+    }
     let budget = args.get("budget").and_then(|b| b.as_u64()).unwrap_or(8000) as usize;
     let filter = args.get("filter").and_then(|f| f.as_str()).unwrap_or("");
     let want_content = args
@@ -22,6 +95,15 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
         .unwrap_or(false);
     let find = args.get("find").and_then(|f| f.as_str()).unwrap_or("");
     let extract = args.get("extract").and_then(|e| e.as_str()).unwrap_or("");
+    // W2: format=json — pure parseable output for extract= and artifact=
+    // reads (the JSON.parse pain point). Every other mode stays text.
+    let format = args.get("format").and_then(|f| f.as_str()).unwrap_or("");
+    if !matches!(format, "" | "text" | "json") {
+        return Err(BladeError::Other(format!(
+            "unknown format: {format} (use 'text' or 'json')"
+        )));
+    }
+    let json_out = format == "json";
     let scope = args.get("scope").and_then(|s| s.as_str()).unwrap_or("");
     let logs = args.get("logs").and_then(|l| l.as_str()).unwrap_or("");
     let template = args.get("template").cloned();
@@ -38,7 +120,45 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
     if !artifact.is_empty() {
         let offset = args.get("offset").and_then(|o| o.as_u64()).unwrap_or(0) as usize;
         let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(20000) as usize;
-        return crate::artifacts::read_artifact(artifact, offset, limit);
+        if args.get("items").and_then(Value::as_bool).unwrap_or(false) {
+            return crate::artifacts::read_artifact_items(
+                artifact,
+                offset,
+                args.get("limit").and_then(Value::as_u64).unwrap_or(50) as usize,
+            );
+        }
+        return if json_out {
+            crate::artifacts::read_artifact_json(artifact, offset, limit)
+        } else {
+            crate::artifacts::read_artifact(artifact, offset, limit)
+        };
+    }
+    if args
+        .get("changes")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        let delta = page.recapture().await?;
+        return if json_out {
+            let value = json!({"url":delta.url,"title":delta.title,"phase":delta.phase,"navigated":delta.navigated,
+                "added":delta.added.iter().map(|e| json!({"ref":e.ref_id,"role":e.raw.role,"name":e.raw.name})).collect::<Vec<_>>(),
+                "removed":delta.removed,"changed":delta.changed.iter().map(|(r,c)| json!({"ref":r,"value":c.value,"disabled":c.disabled,"checked":c.checked})).collect::<Vec<_>>(),"rebound":delta.rebound}).to_string();
+            if value.len() > 12000 {
+                let path = crate::artifacts::write_artifact(&value, "json")?;
+                Ok(json!({"artifact":path,"bytes":value.len(),"next_offset":0}).to_string())
+            } else {
+                Ok(value)
+            }
+        } else {
+            Ok(page.delta_view(&delta, budget))
+        };
+    }
+    // format=json is only meaningful for extract=/artifact= reads; anything
+    // else is refused instead of silently returning text.
+    if json_out && extract.is_empty() {
+        return Err(BladeError::Other(
+            "format=json applies to extract= (auto/json/links/forms) and artifact= reads - this mode returns text; drop format or use an extract read".into(),
+        ));
     }
 
     // mode=content: clean markdown extraction for reading. No refs, no
@@ -72,6 +192,13 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
         }
         let md = page.markdown(budget).await?;
         if md.is_empty() {
+            // G08: a PDF page reads as empty because its text lives in the
+            // viewer plugin, not the DOM. Say exactly that and name the
+            // supported paths instead of a generic SPA suggestion.
+            if pdf_document_state(page).await.is_some() {
+                let url = page.model().url();
+                return Ok(pdf_read_message(url));
+            }
             return Ok("page has no text content (may be a SPA that hasn't rendered — try waiting, or use mode=model for interactive elements)".into());
         }
         return Ok(md);
@@ -85,15 +212,23 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
 
     // V8: logs — console (injection hook) or network (tracker ring).
     if !logs.is_empty() {
-        return handle_logs(page, logs).await;
+        let out = handle_logs(page, logs).await?;
+        if args.get("clear").and_then(Value::as_bool).unwrap_or(false) {
+            if logs == "network" {
+                page.clear_network_log();
+            } else {
+                page.clear_console_log().await?;
+            }
+        }
+        return Ok(out);
     }
 
     // V9: template extraction — structured data in ONE call.
     if extract == "json" {
         let tpl = template.ok_or_else(|| BladeError::Other(
-            "extract=json requires 'template': {\"items\":{\"container\":\"css\",\"fields\":{\"name\":\"css|css@attr\"}}}. For template-free structured extraction use extract=auto.".into()
+            "extract=json requires 'template': {\"items\":{\"container\":\"css\",\"fields\":{\"name\":\"css|css@attr\"}}} (text reads are rendered - {\"sel\":\"css\",\"raw\":true} reads hidden text). For template-free structured extraction use extract=auto.".into()
         ))?;
-        return handle_template_extract(page, &tpl, limit).await;
+        return handle_template_extract(page, &tpl, limit, json_out).await;
     }
 
     // V21: auto-extract — deterministic structural analysis. Finds the DOM
@@ -102,7 +237,21 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
     // and INFERS field names by content type (title/link/image/price/date).
     // No template, no LLM.
     if extract == "auto" {
-        return handle_auto_extract(page, limit, limit_explicit).await;
+        if args
+            .get("preview")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            return super::extract::auto_preview(page).await;
+        }
+        return handle_auto_extract(
+            page,
+            limit,
+            limit_explicit,
+            json_out,
+            args.get("sort").and_then(Value::as_str),
+        )
+        .await;
     }
 
     // M11: find — search all actionable elements by text, return matches with refs.
@@ -166,38 +315,12 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
 
     // M12: extract — structured data extraction (links/forms).
     if !extract.is_empty() {
-        let expr = match extract {
-            "links" => {
-                r#"(()=>{const links=[...document.querySelectorAll('a[href]')];return JSON.stringify(links.map(a=>({text:(a.textContent||'').trim().slice(0,80),href:a.href})).filter(l=>l.text||l.href));})()"#
-            }
-            "forms" => {
-                r#"(()=>{
-function extractForms(doc){
-const forms=[...doc.querySelectorAll('form')];
-return forms.map(f=>({action:f.action,method:(f.method||'get').toLowerCase(),fields:[...f.elements].filter(e=>e.tagName!=='FIELDSET'&&e.tagName!=='BUTTON').map(e=>{
-// Label resolution priority: <label for=id> > aria-label > aria-labelledby > placeholder > wrapping <label> > preceding text
-var label='';
-if(e.id){var lbl=doc.querySelector('label[for="'+e.id+'"]');if(lbl)label=lbl.textContent.trim().slice(0,60);}
-if(!label&&e.getAttribute('aria-label'))label=e.getAttribute('aria-label').trim().slice(0,60);
-if(!label&&e.getAttribute('aria-labelledby')){var lb=doc.getElementById(e.getAttribute('aria-labelledby'));if(lb)label=lb.textContent.trim().slice(0,60);}
-if(!label&&e.placeholder)label=e.placeholder.trim().slice(0,60);
-if(!label&&e.closest('label'))label=e.closest('label').textContent.trim().slice(0,60);
-return{tag:e.tagName.toLowerCase(),type:e.type||null,name:e.name||'',label:label};
-})}));
-}
-var allForms=extractForms(document);
-// Search iframes too (W3Schools TryIt etc render forms in iframes).
-try{for(const ifr of document.querySelectorAll('iframe')){try{if(ifr.contentDocument){allForms=allForms.concat(extractForms(ifr.contentDocument));}}catch(e){}}
-}catch(e){}
-return JSON.stringify(allForms);
-})()"#
-            }
-            _ => {
-                return Err(BladeError::Other(format!(
-                    "unknown extract type: {extract} (use 'links' or 'forms')"
-                )))
-            }
-        };
+        let expr = format!(
+            "{}({}, {})",
+            include_str!("../../page/js/extract_basic.js"),
+            serde_json::to_string(extract)?,
+            limit,
+        );
         let res = page
             .cdp_ref()
             .send(
@@ -208,15 +331,49 @@ return JSON.stringify(allForms);
                 })),
             )
             .await?;
+        if let Some(exc) = res.get("exceptionDetails") {
+            let message = exc
+                .pointer("/exception/description")
+                .and_then(Value::as_str)
+                .or_else(|| exc.get("text").and_then(Value::as_str))
+                .unwrap_or("JavaScript failed");
+            return Err(BladeError::Other(format!(
+                "extract {extract} failed: {}",
+                crate::platform::truncate_utf8(message, 240)
+            )));
+        }
         let json_str = res
             .get("result")
             .and_then(|r| r.get("value"))
             .and_then(|v| v.as_str())
-            .unwrap_or("[]");
-        // V10: offload large extracts to a file.
+            .ok_or_else(|| BladeError::Other(format!("extract {extract}: browser returned no data; retry the read after the page settles")))?;
+        // V10: offload large extracts to a file. W2: format=json returns a
+        // parseable payload (bare when it fits, an artifact envelope when
+        // not) instead of the truncating preview.
+        if json_out {
+            if json_str.len() > 6000 {
+                let path = crate::artifacts::write_artifact(json_str, "json")?;
+                return Ok(serde_json::json!({
+                    "artifact": path,
+                    "bytes": json_str.len(),
+                    "next_offset": 0,
+                })
+                .to_string());
+            }
+            return Ok(json_str.to_string());
+        }
         if json_str.len() > 6000 {
             let path = crate::artifacts::write_artifact(json_str, "json")?;
-            let count = json_str.matches("href").count();
+            // Item count from the array itself (the old href-count claimed
+            // ~0 items for form lists).
+            let count = serde_json::from_str::<Value>(json_str)
+                .ok()
+                .and_then(|v| {
+                    v.as_array()
+                        .or_else(|| v.get("data").and_then(Value::as_array))
+                        .map(|a| a.len())
+                })
+                .unwrap_or(0);
             return Ok(format!(
                 "extract {extract} (~{count} items, {} bytes)\npreview: {}…\n{}",
                 json_str.len(),
@@ -345,5 +502,51 @@ pub async fn handle_logs(page: &mut Page, kind: &str) -> Result<String> {
         _ => Err(BladeError::Other(format!(
             "unknown logs kind: {kind} (use 'console' or 'network')"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod pdf_read_tests {
+    use super::*;
+
+    #[test]
+    fn pdf_state_expr_detects_all_three_shapes() {
+        assert!(PDF_STATE_EXPR.contains("application/pdf"));
+        assert!(PDF_STATE_EXPR.contains(".pdf"));
+        assert!(PDF_STATE_EXPR.contains("contentType"));
+        // node --check (skipped when node is unavailable).
+        let dir = std::env::temp_dir().join("bladebro-pdf-tests");
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join("pdf-state.js");
+        if std::fs::write(&path, PDF_STATE_EXPR).is_err() {
+            return;
+        }
+        let out = match std::process::Command::new("node")
+            .arg("--check")
+            .arg(&path)
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => return,
+        };
+        assert!(
+            out.status.success(),
+            "PDF_STATE_EXPR must parse as JS:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[test]
+    fn pdf_read_message_names_paths_and_provenance() {
+        let m = pdf_read_message("https://shop.example/manual.pdf");
+        assert!(m.contains("https://shop.example/manual.pdf"));
+        assert!(m.contains("act download"));
+        assert!(m.contains("vision"));
+        assert!(m.contains("NOT in the page DOM"));
+        assert!(!m.contains('\u{2014}'), "no em-dash in agent-facing text");
+        // A viewer error must not invalidate the download path claim.
+        assert!(m.contains("does not affect the download path"));
     }
 }

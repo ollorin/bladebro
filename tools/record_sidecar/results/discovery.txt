@@ -1,0 +1,68 @@
+# Discovery summary (plan 02-01 Task 1). Raw captured output follows the header.
+# 1. Port found from the main Chrome process command line (--remote-debugging-port=<N>); the planned DevToolsActivePort lookup finds NOTHING here: the agent lane arms a fixed port and Chrome writes DevToolsActivePort only for port=0 (src/browser/launch.rs). Plan premise corrected.
+# 2. /json/version: Browser "Chrome/154.0.8037.58", Protocol-Version 1.3; browser endpoint is ws://127.0.0.1:<port>/devtools/browser/<uuid> (webSocketDebuggerUrl in the output below).
+# 3. Launch is WS-only: `--remote-debugging-pipe` count on the main Chrome process = 0; `--remote-debugging-port=<port>` count = 1.
+# 4. Page target enumerated from /json/list (type=page, the fixture anim.html) with its own ws://127.0.0.1:<port>/devtools/page/<id>.
+# 5. A second WS client attaching while the daemon holds its connection: PENDING, confirmed by the Task 3 smoke runs (see smoke.json).
+port=63631
+## BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.dU8qf5pw7D
+## DevToolsActivePort files under BLADE_HOME (expect none for agent lane):
+## /json/version
+{
+   "Browser": "Chrome/154.0.8037.58",
+   "Protocol-Version": "1.3",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+   "V8-Version": "15.4.80.11",
+   "WebKit-Version": "537.36 (@a654841425914cbb703a2931e07b70a83aedbafd)",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:63631/devtools/browser/15152531-555b-4ca6-aa3b-4c827c4ec27f"
+}
+
+## /json/list
+[ {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@a654841425914cbb703a2931e07b70a83aedbafd/inspector.html?ws=127.0.0.1:63631/devtools/page/C6C25BF3F443FEEFFD70BE9A0FF4328A",
+   "id": "C6C25BF3F443FEEFFD70BE9A0FF4328A",
+   "title": "Omnibox Popup",
+   "type": "browser_ui",
+   "url": "chrome://omnibox-popup.top-chrome/",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:63631/devtools/page/C6C25BF3F443FEEFFD70BE9A0FF4328A"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@a654841425914cbb703a2931e07b70a83aedbafd/inspector.html?ws=127.0.0.1:63631/devtools/page/6CF09ADE6A3F8AD2D657CB315C9CA0BC",
+   "id": "6CF09ADE6A3F8AD2D657CB315C9CA0BC",
+   "title": "Omnibox Popup",
+   "type": "browser_ui",
+   "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:63631/devtools/page/6CF09ADE6A3F8AD2D657CB315C9CA0BC"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@a654841425914cbb703a2931e07b70a83aedbafd/inspector.html?ws=127.0.0.1:63631/devtools/page/E5F87E78FEE4720CF76C98867F6CF0D7",
+   "id": "E5F87E78FEE4720CF76C98867F6CF0D7",
+   "title": "anim",
+   "type": "page",
+   "url": "http://127.0.0.1:8765/anim.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:63631/devtools/page/E5F87E78FEE4720CF76C98867F6CF0D7"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@a654841425914cbb703a2931e07b70a83aedbafd/inspector.html?ws=127.0.0.1:63631/devtools/page/64FB754DB8AE1F7B2A0732FAADF72C71",
+   "id": "64FB754DB8AE1F7B2A0732FAADF72C71",
+   "title": "Google Hangouts",
+   "type": "background_page",
+   "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:63631/devtools/page/64FB754DB8AE1F7B2A0732FAADF72C71"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@a654841425914cbb703a2931e07b70a83aedbafd/worker_app.html?ws=127.0.0.1:63631/devtools/page/593B2D016226DE6057D09FF46676B980",
+   "id": "593B2D016226DE6057D09FF46676B980",
+   "title": "Service Worker chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js",
+   "type": "service_worker",
+   "url": "chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:63631/devtools/page/593B2D016226DE6057D09FF46676B980"
+} ]
+
+## main Chrome process (port flag; user-data-dir and tail truncated)
+30301 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --disable-extensions --no-first-run --disable-dev-shm-usage --disable-background-networking --disable-sync --disable-popup-blocking --disable-features=PdfPlugin --force-webrtc-ip-handling-policy=disable_non_proxied_udp --enable-unsafe-swiftshader --ignore-gpu-blocklist --remote-debugging-port=63631 --user-data-dir=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.dU8qf5pw7D/profiles/sess-30300 ...
+pipe-flag-count(main chrome procs): 0
+port-flag-count(main chrome procs, port=63631): 1
+DISCOVERY_DONE
+tools/record_sidecar/env.sh: line 63: 30295 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1

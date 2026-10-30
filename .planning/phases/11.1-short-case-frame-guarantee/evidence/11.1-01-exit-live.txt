@@ -1,0 +1,197 @@
+# exit_live.sh 09-03  started 2026-10-26T17:09:40Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  git: 013eb94
+== mcp_eof
+[mcp_eof] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitun168f95/recordings/x-20261026T170941Z-7b1638.webm (tab BD633724F011B83C917E47811C9B846C); first frame not awaited. record-stop saves it.
+PASS [mcp_eof] record-start succeeded
+PASS [mcp_eof] MCP process exited after stdin EOF (took 818 ms)
+[mcp_eof] ffprobe size=49759: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.100000" } }
+PASS [mcp_eof] duration > 0 (4.10 s) and full decode exit=0 stderr_lines=0
+PASS [mcp_eof] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 29 ms)
+== mcp_sigterm
+[mcp_sigterm] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexit1lp_cfx_/recordings/x-20261026T170947Z-75ad80.webm (tab 62D19BAAC0673A37F72BFE342EB81E0E); first frame not awaited. record-stop saves it.
+PASS [mcp_sigterm] record-start succeeded
+PASS [mcp_sigterm] bladebro pid 18826 exited after SIGTERM (took 811 ms)
+[mcp_sigterm] ffmpeg pids before: [18856]; all gone after 811 ms: True
+[mcp_sigterm] ffprobe size=50208: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.100000" } }
+PASS [mcp_sigterm] duration > 0 (4.10 s) and full decode exit=0 stderr_lines=0
+PASS [mcp_sigterm] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 27 ms)
+PASS [mcp_sigterm-cleanup] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 24 ms)
+== mcp_sigint
+[mcp_sigint] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexit0alg2pcu/recordings/x-20261026T170953Z-3926b0.webm (tab 6A57EBB92033BD30F41418A415E0F087); first frame not awaited. record-stop saves it.
+PASS [mcp_sigint] record-start succeeded
+PASS [mcp_sigint] bladebro pid 18905 exited after SIGINT (took 808 ms)
+[mcp_sigint] ffmpeg pids before: [18934]; all gone after 808 ms: True
+[mcp_sigint] ffprobe size=47328: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.100000" } }
+PASS [mcp_sigint] duration > 0 (4.10 s) and full decode exit=0 stderr_lines=0
+PASS [mcp_sigint] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 27 ms)
+PASS [mcp_sigint-cleanup] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 25 ms)
+== mcp_idle
+[mcp_idle] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitbshvfb6c/recordings/x-20261026T170958Z-e295d8.webm (tab 9AABC13C917202913C4C376C78EE316B); first frame not awaited. record-stop saves it.
+PASS [mcp_idle] record-start succeeded
+PASS [mcp_idle] idle timeout (20 s, checked every 15 s) closed Chrome and ffmpeg (after 26.7 s)
+[mcp_idle] record-stop err=False: note: Chrome was restarted after idle shutdown — page state reset to about:blank. Navigate to continue.
+previous recording ended with the browser: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitbshvfb6c/recordings/x-20261026T170958Z-e295d8.webm (bytes 321218, duration 30.0 s, frames 300, dropped 0, segments [0.0 s tab 9AABC13C917202913C4C376C78EE316B])
+PASS [mcp_idle] text contains 'previous recording ended with the browser: ' (after the self-heal note line)
+[mcp_idle] ffprobe size=321218: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "30.000000" } }
+PASS [mcp_idle] duration > 0 (30.00 s) and full decode exit=0 stderr_lines=0
+[mcp_idle] record-start after idle err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitbshvfb6c/recordings/again-20261026T171030Z-d24fc9.webm (tab C0891EAEBC16620F2CAA5B1C4F08686B); first frame not awaited. record-stop saves it.
+PASS [mcp_idle] next record-start succeeds
+PASS [mcp_idle] next record-stop saves
+PASS [mcp_idle] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 26 ms)
+== daemon_stop
+[daemon_stop] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitrk3jgb_3/recordings/x-20261026T171032Z-600768.webm (tab 72D4A8E2DC8101E9F9E3032DDABFF03A); first frame not awaited. record-stop saves it.
+
+PASS [daemon_stop] record-start succeeded
+[daemon_stop] bladebro stop rc_err=False after 844 ms: daemon stopped
+PASS [daemon_stop] stop returned without 'cleanup is still running'
+PASS [daemon_stop] daemon process gone
+[daemon_stop] ffprobe size=49401: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.100000" } }
+PASS [daemon_stop] duration > 0 (4.10 s) and full decode exit=0 stderr_lines=0
+PASS [daemon_stop] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 27 ms)
+== daemon_sigterm
+[daemon_sigterm] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitx0_ghrrn/recordings/x-20261026T171038Z-db14b8.webm (tab D0E6F094B1701EBFBFCE2EA6735FBC0E); first frame not awaited. record-stop saves it.
+
+PASS [daemon_sigterm] record-start succeeded
+PASS [daemon_sigterm] bladebro pid 19466 exited after SIGTERM (took 794 ms)
+[daemon_sigterm] ffmpeg pids before: [19497]; all gone after 794 ms: True
+[daemon_sigterm] ffprobe size=49633: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.100000" } }
+PASS [daemon_sigterm] duration > 0 (4.10 s) and full decode exit=0 stderr_lines=0
+PASS [daemon_sigterm] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 26 ms)
+PASS [daemon_sigterm-cleanup] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 25 ms)
+== daemon_sigint
+[daemon_sigint] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitx47xr3t_/recordings/x-20261026T171044Z-9295a0.webm (tab A6116A31CA27AFC06B69CF40F74274D7); first frame not awaited. record-stop saves it.
+
+PASS [daemon_sigint] record-start succeeded
+PASS [daemon_sigint] bladebro pid 19573 exited after SIGINT (took 799 ms)
+[daemon_sigint] ffmpeg pids before: [19604]; all gone after 800 ms: True
+[daemon_sigint] ffprobe size=48050: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.100000" } }
+PASS [daemon_sigint] duration > 0 (4.10 s) and full decode exit=0 stderr_lines=0
+PASS [daemon_sigint] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 26 ms)
+PASS [daemon_sigint-cleanup] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 24 ms)
+== daemon_idle
+[daemon_idle] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiti68orcle/recordings/x-20261026T171050Z-988038.webm (tab 39D7C1BEBA86677B6ADD0CA4BDB3C44B); first frame not awaited. record-stop saves it.
+
+PASS [daemon_idle] record-start succeeded
+PASS [daemon_idle] idle timeout (20 s, checked every 15 s) closed Chrome and ffmpeg (after 26.1 s)
+[daemon_idle] record-stop err=False: previous recording ended with the browser: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiti68orcle/recordings/x-20261026T171050Z-988038.webm (bytes 330941, duration 29.2 s, frames 292, dropped 0, segments [0.0 s tab 39D7C1BEBA86677B6ADD0CA4BDB3C44B], captured 290)
+
+PASS [daemon_idle] text contains 'previous recording ended with the browser: ' (after the self-heal note line)
+[daemon_idle] ffprobe size=330941: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "29.200000" } }
+PASS [daemon_idle] duration > 0 (29.20 s) and full decode exit=0 stderr_lines=0
+[daemon_idle] record-start after idle err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiti68orcle/recordings/again-20261026T171121Z-27dfc9.webm (tab 6CEDB9435117FC234320FDEA5CBAA3E3); first frame not awaited. record-stop saves it.
+
+PASS [daemon_idle] next record-start succeeds
+PASS [daemon_idle] next record-stop saves
+PASS [daemon_idle] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 31 ms)
+== mcp_kill9
+[mcp_kill9] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexit697m_7pa/recordings/x-20261026T171123Z-aa38c0.webm (tab D454F57EE4FA953855DEFC4AE3E5B36F); first frame not awaited. record-stop saves it.
+PASS [mcp_kill9] record-start succeeded
+[mcp_kill9] bladebro pid 20015, ffmpeg pids [20045]
+[mcp_kill9] ffmpeg exit ms after kill -9 of the parent: {20045: 59}
+PASS [mcp_kill9] ffmpeg exited by itself (stdin EOF)
+[mcp_kill9] ffprobe size=46762: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "4.000000" } }
+PASS [mcp_kill9] duration > 0 (4.00 s) and full decode exit=0 stderr_lines=0
+[mcp_kill9] right after: chrome:20016; chrome:20020; chrome:20021; chrome:20022; chrome:20024; chrome:20027; chrome:20028; chrome:20030; chrome:20065
+[mcp_kill9] after next launch: ffmpeg=[] chrome_main=20016
+PASS [mcp_kill9] no ffmpeg after the next launch
+[mcp_kill9] INFO orphaned scratch Chrome processes left by the kill -9 (upstream reaper gap, recording off too): 8
+PASS [mcp_kill9] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 10209 ms)
+== daemon_kill9
+[daemon_kill9] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexituavcdj0_/recordings/x-20261026T171140Z-515738.webm (tab 5E0208C3351C0571582F35D13447347D); first frame not awaited. record-stop saves it.
+
+PASS [daemon_kill9] record-start succeeded
+[daemon_kill9] bladebro pid 20170, ffmpeg pids [20201]
+[daemon_kill9] ffmpeg exit ms after kill -9 of the parent: {20201: 77}
+PASS [daemon_kill9] ffmpeg exited by itself (stdin EOF)
+[daemon_kill9] ffprobe size=50370: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "3.900000" } }
+PASS [daemon_kill9] duration > 0 (3.90 s) and full decode exit=0 stderr_lines=0
+[daemon_kill9] right after: chrome:20171; chrome:20175; chrome:20176; chrome:20177; chrome:20179; chrome:20182; chrome:20183; chrome:20185; chrome:20221
+[daemon_kill9] after next launch: ffmpeg=[] chrome_main=20287
+PASS [daemon_kill9] no ffmpeg after the next launch
+PASS [daemon_kill9] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 31 ms)
+== mcp_kill_chrome
+[mcp_kill_chrome] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexit2oy6btm1/recordings/x-20261026T171146Z-d65578.webm (tab CA167439AF6CDA33DD110D7BD139E3E8); first frame not awaited. record-stop saves it.
+PASS [mcp_kill_chrome] record-start succeeded
+PASS [mcp_kill_chrome] found scratch Chrome main pid 20307
+[mcp_kill_chrome] ffmpeg gone 2163 ms after Chrome kill: True
+PASS [mcp_kill_chrome] ffmpeg finalized and gone within 10 s (guard bound ~2.6 s)
+[mcp_kill_chrome] record-stop err=True: note: Chrome was restarted (connection lost) — page state reset to about:blank. Navigate to continue.
+✗ error: previous recording interrupted: browser connection lost at 6.0 s; partial file kept: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexit2oy6btm1/recordings/x-20261026T171146Z-d65578.webm. recording not clean: browser connection lost at 4.5 s; capture interrupted: the recorder's CDP connection closed after 4 s (tab closed or browser gone); 242 frames received before that; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexit2oy6btm1/recordings/x-20261026T171146Z-d65578.webm (bytes 54135, duration 6.0 s, frames 60, dropped 0, segments [0.0 s tab CA167439AF6CDA33DD110D7BD139E3E8], captured 41)
+--- current page state ---
+Page: about:blank | phase: ready | 0 actionable
+
+PASS [mcp_kill_chrome] text: 'previous recording interrupted: browser connection lost' (or the relaunch hook's 'ended with the browser')
+PASS [mcp_kill_chrome] never claims a clean save
+[mcp_kill_chrome] ffprobe size=54135: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "6.000000" } }
+PASS [mcp_kill_chrome] duration > 0 (6.00 s) and full decode exit=0 stderr_lines=0
+[mcp_kill_chrome] nav after kill err=False: outcome: navigated → http://127.0.0.1:8765/a.html
+Page: 127.0.0.1:8765/a.html | phase: ready | 1 actionable
+title: A
+e1 button "Toggle"
+
+--- content ---
+Tab A T
+PASS [mcp_kill_chrome] browsing works again (relaunch)
+PASS [mcp_kill_chrome] next record-start succeeds
+PASS [mcp_kill_chrome] next record-stop saves
+PASS [mcp_kill_chrome] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 27 ms)
+== daemon_kill_chrome
+[daemon_kill_chrome] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitndf0dfda/recordings/x-20261026T171158Z-ca55f0.webm (tab 485C031936B9E8A6314B8C63CCA9CE36); first frame not awaited. record-stop saves it.
+
+PASS [daemon_kill_chrome] record-start succeeded
+PASS [daemon_kill_chrome] found scratch Chrome main pid 20465
+[daemon_kill_chrome] ffmpeg gone 2132 ms after Chrome kill: True
+PASS [daemon_kill_chrome] ffmpeg finalized and gone within 10 s (guard bound ~2.6 s)
+[daemon_kill_chrome] record-stop err=True: ✗ error: previous recording interrupted: browser connection lost at 6.0 s; partial file kept: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitndf0dfda/recordings/x-20261026T171158Z-ca55f0.webm. recording not clean: browser connection lost at 4.5 s; capture interrupted: the recorder's CDP connection closed after 4 s (tab closed or browser gone); 242 frames received before that; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitndf0dfda/recordings/x-20261026T171158Z-ca55f0.webm (bytes 51405, duration 6.0 s, frames 60, dropped 0, segments [0.0 s tab 485C031936B9E8A6314B8C63CCA9CE36], captured 41)
+
+PASS [daemon_kill_chrome] text: 'previous recording interrupted: browser connection lost' (or the relaunch hook's 'ended with the browser')
+PASS [daemon_kill_chrome] never claims a clean save
+[daemon_kill_chrome] ffprobe size=51405: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "6.000000" } }
+PASS [daemon_kill_chrome] duration > 0 (6.00 s) and full decode exit=0 stderr_lines=0
+[daemon_kill_chrome] nav after kill err=False: outcome: navigated → http://127.0.0.1:8765/a.html
+Page: 127.0.0.1:8765/a.html | phase: ready | 1 actionable
+title: A
+e1 button "Toggle"
+
+--- content ---
+Tab A T
+PASS [daemon_kill_chrome] browsing works again (relaunch)
+PASS [daemon_kill_chrome] next record-start succeeds
+PASS [daemon_kill_chrome] next record-stop saves
+PASS [daemon_kill_chrome] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 34 ms)
+== mcp_kill_ffmpeg
+[mcp_kill_ffmpeg] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitoxcm5zpt/recordings/x-20261026T171210Z-306dd8.webm (tab BEECCAAEE76BB524E4213BE0F8D6FA41); first frame not awaited. record-stop saves it.
+PASS [mcp_kill_ffmpeg] record-start succeeded
+PASS [mcp_kill_ffmpeg] found scratch ffmpeg pid(s) [20672]
+[mcp_kill_ffmpeg] record-stop err=True: ✗ error: previous recording interrupted: encoder exited at 6.0 s; file is empty, nothing playable: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitoxcm5zpt/recordings/x-20261026T171210Z-306dd8.webm. recording not clean: recording failed: ffmpeg exited with signal: 9 (SIGKILL) after 39 frames; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitoxcm5zpt/recordings/x-20261026T171210Z-306dd8.webm may be incomplete and was not verified. ffmpeg said: nothing; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitoxcm5zpt/recordings/x-20261026T171210Z-306dd8.webm (bytes 0, duration 3.9 s, frames 39, dropped 20, segments [0.0 s tab BEECCAAEE76BB524E4213BE0F8D6FA41], captured 41)
+--- current page state ---
+Page: 127.0.0.1:8765/anim.html | phase: ready | 0 actionable
+title: anim
+
+PASS [mcp_kill_ffmpeg] text names 'encoder exited'
+PASS [mcp_kill_ffmpeg] never 'recording saved'
+[mcp_kill_ffmpeg] file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitoxcm5zpt/recordings/x-20261026T171210Z-306dd8.webm size 0 (not expected to be playable)
+PASS [mcp_kill_ffmpeg] next record-start succeeds
+PASS [mcp_kill_ffmpeg] next record-stop saves
+PASS [mcp_kill_ffmpeg] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 28 ms)
+== daemon_kill_ffmpeg
+[daemon_kill_ffmpeg] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiths948pkp/recordings/x-20261026T171220Z-ab4ec0.webm (tab BEA5678C1A88C37B61533E652CBF03B3); first frame not awaited. record-stop saves it.
+
+PASS [daemon_kill_ffmpeg] record-start succeeded
+PASS [daemon_kill_ffmpeg] found scratch ffmpeg pid(s) [20839]
+[daemon_kill_ffmpeg] record-stop err=True: ✗ error: previous recording interrupted: encoder exited at 6.0 s; file is empty, nothing playable: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiths948pkp/recordings/x-20261026T171220Z-ab4ec0.webm. recording not clean: recording failed: ffmpeg exited with signal: 9 (SIGKILL) after 39 frames; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiths948pkp/recordings/x-20261026T171220Z-ab4ec0.webm may be incomplete and was not verified. ffmpeg said: nothing; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiths948pkp/recordings/x-20261026T171220Z-ab4ec0.webm (bytes 0, duration 3.9 s, frames 39, dropped 20, segments [0.0 s tab BEA5678C1A88C37B61533E652CBF03B3], captured 41)
+
+PASS [daemon_kill_ffmpeg] text names 'encoder exited'
+PASS [daemon_kill_ffmpeg] never 'recording saved'
+[daemon_kill_ffmpeg] file /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexiths948pkp/recordings/x-20261026T171220Z-ab4ec0.webm size 0 (not expected to be playable)
+PASS [daemon_kill_ffmpeg] next record-start succeeds
+PASS [daemon_kill_ffmpeg] next record-stop saves
+PASS [daemon_kill_ffmpeg] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 32 ms)
+== oneshot
+[oneshot] rc=1: ✗ error: recording needs a long-lived session: use the MCP server or the daemon (bladebro without --no-daemon/--port); one-shot CLI exits after each command. Nothing was recorded.
+PASS [oneshot] refused (non-zero exit)
+PASS [oneshot] text mentions the long-lived session
+PASS [oneshot] no recordings dir / file
+PASS [oneshot] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 27 ms)
+# exit_live finished 2026-10-26T17:12:30Z failures=0
+exit_live_exit=0

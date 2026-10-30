@@ -24,6 +24,8 @@ const TMP_PREFIX: &str = ".bladebro-update";
 /// keep the warn-and-skip behavior — otherwise `--force` downgrades to
 /// them would become impossible.
 const FIRST_CHECKSUMMED_TAG: &str = "3.3.0";
+const MAX_BINARY_SIZE: u64 = 500_000_000;
+const MAX_CHECKSUM_BYTES: usize = 16 * 1024;
 
 /// Is checksum verification mandatory for this target tag?
 pub fn checksum_required(tag: &str) -> bool {
@@ -51,6 +53,14 @@ pub fn parse_checksum(text: &str) -> Option<String> {
 /// checksum assets — none were uploaded before this fix) simply omitted
 /// the .sha256 file, and the downloaded binary was then executed by
 /// `verify_binary_runs` regardless.
+///
+/// G11: the checksum fetch is a safe, idempotent GET observation, so
+/// TRANSPORT-level failures (send error, reset, body-read drop) get a
+/// small bounded retry with backoff — the captured 4.3.0 failure was a
+/// transient transport send error while the asset was publicly reachable.
+/// PERMANENT outcomes (404, other non-success, malformed body, hash
+/// mismatch) never retry, and nothing is ever installed on a verification
+/// failure.
 async fn verify_sha256(binary_path: &std::path::Path, asset_url: &str, tag: &str) -> Result<()> {
     let checksum_url = format!("{asset_url}.sha256");
     let client = reqwest::Client::builder()
@@ -69,12 +79,71 @@ async fn verify_sha256(binary_path: &std::path::Path, asset_url: &str, tag: &str
         ))
     };
 
-    let resp = match client.get(&checksum_url).send().await {
-        Ok(r) => r,
-        Err(e) if required => {
-            return Err(fetch_failed(&format!("checksum file unreachable ({e})")))
+    // Bounded transport retries (3 attempts, 400/800 ms backoff). Each
+    // attempt refetches cleanly — the GET has no side effects.
+    const ATTEMPTS: u32 = 3;
+    let mut last_transport: Option<String> = None;
+    let mut attempt = 0u32;
+    let fetched: Option<(reqwest::StatusCode, std::result::Result<String, String>)> = loop {
+        attempt += 1;
+        let mut resp = match client.get(&checksum_url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_transport = Some(format!("{e}"));
+                if attempt >= ATTEMPTS {
+                    break None;
+                }
+                eprintln!(
+                    "  retry: checksum fetch transport error (attempt {attempt}/{ATTEMPTS}): {e}"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(400 * attempt as u64)).await;
+                continue;
+            }
+        };
+        let status = resp.status();
+        // Sidecars are ~100 bytes. Enforce the bound while reading, including
+        // chunked bodies without Content-Length, before parse/allocation.
+        if resp
+            .content_length()
+            .is_some_and(|n| n > MAX_CHECKSUM_BYTES as u64)
+        {
+            return Err(fetch_failed("checksum response exceeds 16 KiB"));
         }
-        Err(_) => {
+        let mut bytes = Vec::new();
+        let body = loop {
+            match resp.chunk().await {
+                Ok(Some(chunk)) => {
+                    if chunk.len() > MAX_CHECKSUM_BYTES.saturating_sub(bytes.len()) {
+                        return Err(fetch_failed("checksum response exceeds 16 KiB"));
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(None) => break Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                Err(error) => break Err(error),
+            }
+        };
+        match body {
+            Ok(t) => break Some((status, Ok(t))),
+            Err(e) => {
+                last_transport = Some(format!("body read failed: {e}"));
+                if attempt >= ATTEMPTS {
+                    break Some((status, Err(e.to_string())));
+                }
+                eprintln!("  retry: checksum body read failed (attempt {attempt}/{ATTEMPTS}): {e}");
+                tokio::time::sleep(std::time::Duration::from_millis(400 * attempt as u64)).await;
+            }
+        }
+    };
+
+    let (status, body) = match fetched {
+        Some(x) => x,
+        None if required => {
+            return Err(fetch_failed(&format!(
+                "checksum file unreachable after {ATTEMPTS} attempts ({})",
+                last_transport.as_deref().unwrap_or("transport error")
+            )))
+        }
+        None => {
             eprintln!(
                 "  warn: no checksum file found, skipping SHA256 verification (legacy release)"
             );
@@ -82,19 +151,18 @@ async fn verify_sha256(binary_path: &std::path::Path, asset_url: &str, tag: &str
         }
     };
 
-    if resp.status() == reqwest::StatusCode::NOT_FOUND || !resp.status().is_success() {
+    if status == reqwest::StatusCode::NOT_FOUND || !status.is_success() {
         if required {
             return Err(fetch_failed(&format!(
                 "no checksum file at {} (HTTP {})",
-                checksum_url,
-                resp.status()
+                checksum_url, status
             )));
         }
         eprintln!("  warn: no checksum file found, skipping SHA256 verification (legacy release)");
         return Ok(());
     }
 
-    let checksum_text = resp.text().await.map_err(|e| {
+    let checksum_text = body.map_err(|e| {
         if required {
             fetch_failed(&format!("cannot read checksum: {e}"))
         } else {
@@ -115,12 +183,21 @@ async fn verify_sha256(binary_path: &std::path::Path, asset_url: &str, tag: &str
 
     // Compute SHA256 of the downloaded binary.
     use sha2::{Digest, Sha256};
-    let data = std::fs::read(binary_path)
+    let mut file = std::fs::File::open(binary_path)
         .map_err(|e| BladeError::Other(format!("cannot read binary for hash: {e}")))?;
-    let actual_hash: String = Sha256::digest(&data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let mut hash = Sha256::new();
+    use std::io::Read;
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|e| BladeError::Other(format!("cannot hash binary: {e}")))?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    let actual_hash: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
 
     if actual_hash != expected_hash {
         return Err(BladeError::Other(format!(
@@ -287,56 +364,119 @@ fn rand_suffix() -> u64 {
 /// If the server responds 206 (Partial Content), append.
 /// If the server responds 200 (full content) despite the Range header,
 /// truncate and start fresh (server doesn't support range requests).
-async fn download_once(url: &str, tmp: &std::path::Path, _expected_size: u64) -> Result<u64> {
+async fn download_once(url: &str, tmp: &std::path::Path, expected_size: u64) -> Result<u64> {
+    use std::io::Write;
+    // The post-download verifier has the same ceiling. Enforce it while
+    // reading, before a bad response can fill memory or the install disk.
+    let limit = if expected_size == 0 {
+        MAX_BINARY_SIZE
+    } else {
+        expected_size
+    };
+    if limit > MAX_BINARY_SIZE {
+        return Err(BladeError::Other("download size exceeds 500 MB".into()));
+    }
     let existing = std::fs::metadata(tmp).map(|m| m.len()).unwrap_or(0);
-
+    if existing > limit {
+        return Err(BladeError::Other(
+            "partial download exceeds expected size".into(),
+        ));
+    }
+    // A connection can fail after all bytes reached disk. SHA256 still gates
+    // installation; requesting an empty suffix would only produce HTTP 416.
+    if expected_size > 0 && existing == expected_size {
+        return Ok(existing);
+    }
     let client = reqwest::Client::builder()
         .user_agent("bladebro-updater")
         .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|e| BladeError::Other(format!("http client: {e}")))?;
-
     let mut req = client.get(url);
     if existing > 0 {
         req = req.header("Range", format!("bytes={existing}-"));
     }
-
-    let resp = req
+    let mut resp = req
         .send()
         .await
         .map_err(|e| BladeError::Other(format!("download failed: {e}")))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(BladeError::Other(format!("download failed: HTTP {status}")));
+    let partial = resp.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+    if resp.status() != reqwest::StatusCode::OK && !partial {
+        return Err(BladeError::Other(format!(
+            "download failed: HTTP {}",
+            resp.status()
+        )));
     }
-
-    let is_partial = status == reqwest::StatusCode::PARTIAL_CONTENT;
-    let bytes = resp
-        .bytes()
+    let offset = if partial { existing } else { 0 };
+    let mut target_size = expected_size;
+    let mut response_limit = limit;
+    if partial {
+        let range = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| h.strip_prefix("bytes "))
+            .and_then(|h| h.split_once('/'))
+            .and_then(|(range, total)| {
+                let (start, end) = range.split_once('-')?;
+                Some((
+                    start.parse::<u64>().ok()?,
+                    end.parse::<u64>().ok()?,
+                    total.parse::<u64>().ok()?,
+                ))
+            });
+        match range {
+            Some((start, end, total))
+                if start == existing
+                    && start <= end
+                    && end < total
+                    && total <= limit
+                    && (expected_size == 0 || total == expected_size)
+                    && resp
+                        .content_length()
+                        .is_none_or(|len| len == end - start + 1) =>
+            {
+                target_size = total;
+                response_limit = end + 1;
+            }
+            _ => {
+                return Err(BladeError::Other(
+                    "download returned an invalid content range (Content-Range)".into(),
+                ))
+            }
+        }
+    }
+    if resp
+        .content_length()
+        .is_some_and(|len| len > response_limit - offset)
+    {
+        return Err(BladeError::Other("download exceeds expected size".into()));
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .append(partial)
+        .truncate(!partial)
+        .open(tmp)
+        .map_err(|e| BladeError::Other(format!("cannot open temp file: {e}")))?;
+    let mut size = offset;
+    while let Some(chunk) = resp
+        .chunk()
         .await
-        .map_err(|e| BladeError::Other(format!("download interrupted: {e}")))?;
-
-    if bytes.is_empty() && existing == 0 {
-        return Err(BladeError::Other("downloaded file is empty".into()));
-    }
-
-    if existing > 0 && is_partial {
-        // Server honored our range request — append the partial content.
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .open(tmp)
-            .map_err(|e| BladeError::Other(format!("cannot open temp file: {e}")))?;
-        f.write_all(&bytes)
+        .map_err(|e| BladeError::Other(format!("download interrupted: {e}")))?
+    {
+        if chunk.len() as u64 > response_limit - size {
+            return Err(BladeError::Other("download exceeds expected size".into()));
+        }
+        file.write_all(&chunk)
             .map_err(|e| BladeError::Other(format!("cannot write temp file: {e}")))?;
-        Ok(existing + bytes.len() as u64)
-    } else {
-        // Fresh download, or server ignored range request (200 not 206).
-        std::fs::write(tmp, &bytes)
-            .map_err(|e| BladeError::Other(format!("cannot write temp file: {e}")))?;
-        Ok(bytes.len() as u64)
+        size += chunk.len() as u64;
     }
+    if size == 0 || (target_size > 0 && size != target_size) {
+        return Err(BladeError::Other(format!(
+            "incomplete download: {size} bytes, expected {target_size}"
+        )));
+    }
+    Ok(size)
 }
 
 /// Check if there's enough disk space for a download.
@@ -410,7 +550,7 @@ pub(crate) fn macho_magic_ok(data: &[u8]) -> bool {
 /// shared by `verify_binary` and the rollback's `verify_backup` — the two
 /// used to carry duplicated (and equally wrong) copies.
 pub(crate) fn binary_magic_ok(data: &[u8]) -> bool {
-    if cfg!(target_os = "linux") {
+    if cfg!(any(target_os = "linux", target_os = "android")) {
         data.len() >= 4 && data[..4] == [0x7F, b'E', b'L', b'F']
     } else if cfg!(target_os = "macos") {
         macho_magic_ok(data)
@@ -427,14 +567,22 @@ pub(crate) fn binary_magic_ok(data: &[u8]) -> bool {
 /// 3. On Unix: set executable permissions
 /// 4. Try executing the binary with `--version` to confirm it runs
 pub fn verify_binary(dl: &DownloadedBinary) -> Result<()> {
-    let data = std::fs::read(&dl.path)
+    use std::io::Read;
+    let mut file = std::fs::File::open(&dl.path)
         .map_err(|e| BladeError::Other(format!("cannot read downloaded file: {e}")))?;
-
-    if data.len() < 4 {
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() != dl.size {
+        return Err(BladeError::Other(
+            "downloaded file size changed after download — refusing verification".into(),
+        ));
+    }
+    if metadata.len() < 4 {
         return Err(BladeError::Other("downloaded file too small".into()));
     }
 
-    let magic_ok = binary_magic_ok(&data);
+    let mut magic = [0; 4];
+    file.read_exact(&mut magic)?;
+    let magic_ok = binary_magic_ok(&magic);
 
     if !magic_ok {
         return Err(BladeError::Other(
@@ -448,7 +596,7 @@ pub fn verify_binary(dl: &DownloadedBinary) -> Result<()> {
             dl.size
         )));
     }
-    if dl.size > 500_000_000 {
+    if dl.size > MAX_BINARY_SIZE {
         return Err(BladeError::Other(format!(
             "downloaded file suspiciously large ({} bytes)",
             dl.size
@@ -473,56 +621,82 @@ pub fn verify_binary(dl: &DownloadedBinary) -> Result<()> {
 /// - Corrupted binary that passes magic check but won't execute
 ///
 /// Runs `binary --version` and checks for a successful exit.
-pub fn verify_binary_runs(dl: &DownloadedBinary) -> Result<()> {
-    let output = std::process::Command::new(&dl.path)
+pub async fn verify_binary_runs(dl: &DownloadedBinary) -> Result<()> {
+    let mut child = tokio::process::Command::new(&dl.path)
         .arg("--version")
+        // Startup verification must not wait for GitHub/npm connectivity.
+        .env("BLADE_NO_UPDATE_CHECK", "1")
+        .kill_on_drop(true)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .output();
-
-    match output {
-        Ok(o) => {
-            if !o.status.success() {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                let stdout = String::from_utf8_lossy(&o.stdout);
-                return Err(BladeError::Other(format!(
-                    "downloaded binary failed to start (exit {:?})\n  stdout: {}\n  stderr: {}",
-                    o.status.code(),
-                    stdout.trim(),
-                    stderr.trim(),
-                )));
-            }
-            // Check the output mentions "bladebro" to confirm it's our binary.
-            let combined = format!(
-                "{} {}",
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr)
-            );
-            if !combined.to_lowercase().contains("bladebro") {
-                return Err(BladeError::Other(
-                    "downloaded binary ran but doesn't identify as bladebro".into(),
-                ));
-            }
-            Ok(())
+        .spawn()
+        .map_err(|e| BladeError::Other(format!("cannot execute downloaded binary: {e}")))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| BladeError::Other("missing version stdout".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| BladeError::Other("missing version stderr".into()))?;
+    let output = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let (stdout, stderr, status) = tokio::try_join!(
+            read_version_output(stdout),
+            read_version_output(stderr),
+            child.wait(),
+        )?;
+        Ok::<_, std::io::Error>(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    })
+    .await;
+    let output = match output {
+        Ok(Ok(output)) => output,
+        error => {
+            let _ = child.kill().await;
+            return Err(BladeError::Other(match error {
+                Ok(Err(error)) => format!("downloaded binary version probe failed: {error}"),
+                _ => "downloaded binary --version did not finish within 5s".into(),
+            }));
         }
-        Err(e) => {
-            // On Unix, this can happen if exec permissions aren't set.
-            #[cfg(unix)]
-            {
-                if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    return Err(BladeError::Other(
-                        "cannot execute downloaded binary (permission denied). \
-                         Run: chmod +x the binary path"
-                            .into(),
-                    ));
-                }
-            }
-            Err(BladeError::Other(format!(
-                "cannot execute downloaded binary: {e}\n\
-                 This may be a wrong architecture or missing libraries."
-            )))
-        }
+    };
+    if !output.status.success() {
+        return Err(BladeError::Other(format!(
+            "downloaded binary failed to start (exit {:?})\n  stdout: {}\n  stderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).trim(),
+            String::from_utf8_lossy(&output.stderr).trim(),
+        )));
     }
+    let combined = format!(
+        "{} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !combined.to_lowercase().contains("bladebro") {
+        return Err(BladeError::Other(
+            "downloaded binary ran but doesn't identify as bladebro".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn read_version_output(
+    reader: impl tokio::io::AsyncRead + Unpin,
+) -> std::io::Result<Vec<u8>> {
+    use tokio::io::AsyncReadExt;
+    const LIMIT: usize = 64 * 1024;
+    let mut bytes = Vec::new();
+    reader
+        .take((LIMIT + 1) as u64)
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() > LIMIT {
+        return Err(std::io::Error::other("version output exceeds 64 KiB"));
+    }
+    Ok(bytes)
 }
 
 /// Clean up the temp file (call on success or failure).
@@ -536,6 +710,229 @@ pub fn cleanup_tmp(path: &std::path::Path) {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn binary_startup_verification_has_a_deadline() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        let marker = std::path::PathBuf::from(format!("{}.waiting", path.display()));
+        std::fs::write(&marker, b"owned").unwrap();
+        std::fs::write(
+            &path,
+            "#!/bin/sh\nwhile [ -e \"$0.waiting\" ]; do :; done\nprintf 'bladebro fixture\\n'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let dl = DownloadedBinary {
+            path: path.clone(),
+            size: 0,
+            asset_name: "fixture".into(),
+        };
+        let mut task = tokio::spawn(async move { verify_binary_runs(&dl).await });
+        let result = tokio::time::timeout(std::time::Duration::from_secs(6), &mut task).await;
+        // Release the fixture even on the pre-fix path: no leaked shell.
+        std::fs::remove_file(marker).unwrap();
+        let outcome = match result {
+            Ok(outcome) => outcome.unwrap(),
+            Err(_) => task.await.unwrap(),
+        };
+        std::fs::remove_file(path).unwrap();
+        assert!(
+            outcome.is_err(),
+            "a wedged version probe must fail within its own deadline"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn binary_probe_checks_exit_identity_output_bound_and_offline_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        for (body, accepted) in [
+            (
+                "[ \"$BLADE_NO_UPDATE_CHECK\" = 1 ] || exit 7\nprintf 'bladebro fixture\\n'"
+                    .to_string(),
+                true,
+            ),
+            ("printf 'bladebro fixture\\n'\nexit 9".to_string(), false),
+            ("printf 'different program\\n'".to_string(), false),
+            (format!("printf '{}'", "bladebro".repeat(9000)), false),
+        ] {
+            let path = create_secure_tmp(&std::env::temp_dir()).unwrap();
+            std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let dl = DownloadedBinary {
+                path: path.clone(),
+                size: 0,
+                asset_name: "fixture".into(),
+            };
+            let result = verify_binary_runs(&dl).await;
+            std::fs::remove_file(path).unwrap();
+            assert_eq!(result.is_ok(), accepted, "{result:?}");
+        }
+    }
+
+    #[test]
+    fn truncated_binary_cannot_pass_a_stale_download_size() {
+        let path = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        let magic: &[u8] = if cfg!(windows) {
+            b"MZxx"
+        } else if cfg!(target_os = "macos") {
+            &[0xcf, 0xfa, 0xed, 0xfe]
+        } else {
+            &[0x7f, b'E', b'L', b'F']
+        };
+        std::fs::write(&path, magic).unwrap();
+        let dl = DownloadedBinary {
+            path: path.clone(),
+            size: 1_000_000,
+            asset_name: "fixture".into(),
+        };
+        let result = verify_binary(&dl);
+        std::fs::remove_file(path).unwrap();
+        assert!(
+            result.is_err(),
+            "a four-byte file must not pass because its recorded size was 1MB"
+        );
+    }
+
+    #[tokio::test]
+    async fn oversized_checksum_is_refused_with_and_without_content_length() {
+        use sha2::{Digest, Sha256};
+        let path = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        std::fs::write(&path, b"fixture").unwrap();
+        let hash: String = Sha256::digest(b"fixture")
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let body = format!("{hash}  {}", "x".repeat(32 * 1024));
+        for head in [format!("Content-Length: {}\r\n", body.len()), String::new()] {
+            let (url, server) = http_fixture(vec![format!(
+                "HTTP/1.1 200 OK\r\n{head}Connection: close\r\n\r\n{body}"
+            )])
+            .await;
+            let result = verify_sha256(&path, &url, "9.9.9").await;
+            assert_eq!(server.await.unwrap().len(), 1);
+            assert!(
+                result.is_err(),
+                "a checksum response must be bounded before allocation/parse"
+            );
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    async fn http_fixture(
+        responses: Vec<String>,
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/binary", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for response in responses {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut request = String::new();
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                    request.push_str(&line);
+                }
+                requests.push(request);
+                reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .unwrap();
+            }
+            requests
+        });
+        (url, task)
+    }
+
+    #[tokio::test]
+    async fn interrupted_download_keeps_bytes_and_resumes_exactly() {
+        let tmp = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        let (url, server) = http_fixture(vec![
+            "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nabc".into(),
+            "HTTP/1.1 206 Partial Content\r\nContent-Length: 7\r\nContent-Range: bytes 3-9/10\r\nConnection: close\r\n\r\ndefghij".into(),
+        ]).await;
+        assert!(download_once(&url, &tmp, 10).await.is_err());
+        assert_eq!(
+            std::fs::read(&tmp).unwrap(),
+            b"abc",
+            "interrupted bytes must reach disk before retry"
+        );
+        assert_eq!(download_once(&url, &tmp, 10).await.unwrap(), 10);
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"abcdefghij");
+        let requests = server.await.unwrap();
+        assert!(!requests[0].to_lowercase().contains("range:"));
+        assert!(requests[1].to_lowercase().contains("range: bytes=3-"));
+        std::fs::remove_file(tmp).unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_refuses_wrong_ranges_and_oversized_bodies() {
+        let tmp = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        std::fs::write(&tmp, b"abc").unwrap();
+        let (url, server) = http_fixture(vec![
+            "HTTP/1.1 206 Partial Content\r\nContent-Length: 7\r\nContent-Range: bytes 2-8/10\r\nConnection: close\r\n\r\ndefghij".into(),
+            "HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\nabcdefghijk".into(),
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\nb\r\nabcdefghijk\r\n0\r\n\r\n".into(),
+        ]).await;
+        assert!(download_once(&url, &tmp, 10)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("range"));
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"abc");
+        assert!(download_once(&url, &tmp, 10)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("size"));
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"abc");
+        assert!(download_once(&url, &tmp, 10)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("size"));
+        assert!(std::fs::metadata(&tmp).unwrap().len() <= 10);
+        assert_eq!(server.await.unwrap().len(), 3);
+        std::fs::remove_file(tmp).unwrap();
+    }
+
+    #[tokio::test]
+    async fn chunked_resume_cannot_exceed_its_declared_range() {
+        let tmp = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        std::fs::write(&tmp, b"abc").unwrap();
+        let (url, server) = http_fixture(vec![
+            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 3-4/10\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n7\r\ndefghij\r\n0\r\n\r\n".into(),
+        ]).await;
+        assert!(download_once(&url, &tmp, 10).await.is_err());
+        assert!(std::fs::metadata(&tmp).unwrap().len() <= 5);
+        assert_eq!(server.await.unwrap().len(), 1);
+        std::fs::remove_file(tmp).unwrap();
+    }
+
+    #[tokio::test]
+    async fn server_ignoring_range_replaces_partial_file() {
+        let tmp = create_secure_tmp(&std::env::temp_dir()).unwrap();
+        std::fs::write(&tmp, b"old").unwrap();
+        let (url, server) = http_fixture(vec![
+            "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnew!".into(),
+        ])
+        .await;
+        assert_eq!(download_once(&url, &tmp, 4).await.unwrap(), 4);
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"new!");
+        assert!(server.await.unwrap()[0]
+            .to_lowercase()
+            .contains("range: bytes=3-"));
+        std::fs::remove_file(tmp).unwrap();
+    }
 
     #[test]
     fn verify_rejects_empty() {
@@ -592,9 +989,9 @@ mod tests {
         // Write a file with correct magic but fake size > 500MB
         let mut f = std::fs::File::create(&path).unwrap();
         // Linux ELF magic
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         f.write_all(&[0x7F, b'E', b'L', b'F']).unwrap();
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
         f.write_all(&[0x7F, b'E', b'L', b'F']).unwrap();
         // Write enough to pass the size check (> 500MB)
         // Actually we can't write 500MB in a test. Just test the size check directly.
@@ -610,6 +1007,71 @@ mod tests {
         // then dl.size. The magic check reads the actual file bytes.
         // So this should pass magic (we wrote ELF header) but fail on size.
         assert!(verify_binary(&dl).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn checksum_transport_errors_retry_within_bounds_and_succeed() {
+        // G11: two connections die without a response (transport-level —
+        // the captured 4.3.0 failure class), the third serves the real
+        // checksum — the update must verify, not fail on the first hiccup.
+        let dir = std::env::temp_dir().join(format!("blade-checksum-retry-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("bladebro");
+        std::fs::write(&bin, b"FAKE BINARY BYTES").unwrap();
+        use sha2::{Digest, Sha256};
+        let hash: String = Sha256::digest(b"FAKE BINARY BYTES")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let body = format!("{hash}  bladebro\n");
+        let (url, server) = http_fixture(vec![
+            "".into(),
+            "".into(),
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            ),
+        ])
+        .await;
+        let res = verify_sha256(&bin, &url, "9.9.9").await;
+        assert!(res.is_ok(), "expected verified after retries: {res:?}");
+        let requests = server.await.unwrap();
+        assert_eq!(
+            requests.len(),
+            3,
+            "two transport failures + one good attempt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn checksum_permanent_failures_do_not_retry_and_fail_closed() {
+        // A 404 is permanent: exactly one attempt, no retry loop, no
+        // install — and the error names the next step.
+        let dir = std::env::temp_dir().join(format!("blade-checksum-404-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("bladebro");
+        std::fs::write(&bin, b"FAKE").unwrap();
+        let (url, server) = http_fixture(vec![
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(),
+        ])
+        .await;
+        let err = verify_sha256(&bin, &url, "9.9.9")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("NOT installed"), "{err}");
+        assert!(
+            err.contains("404"),
+            "single-attempt 404 must be reported as-is: {err}"
+        );
+        assert!(
+            !err.contains("after 3 attempts"),
+            "permanent failures must not be retried: {err}"
+        );
+        drop(server);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
@@ -648,7 +1110,7 @@ mod magic_tests {
     /// target-specific arm must accept the same bytes the release assets use.
     #[test]
     fn binary_magic_matches_the_platform() {
-        if cfg!(target_os = "linux") {
+        if cfg!(any(target_os = "linux", target_os = "android")) {
             assert!(binary_magic_ok(&[
                 0x7F, b'E', b'L', b'F', 0x02, 0x01, 0x01, 0x00
             ]));

@@ -1,0 +1,1196 @@
+{
+  "scenario": "core",
+  "host": {
+    "os": "macOS 26.6.2 arm64",
+    "chrome": "Chrome/154.0.8037.58",
+    "ffmpeg": "n9.0.2",
+    "transport": "ws",
+    "headless": false,
+    "fixtures": [
+      "anim.html",
+      "idle.html",
+      "tick.html"
+    ]
+  },
+  "runs": [
+    {
+      "name": "fps_default",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 20059,
+      "frames_received": 1992,
+      "stale_frames": 0,
+      "acks_sent": 1992,
+      "acks_ok": 1992,
+      "acks_err": 0,
+      "frames_written": 1993,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 15,
+      "ack_send_us": {
+        "p50": 32.708000000639004,
+        "p95": 44.87499999999045,
+        "max": 1037.083000000166
+      },
+      "ack_rtt_ms": {
+        "p50": 0.2602499999993597,
+        "p95": 0.3156249999999545,
+        "max": 1.6105420000003505
+      },
+      "capture_to_recv_ms": {
+        "p50": 2.462158203125,
+        "p95": 2.93310546875,
+        "max": 3.862060546875
+      },
+      "effective_fps_recv": 99.31,
+      "first_frame_ms": 17,
+      "max_gap_ms": 19,
+      "fps_buckets": [
+        93,
+        99,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "frame_sizes": {
+        "1185x720": 1992
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "68343985E80D320B13032352A05B0EB8",
+          "url": "http://127.0.0.1:8765/anim.html",
+          "frames": 1992,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          1992
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 20031,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 6.447,
+          "stime_s": 1.515,
+          "rtime_s": 16.33
+        },
+        "exit_code": 0,
+        "finalize_ms": 28
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 19.988,
+        "nb_read_frames": 1993,
+        "size_bytes": 1946993,
+        "decode_exit": 0,
+        "decode_error_lines": 47,
+        "decode_errors": "[null @ 0x9d8c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 99 >= 99\n[null @ 0x9d8c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 117 >= 117\n[null @ 0x9d8c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 133 >= 133\n[null @ 0x9d8c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 155 >= 155\n[null @ 0x9d8c20280] Application p",
+        "playable": false,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.354,
+      "drift_pct_capture": -0.215,
+      "bytes_per_min": 5844485.7
+    },
+    {
+      "name": "fps_nth2",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 15059,
+      "frames_received": 746,
+      "stale_frames": 0,
+      "acks_sent": 746,
+      "acks_ok": 745,
+      "acks_err": 1,
+      "frames_written": 747,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 3,
+      "ack_send_us": {
+        "p50": 52.290999999968335,
+        "p95": 175.29199999989942,
+        "max": 299.5409999999765
+      },
+      "ack_rtt_ms": {
+        "p50": 0.3592500000004293,
+        "p95": 0.529207999999926,
+        "max": 0.7446659999995973
+      },
+      "capture_to_recv_ms": {
+        "p50": 3.60693359375,
+        "p95": 4.731201171875,
+        "max": 5.426025390625
+      },
+      "effective_fps_recv": 49.54,
+      "first_frame_ms": 21,
+      "max_gap_ms": 28,
+      "fps_buckets": [
+        45,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 746
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "68343985E80D320B13032352A05B0EB8",
+          "url": "http://127.0.0.1:8765/anim.html",
+          "frames": 746,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          746
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 15029,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 2.724,
+          "stime_s": 0.641,
+          "rtime_s": 8.277
+        },
+        "exit_code": 0,
+        "finalize_ms": 29
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 14.985,
+        "nb_read_frames": 747,
+        "size_bytes": 810746,
+        "decode_exit": 0,
+        "decode_error_lines": 4,
+        "decode_errors": "[null @ 0xa39018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 6960 >= 6960\n[null @ 0xa39018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 6963 >= 6963\n[null @ 0xa39018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 6965 >= 6965\n[null @ 0xa39018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 6966 >= 6966",
+        "playable": false,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.491,
+      "drift_pct_capture": -0.293,
+      "bytes_per_min": 3246230.2
+    },
+    {
+      "name": "slow_consumer",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 21787,
+      "frames_received": 1991,
+      "stale_frames": 0,
+      "acks_sent": 1991,
+      "acks_ok": 1991,
+      "acks_err": 0,
+      "frames_written": 108,
+      "frames_dropped": 1884,
+      "dup_frames_written": 0,
+      "queue_max": 8,
+      "ack_send_us": {
+        "p50": 29.58299999954761,
+        "p95": 41.08300000007148,
+        "max": 240.0840000000244
+      },
+      "ack_rtt_ms": {
+        "p50": 0.27779199999713455,
+        "p95": 0.32316599999990103,
+        "max": 0.6949580000000424
+      },
+      "capture_to_recv_ms": {
+        "p50": 2.75,
+        "p95": 3.263916015625,
+        "max": 3.755126953125
+      },
+      "effective_fps_recv": 91.38,
+      "first_frame_ms": 9,
+      "max_gap_ms": 19,
+      "fps_buckets": [
+        91,
+        99,
+        100,
+        100,
+        100,
+        101,
+        99,
+        100,
+        100,
+        100,
+        100,
+        101,
+        99,
+        100,
+        101,
+        99,
+        100,
+        100,
+        101,
+        99,
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 1991
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "68343985E80D320B13032352A05B0EB8",
+          "url": "http://127.0.0.1:8765/anim.html",
+          "frames": 1991,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          1991
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 20025,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.333,
+          "stime_s": 0.093,
+          "rtime_s": 0.104
+        },
+        "exit_code": 0,
+        "finalize_ms": 112
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 21.44,
+        "nb_read_frames": 108,
+        "size_bytes": 149683,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -1.593,
+      "drift_pct_capture": 7.066,
+      "bytes_per_min": 418889
+    },
+    {
+      "name": "acks_60s",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 60063,
+      "frames_received": 5994,
+      "stale_frames": 0,
+      "acks_sent": 5994,
+      "acks_ok": 5994,
+      "acks_err": 0,
+      "frames_written": 5995,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 15,
+      "ack_send_us": {
+        "p50": 31.54200000426499,
+        "p95": 40.08299999986775,
+        "max": 1054.5830000000933
+      },
+      "ack_rtt_ms": {
+        "p50": 0.2541669999991427,
+        "p95": 0.2931669999998121,
+        "max": 1.2468339999995806
+      },
+      "capture_to_recv_ms": {
+        "p50": 2.370849609375,
+        "p95": 2.859130859375,
+        "max": 4.111083984375
+      },
+      "effective_fps_recv": 99.8,
+      "first_frame_ms": 13,
+      "max_gap_ms": 19,
+      "fps_buckets": [
+        93,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        101,
+        99,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 5994
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "834150BF7F708C8E8AD54F9B1CA9126F",
+          "url": "http://127.0.0.1:8765/anim.html",
+          "frames": 5994,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          5994
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 60033,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 20.045,
+          "stime_s": 4.458,
+          "rtime_s": 56.343
+        },
+        "exit_code": 0,
+        "finalize_ms": 29
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 59.991,
+        "nb_read_frames": 5995,
+        "size_bytes": 5917557,
+        "decode_exit": 0,
+        "decode_error_lines": 54,
+        "decode_errors": "[null @ 0x920c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 186 >= 186\n[null @ 0x920c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 469 >= 469\n    Last message repeated 1 times\n[null @ 0x920c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 470 >= 470\n    Last message repeated 10 times\n[null @ 0x920c20280] Application provided invalid, non monotonically increasing ",
+        "playable": false,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.12,
+      "drift_pct_capture": -0.07,
+      "bytes_per_min": 5918444.8
+    },
+    {
+      "name": "drift_wallclock",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 30079,
+      "frames_received": 1,
+      "stale_frames": 0,
+      "acks_sent": 1,
+      "acks_ok": 1,
+      "acks_err": 0,
+      "frames_written": 2,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 74.9579999999952,
+        "p95": 74.9579999999952,
+        "max": 74.9579999999952
+      },
+      "ack_rtt_ms": {
+        "p50": 0.35495799999999633,
+        "p95": 0.35495799999999633,
+        "max": 0.35495799999999633
+      },
+      "capture_to_recv_ms": {
+        "p50": 2.238037109375,
+        "p95": 2.238037109375,
+        "max": 2.238037109375
+      },
+      "effective_fps_recv": 0.03,
+      "first_frame_ms": 12,
+      "max_gap_ms": null,
+      "fps_buckets": [
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 1
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "80543E20499167B33A034D71EA252015",
+          "url": "http://127.0.0.1:8765/idle.html",
+          "frames": 1,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          1
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 30034,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.023,
+          "stime_s": 0.023,
+          "rtime_s": 0.032
+        },
+        "exit_code": 0,
+        "finalize_ms": 41
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 29.997,
+        "nb_read_frames": 2,
+        "size_bytes": 10914,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.273,
+      "drift_pct_capture": -0.123,
+      "bytes_per_min": 21830.2
+    },
+    {
+      "name": "drift_concat",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 30083,
+      "frames_received": 1,
+      "stale_frames": 0,
+      "acks_sent": 1,
+      "acks_ok": 1,
+      "acks_err": 0,
+      "frames_written": 0,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 97.332999999999,
+        "p95": 97.332999999999,
+        "max": 97.332999999999
+      },
+      "ack_rtt_ms": {
+        "p50": 0.5361660000000015,
+        "p95": 0.5361660000000015,
+        "max": 0.5361660000000015
+      },
+      "capture_to_recv_ms": {
+        "p50": 2.43212890625,
+        "p95": 2.43212890625,
+        "max": 2.43212890625
+      },
+      "effective_fps_recv": 0.03,
+      "first_frame_ms": 12,
+      "max_gap_ms": null,
+      "fps_buckets": [
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 1
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "80543E20499167B33A034D71EA252015",
+          "url": "http://127.0.0.1:8765/idle.html",
+          "frames": 1,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          1
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 30029,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.019,
+          "stime_s": 0.016,
+          "rtime_s": 0.023
+        },
+        "exit_code": 0,
+        "finalize_ms": 45
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 30.04,
+        "nb_read_frames": 2,
+        "size_bytes": 10915,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.143,
+      "drift_pct_capture": 0.037,
+      "bytes_per_min": 21800.9
+    },
+    {
+      "name": "drift_cfr",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 30072,
+      "frames_received": 1,
+      "stale_frames": 0,
+      "acks_sent": 1,
+      "acks_ok": 1,
+      "acks_err": 0,
+      "frames_written": 295,
+      "frames_dropped": 0,
+      "dup_frames_written": 294,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 79.62500000000006,
+        "p95": 79.62500000000006,
+        "max": 79.62500000000006
+      },
+      "ack_rtt_ms": {
+        "p50": 0.3983339999999984,
+        "p95": 0.3983339999999984,
+        "max": 0.3983339999999984
+      },
+      "capture_to_recv_ms": {
+        "p50": 2.201904296875,
+        "p95": 2.201904296875,
+        "max": 2.201904296875
+      },
+      "effective_fps_recv": 0.03,
+      "first_frame_ms": 12,
+      "max_gap_ms": null,
+      "fps_buckets": [
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 1
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "A28F00BB41D5BE868263FA186D442CC2",
+          "url": "http://127.0.0.1:8765/idle.html",
+          "frames": 1,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          1
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 30034,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 2.219,
+          "stime_s": 0.238,
+          "rtime_s": 24.735
+        },
+        "exit_code": 0,
+        "finalize_ms": 34
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 29.5,
+        "nb_read_frames": 295,
+        "size_bytes": 44727,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -1.902,
+      "drift_pct_capture": -1.778,
+      "bytes_per_min": 90970.2
+    },
+    {
+      "name": "drift_wallclock_notail",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 10068,
+      "frames_received": 1,
+      "stale_frames": 0,
+      "acks_sent": 1,
+      "acks_ok": 1,
+      "acks_err": 0,
+      "frames_written": 1,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 84.62500000000261,
+        "p95": 84.62500000000261,
+        "max": 84.62500000000261
+      },
+      "ack_rtt_ms": {
+        "p50": 0.43087500000000034,
+        "p95": 0.43087500000000034,
+        "max": 0.43087500000000034
+      },
+      "capture_to_recv_ms": {
+        "p50": 1.948974609375,
+        "p95": 1.948974609375,
+        "max": 1.948974609375
+      },
+      "effective_fps_recv": 0.1,
+      "first_frame_ms": 12,
+      "max_gap_ms": null,
+      "fps_buckets": [
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 1
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "A28F00BB41D5BE868263FA186D442CC2",
+          "url": "http://127.0.0.1:8765/idle.html",
+          "frames": 1,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          1
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 10028,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.018,
+          "stime_s": 0.017,
+          "rtime_s": 0.027
+        },
+        "exit_code": 0,
+        "finalize_ms": 36
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 0.001,
+        "nb_read_frames": 1,
+        "size_bytes": 10851,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -99.99,
+      "drift_pct_capture": -99.99,
+      "bytes_per_min": null,
+      "bytes_per_min_not_measured_because": "only 1 decoded frame(s): duration is the tail hold, no rate"
+    },
+    {
+      "name": "drift_tick_wallclock",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 30106,
+      "frames_received": 31,
+      "stale_frames": 0,
+      "acks_sent": 31,
+      "acks_ok": 31,
+      "acks_err": 0,
+      "frames_written": 32,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 138.50000000093132,
+        "p95": 222.54199999952107,
+        "max": 235.4160000001002
+      },
+      "ack_rtt_ms": {
+        "p50": 0.6867080000001806,
+        "p95": 0.8400409999994736,
+        "max": 1.1540420000019367
+      },
+      "capture_to_recv_ms": {
+        "p50": 6.10009765625,
+        "p95": 7.263916015625,
+        "max": 7.382080078125
+      },
+      "effective_fps_recv": 1.03,
+      "first_frame_ms": 10,
+      "max_gap_ms": 1009,
+      "fps_buckets": [
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 31
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "C6D11F1D30148A0A53A974D21F9EDD89",
+          "url": "http://127.0.0.1:8765/tick.html",
+          "frames": 31,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          31
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 30031,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.107,
+          "stime_s": 0.048,
+          "rtime_s": 0.057
+        },
+        "exit_code": 0,
+        "finalize_ms": 70
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 29.999,
+        "nb_read_frames": 32,
+        "size_bytes": 17388,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.355,
+      "drift_pct_capture": -0.107,
+      "bytes_per_min": 34777.2
+    },
+    {
+      "name": "drift_tick_concat",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 30113,
+      "frames_received": 31,
+      "stale_frames": 0,
+      "acks_sent": 31,
+      "acks_ok": 31,
+      "acks_err": 0,
+      "frames_written": 0,
+      "frames_dropped": 0,
+      "dup_frames_written": 0,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 151.625000000422,
+        "p95": 219.33399999943504,
+        "max": 227.83300000037343
+      },
+      "ack_rtt_ms": {
+        "p50": 1.268500000000131,
+        "p95": 2.243624999999156,
+        "max": 2.327499999999418
+      },
+      "capture_to_recv_ms": {
+        "p50": 6.653076171875,
+        "p95": 7.342041015625,
+        "max": 7.77099609375
+      },
+      "effective_fps_recv": 1.03,
+      "first_frame_ms": 5,
+      "max_gap_ms": 1003,
+      "fps_buckets": [
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 31
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "C6D11F1D30148A0A53A974D21F9EDD89",
+          "url": "http://127.0.0.1:8765/tick.html",
+          "frames": 31,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          31
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 30028,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.106,
+          "stime_s": 0.044,
+          "rtime_s": 0.051
+        },
+        "exit_code": 0,
+        "finalize_ms": 74
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 30.04,
+        "nb_read_frames": 32,
+        "size_bytes": 17897,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -0.242,
+      "drift_pct_capture": 0.04,
+      "bytes_per_min": 35746.3
+    },
+    {
+      "name": "drift_tick_cfr",
+      "chrome": "Chrome/154.0.8037.58",
+      "follow": "off",
+      "stop_reason": "duration",
+      "wall_ms": 30072,
+      "frames_received": 31,
+      "stale_frames": 0,
+      "acks_sent": 31,
+      "acks_ok": 31,
+      "acks_err": 0,
+      "frames_written": 295,
+      "frames_dropped": 0,
+      "dup_frames_written": 264,
+      "queue_max": 0,
+      "ack_send_us": {
+        "p50": 135.5409999996482,
+        "p95": 226.33399999904213,
+        "max": 245.87499999961437
+      },
+      "ack_rtt_ms": {
+        "p50": 0.7004579999993439,
+        "p95": 0.8275420000027225,
+        "max": 1.3826250000001892
+      },
+      "capture_to_recv_ms": {
+        "p50": 6.443115234375,
+        "p95": 7.1669921875,
+        "max": 7.684814453125
+      },
+      "effective_fps_recv": 1.03,
+      "first_frame_ms": 10,
+      "max_gap_ms": 1010,
+      "fps_buckets": [
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "frame_sizes": {
+        "1185x720": 31
+      },
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "6B1E9C6E807D3A72D68FBDEFEBD71FBA",
+          "url": "http://127.0.0.1:8765/tick.html",
+          "frames": 31,
+          "switch_ms": null
+        }
+      ],
+      "segment_summary": {
+        "count": 1,
+        "frames_per_segment": [
+          31
+        ],
+        "all_nonzero": true
+      },
+      "events": [],
+      "stop_begin_ms": 30033,
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 2.152,
+          "stime_s": 0.241,
+          "rtime_s": 24.749
+        },
+        "exit_code": 0,
+        "finalize_ms": 34
+      },
+      "probe": {
+        "codec": "vp9",
+        "width": 1280,
+        "height": 720,
+        "duration_s": 29.5,
+        "nb_read_frames": 295,
+        "size_bytes": 46611,
+        "decode_exit": 0,
+        "decode_error_lines": 0,
+        "decode_errors": "",
+        "playable": true,
+        "decodes_clean_exit": true
+      },
+      "drift_pct": -1.902,
+      "drift_pct_capture": -1.775,
+      "bytes_per_min": 94802
+    }
+  ],
+  "derived": {
+    "effective_fps_recv_fps_default": 99.31,
+    "effective_fps_recv_fps_nth2": 49.54,
+    "ack_send_us_p95_fps_default": 44.87499999999045,
+    "ack_rtt_ms_p95_fps_default": 0.3156249999999545,
+    "ack_send_us_p95_acks_60s": 40.08299999986775,
+    "ack_rtt_ms_p95_acks_60s": 0.2931669999998121,
+    "slow_consumer_drop_pct": 94.63,
+    "slow_consumer_frames_received_eq_acks_sent": true,
+    "frames_eq_acks_60s": true,
+    "acks_ok_eq_acks_sent_60s": true,
+    "frames_received_60s": 5994,
+    "stall_seconds_60s": 0,
+    "stall_interior_s_60s": 0,
+    "stall_trailing_s_60s": 0,
+    "max_gap_ms_60s": 19,
+    "drift_pct_tick": {
+      "wallclock": -0.355,
+      "concat": -0.242,
+      "cfr": -1.902
+    },
+    "drift_pct_tick_capture": {
+      "wallclock": -0.107,
+      "concat": 0.04,
+      "cfr": -1.775
+    },
+    "within_5pct_tick": {
+      "wallclock": true,
+      "concat": true,
+      "cfr": true
+    },
+    "drift_pct_idle": {
+      "wallclock": -0.273,
+      "concat": -0.143,
+      "cfr": -1.902
+    },
+    "drift_pct_idle_capture": {
+      "wallclock": -0.123,
+      "concat": 0.037,
+      "cfr": -1.778
+    },
+    "within_5pct_idle": {
+      "wallclock": true,
+      "concat": true,
+      "cfr": true
+    },
+    "drift_wallclock_notail_pct": -99.99,
+    "notes": [
+      "idle.html delivers about 1 frame per run: its drift shows only the tail hold or cfr padding, not capture timing. The tick.html group is the drift comparison.",
+      "drift_wallclock_notail has 1 decoded frame: its duration is the tail hold only, so it is reported as a drift figure, not a rate.",
+      "drift_pct uses wall_ms, which includes encoder finalize; drift_pct_capture uses stop_begin_ms and excludes it (only runs recorded after stop_begin_ms existed have it)."
+    ]
+  }
+}

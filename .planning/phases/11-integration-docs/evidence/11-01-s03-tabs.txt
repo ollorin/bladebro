@@ -1,0 +1,71 @@
+# 2026-10-26T14:52:58Z git 75fd79c bladebro v4.6.5 (9d20e81-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+
+SNIPPET follow-result
+opener tab: EE149F6F16C129F524749A61A465698E
+start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/f-20261026T145300Z-b64fd0.webm (tab EE149F6F16C129F524749A61A465698E); first frame not awaited. record-stop saves it.
+open-tab: ✓ opened + switched to tab 0848742BB6F477BCF8A341601B9464B3
+✓ switched to tab EE149F6F16C129F524749A61A465698E
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/f-20261026T145300Z-b64fd0.webm (bytes 41830, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab EE149F6F16C129F524749A61A465698E, 1.7 s tab 0848742BB6F477BCF8A341601B9464B3, 3.6 s tab EE149F6F16C129F524749A61A465698E]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/f-20261026T145300Z-b64fd0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/f-20261026T145300Z-b64fd0.timeline.json (2 actions)
+-- tab closed while recording:
+second tab: 0AEC897B86391C8D419FB48322D84E93
+✓ closed tab 0AEC897B86391C8D419FB48322D84E93 (was current; switched to 0848742BB6F477BCF8A341601B9464B3)
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/c-20261026T145305Z-a03e19.webm (bytes 37934, duration 4.8 s, frames 48, dropped 0, segments [0.0 s tab EE149F6F16C129F524749A61A465698E, 1.7 s tab 0AEC897B86391C8D419FB48322D84E93, 3.3 s tab 0848742BB6F477BCF8A341601B9464B3], captured 47). Note: tab 0AEC897B86391C8D419FB48322D84E93 gone at 3.3 s; following tab 0848742BB6F477BCF8A341601B9464B3. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/c-20261026T145305Z-a03e19.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/c-20261026T145305Z-a03e19.timeline.json (2 actions)
+
+SNIPPET tabs-popup
+SNIPPET window-popup
+opener: 0848742BB6F477BCF8A341601B9464B3
+$ bladebro act click "open window"   (window.open with width/height features)
+outcome: new tab opened — B (tab B425E513424E5296977F59D11693C224)
+$ bladebro state tabs
+   EE149F6F16C129F524749A61A465698E  A — http://127.0.0.1:8765/a.html
+*  0848742BB6F477BCF8A341601B9464B3  Popper — http://127.0.0.1:8765/popper.html
+ R B425E513424E5296977F59D11693C224  B — http://127.0.0.1:8765/b.html
+(* agent, R video: differ; switch-tab to move the agent)
+(* = current tab; switch-tab <target_id> to change)
+$ bladebro act press Tab   (input on the opener)
+outcome: pressed Tab
+$ bladebro state tabs
+   EE149F6F16C129F524749A61A465698E  A — http://127.0.0.1:8765/a.html
+*  0848742BB6F477BCF8A341601B9464B3  Popper — http://127.0.0.1:8765/popper.html
+ R B425E513424E5296977F59D11693C224  B — http://127.0.0.1:8765/b.html
+(* agent, R video: differ; switch-tab to move the agent)
+(* = current tab; switch-tab <target_id> to change)
+$ bladebro state switch-tab 0848742BB6F477BCF8A341601B9464B3   (the opener, where the agent already is)
+✓ switched to tab 0848742BB6F477BCF8A341601B9464B3
+$ bladebro state tabs
+   EE149F6F16C129F524749A61A465698E  A — http://127.0.0.1:8765/a.html
+*  0848742BB6F477BCF8A341601B9464B3  Popper — http://127.0.0.1:8765/popper.html
+ R B425E513424E5296977F59D11693C224  B — http://127.0.0.1:8765/b.html
+(* agent, R video: differ; switch-tab to move the agent)
+(* = current tab; switch-tab <target_id> to change)
+$ bladebro state close-tab B425E513424E5296977F59D11693C224   (the popup)
+✓ closed tab B425E513424E5296977F59D11693C224
+$ bladebro state tabs
+   EE149F6F16C129F524749A61A465698E  A — http://127.0.0.1:8765/a.html
+*R 0848742BB6F477BCF8A341601B9464B3  Popper — http://127.0.0.1:8765/popper.html
+(* = current tab; switch-tab <target_id> to change)
+-- a second window-feature popup, then switch-tab to another tab and back to the opener:
+outcome: new tab opened — B (tab C1974CC57C5B3C596AB581C839560EED)
+$ bladebro state tabs
+   EE149F6F16C129F524749A61A465698E  A — http://127.0.0.1:8765/a.html
+ R C1974CC57C5B3C596AB581C839560EED  B — http://127.0.0.1:8765/b.html
+*  0848742BB6F477BCF8A341601B9464B3  Popper — http://127.0.0.1:8765/popper.html
+(* agent, R video: differ; switch-tab to move the agent)
+(* = current tab; switch-tab <target_id> to change)
+$ bladebro state switch-tab EE149F6F16C129F524749A61A465698E   (another tab)
+✓ switched to tab EE149F6F16C129F524749A61A465698E
+$ bladebro state switch-tab 0848742BB6F477BCF8A341601B9464B3   (back to the opener)
+✓ switched to tab 0848742BB6F477BCF8A341601B9464B3
+$ bladebro state tabs
+   EE149F6F16C129F524749A61A465698E  A — http://127.0.0.1:8765/a.html
+   C1974CC57C5B3C596AB581C839560EED  B — http://127.0.0.1:8765/b.html
+*R 0848742BB6F477BCF8A341601B9464B3  Popper — http://127.0.0.1:8765/popper.html
+(* = current tab; switch-tab <target_id> to change)
+recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pop-20261026T145311Z-601d9a.webm (bytes 113816, duration 14.1 s, frames 141, dropped 0, segments [0.0 s tab 0848742BB6F477BCF8A341601B9464B3, 2.3 s tab B425E513424E5296977F59D11693C224, 7.2 s tab 0848742BB6F477BCF8A341601B9464B3, 9.6 s tab C1974CC57C5B3C596AB581C839560EED, 11.1 s tab EE149F6F16C129F524749A61A465698E, 12.6 s tab 0848742BB6F477BCF8A341601B9464B3], captured 145). Note: tab B425E513424E5296977F59D11693C224 gone at 7.1 s; following tab 0848742BB6F477BCF8A341601B9464B3. Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pop-20261026T145311Z-601d9a.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pop-20261026T145311Z-601d9a.timeline.json (7 actions)
+
+SNIPPET per-tab-result
+✓ opened + switched to tab 176C1EADEBDA357482601EDCA8A65C94
+recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pt-tab1-20261026T145327Z-0901e8.webm (bytes 8976, duration 3.2 s, frames 32, dropped 0, segments [0.0 s tab BF8122BF3E149538E9D0D5CEEE1D5250], captured 18); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pt-tab2-20261026T145328Z-2389e9.webm (bytes 10793, duration 1.7 s, frames 17, dropped 0, segments [0.0 s tab 176C1EADEBDA357482601EDCA8A65C94]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pt-tab2-20261026T145328Z-2389e9.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH/recordings/pt-tab1-20261026T145327Z-0901e8.timeline.json (1 action)
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 89960 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.CcLYoNGkoH

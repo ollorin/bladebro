@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "args": {
+    "port": 64254,
+    "target": null,
+    "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/x264_wall.mp4",
+    "duration": 8,
+    "codec": "x264",
+    "ts": "wallclock",
+    "fps": 10,
+    "quality": 70,
+    "maxWidth": 1280,
+    "maxHeight": 720,
+    "everyNth": 1,
+    "queue": 16,
+    "slowWriterMs": 0,
+    "sizeMode": "fixed",
+    "pageEnable": true,
+    "tail": true,
+    "statsPath": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/x264_wall.mp4.stats.json",
+    "finalizeTimeout": 10000,
+    "keepFrames": false,
+    "ffmpeg": "/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg"
+  },
+  "chrome": "Chrome/154.0.8037.58",
+  "ffmpeg_path": "/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg",
+  "started_at": "2026-10-21T10:40:56.825Z",
+  "wall_ms": 8044,
+  "frames_received": 793,
+  "acks_sent": 793,
+  "acks_ok": 793,
+  "acks_err": 0,
+  "frames_written": 794,
+  "dup_frames_written": 0,
+  "frames_dropped": 0,
+  "queue_max": 11,
+  "ack_send_us": {
+    "p50": 34.042000000226835,
+    "p95": 52.665999999589985,
+    "max": 267.95899999990525
+  },
+  "ack_rtt_ms": {
+    "p50": 0.2644169999998667,
+    "p95": 0.37158399999998437,
+    "max": 0.9375829999999041
+  },
+  "capture_to_recv_ms": {
+    "p50": 2.416015625,
+    "p95": 3.058837890625,
+    "max": 3.864990234375
+  },
+  "effective_fps_recv": 98.58,
+  "first_frame_ms": 11,
+  "max_gap_ms": 19,
+  "fps_buckets": [
+    92,
+    100,
+    100,
+    100,
+    100,
+    100,
+    100,
+    100,
+    1
+  ],
+  "frame_sizes": {
+    "1185x720": 793
+  },
+  "concat_clock": null,
+  "segments": [
+    {
+      "t_ms": 0,
+      "targetId": "5A9B306AE841699E73D50073F3211218",
+      "url": "http://127.0.0.1:8765/anim.html",
+      "frames": 793
+    }
+  ],
+  "events": [],
+  "encoder": {
+    "exit_code": 0,
+    "signal": null,
+    "finalized": true,
+    "killed": false,
+    "finalize_ms": 16,
+    "bench": {
+      "utime_s": 2.967,
+      "stime_s": 0.691,
+      "rtime_s": 4.558
+    },
+    "stderr_tail": "ult in incorrect timestamps in the output file.\n[vost#0:0/libx264 @ 0x929070000] Non-monotonic DTS; previous: 58433, current: 58432; changing to 58434. This may result in incorrect timestamps in the output file.\n[vost#0:0/libx264 @ 0x929070000] Non-monotonic DTS; previous: 58464, current: 58464; changing to 58465. This may result in incorrect timestamps in the output file.\n[vost#0:0/libx264 @ 0x929070000] Non-monotonic DTS; previous: 58480, current: 58480; changing to 58481. This may result in incorrect timestamps in the output file.\n[mp4 @ 0x928c14280] Starting second pass: moving the moov atom to the beginning of the file\n[out#0/mp4 @ 0x928c24180] video:278KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 5.494787%\nframe=  794 fps=174 q=-1.0 Lsize=     293KiB time=00:00:07.98 bitrate= 301.1kbits/s speed=1.75x elapsed=0:00:04.55    \nbench: utime=2.967s stime=0.691s rtime=4.558s\nbench: maxrss=288047104KiB\n[libx264 @ 0x928c28000] frame I:4     Avg QP:18.22  size:  2891\n[libx264 @ 0x928c28000] frame P:200   Avg QP:27.51  size:   548\n[libx264 @ 0x928c28000] frame B:590   Avg QP:37.71  size:   276\n[libx264 @ 0x928c28000] consecutive B-frames:  0.5%  0.3%  3.0% 96.2%\n[libx264 @ 0x928c28000] mb I  I16..4: 94.8%  1.4%  3.9%\n[libx264 @ 0x928c28000] mb P  I16..4:  1.2%  0.1%  0.2%  P16..4:  0.3%  0.5%  0.4%  0.0%  0.0%    skip:97.4%\n[libx264 @ 0x928c28000] mb B  I16..4:  0.4%  0.0%  0.0%  B16..8:  1.0%  0.5%  0.1%  direct: 0.0%  skip:97.9%  L0:50.0% L1:48.2% BI: 1.8%\n[libx264 @ 0x928c28000] 8x8 transform intra:5.6% inter:1.5%\n[libx264 @ 0x928c28000] coded y,uvDC,uvAC intra: 7.0% 4.7% 2.9% inter: 0.2% 0.0% 0.0%\n[libx264 @ 0x928c28000] i16 v,h,dc,p: 94%  5%  2%  0%\n[libx264 @ 0x928c28000] i8 v,h,dc,ddl,ddr,vr,hd,vl,hu: 40%  9% 28%  3%  2%  3%  1% 11%  3%\n[libx264 @ 0x928c28000] i4 v,h,dc,ddl,ddr,vr,hd,vl,hu: 32% 24% 24%  2%  4%  2%  3%  5%  3%\n[libx264 @ 0x928c28000] i8c dc,h,v,p: 63%  4% 34%  0%\n[libx264 @ 0x928c28000] Weighted P-Frames: Y:0.0% UV:0.0%\n[libx264 @ 0x928c28000] kb/s:284.44\n"
+  },
+  "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/x264_wall.mp4",
+  "out_bytes": 300523
+}

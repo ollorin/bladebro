@@ -43,17 +43,20 @@ COMMANDS
   see [mode] [url] [flags]        read without acting: model|content|outline,
                                   extract <auto|links|forms|json>, --find, --scope, --logs
   act <action> [args]             interact: click, type, fill, select, clear, press, scroll,
-                                  hover, navigate, upload, download, wait, eval, collect,
+                                  hover, navigate, upload, download, wait, dialog, eval, collect,
                                   read, batch, pdf, back, forward, reload, save, load,
                                   open-tab, close-tab, switch-tab
   state <op> [args]               cookies, set-cookie, del-cookie, ls, ss, set-ls, set-ss,
                                   rm-ls, rm-ss, clear-ls, clear-ss, tabs, open-tab,
-                                  close-tab, switch-tab, save, load, compress, block
+                                  close-tab, switch-tab, save, load, compress, block,
+                                  record-start <name>, record-stop
   run '<json-steps>'              batch with if/while branching + inline see reads
   vision [--marks]                screenshot (saved to a file; path printed)
   daemon | stop                   manage the persistent Chrome session
   mcp                             MCP server on stdio — add to your agent's client config
   rb on|off [sub]                 real-browser lane: drive YOUR browser (see 'help rb')
+  hermes on|off|status             switch Hermes' browser to Bladebro; reversible MCP setup
+  headless on|off|status          hide/show the managed browser for a suite (see 'help headless')
   audit                           stealth audit — 61-check suite + boot self-check + drift stamp
   update | -u [--check] [--force]  self-update; --rollback restores the previous binary
   doctor | -doc                   system diagnostics (13 checks)
@@ -91,6 +94,7 @@ ENVIRONMENT
   BLADE_NO_COMPRESS=1  disable response compression
   BLADE_LANE           real|agent — force the real-browser lane for this process
   BLADE_RB_DEBUG=1     real lane: surface the browser's own stderr on launch failures
+  BLADE_HEADLESS       1|0: force the managed browser hidden/visible (beats project/user config)
   BLADE_PLAIN          plain output — no ANSI even on a terminal
                        (NO_COLOR also disables; CLICOLOR_FORCE=1 forces color off-TTY)
   CHROME_PATH          override the Chrome/Chromium binary
@@ -128,6 +132,8 @@ pub fn suggest_command(cmd: &str) -> Option<&'static str> {
         "help",
         "rb",
         "realbrowser",
+        "hermes",
+        "headless",
         "mcp",
         "audit",
         "probe",
@@ -208,23 +214,28 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--limit": "max extract items (default 50; Reddit post comments: all up to 1000 unless set)",
                 "--logs": "console | network",
                 "--template": "JSON or @file — for extract=json",
-                "--artifact": "read an offloaded payload from disk, paged: --artifact <path> [--offset N] [--limit N]"
+                "--artifact": "read offloaded text chunks (concatenate data then parse); --items pages JSON rows; offset/limit count chars or rows",
+                "--preview": "auto-extract container/schema without rows",
+                "--changes": "model delta since last capture; --format json for structured fields",
+                "--clear": "read then clear the selected log",
+                "--format": "text (default) | json — pure JSON output for extract/artifact reads ({offset,next_offset,data} pages)"
             },
             "examples": [
                 "bladebro see model",
                 "bladebro see content example.com",
                 "bladebro see extract auto --limit 20",
+                "bladebro see extract auto --format json",
                 "bladebro see --find \"Submit\"",
                 "bladebro see --logs network"
             ],
-            "notes": ["extract=auto is the first move on list/search/product/profile pages — one call returns structured items; on Reddit post pages it returns the full comment tree (every reply, complete flag)"]
+            "notes": ["extract=auto is the first move on list/search/product/profile pages — one call returns structured items; on Reddit post pages it attempts the full comment tree; complete/partial disclose API denial and missing replies", "extract=auto envelope: container,count,items + page_total/partial/paged when the page claims more results than the DOM holds, sponsored (paid placements), duplicates_removed, redirects_unwrapped/redirects_unresolved — each explained by a note line"]
         }),
         "act" => json!({
             "usage": "bladebro act <action> [target] [value] [--flags]",
             "tool": "act",
-            "actions": ["click","type","fill","select","clear","press","scroll","hover","navigate","upload","download","wait","eval","collect","read","batch","pdf","back","forward","reload","save","load","open-tab","close-tab","switch-tab"],
+            "actions": crate::action::ACT_ACTIONS,
             "universal_flags": {
-                "--ref": "element ref (self-heals)",
+                "--ref": "element ref (self-heals; page-scoped — refresh after navigation; clear/read also take labels)",
                 "--label": "field label",
                 "--selector": "CSS selector (searches open shadow roots)",
                 "--text": "value — text to type, file path (upload), wait match value",
@@ -238,7 +249,11 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--dx/--dy": "scroll distance",
                 "--js": "eval expression (@file or - for scripts)",
                 "--submit": "fill: submit button ref or text",
-                "--slim": "skip the delta"
+                "--next": "paginate: CSS selector or text=Next (also label=/ref=)",
+                "--body": "download: HTTP body, <=32MiB/30s, no browser cookies; honors HTTP(S) BLADE_PROXY",
+                "--sort": "Reddit post extract: confidence|top|new|controversial|old|qa",
+                "--slim": "verdict-only successful actions; batch/run inherit, reads/errors retained",
+                "--format": "extract/eval: text (default) | json — pure JSON output (for eval: the bare returned value; {data,note} when a note rides along; an {artifact,bytes} envelope when oversized)"
             },
             "examples": [
                 "bladebro act click e5",
@@ -248,19 +263,21 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro act click Submit --url example.com/login",
                 "bladebro act upload e5 /tmp/file.pdf",
                 "bladebro act batch @steps.json",
+                "bladebro act extract --format json",
                 "bladebro act wait settle",
                 "bladebro act eval \"document.title\""
             ],
             "notes": [
                 "unquoted multi-word values join: act click Sign in == act click \"Sign in\"",
                 "big JSON payloads: @file or - (stdin)",
-                "batch steps may include {\"action\":\"see\",...} to read inline"
+                "eval result contract: `result: <compact JSON>` on ONE line — json.loads that line; a returned JSON string is flagged in a note; --format json returns the value itself",
+                "batch steps may include {\"action\":\"see\"|\"extract\",...} to read inline; url= on any step navigates first"
             ]
         }),
         "state" => json!({
             "usage": "bladebro state <op> [args] [flags]",
             "tool": "state",
-            "ops": ["cookies","set-cookie","del-cookie","ls","ss","set-ls","set-ss","rm-ls","rm-ss","clear-ls","clear-ss","tabs","open-tab","close-tab","switch-tab","save","load","compress","block"],
+            "ops": ["cookies","set-cookie","del-cookie","ls","ss","set-ls","set-ss","rm-ls","rm-ss","clear-ls","clear-ss","tabs","open-tab","close-tab","switch-tab","save","load","compress","block","record-start","record-stop"],
             "flags": {
                 "--url": "cookie scope / cookies filter / open-tab url",
                 "--domain": "cookie domain",
@@ -337,6 +354,13 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "`rb pause` refuses input, navigation, history, downloads, collecting and tab operations (reads, waits and eval stay available); `rb forget` wipes the imported copy; `rb refresh` re-imports; `rb use --binary` supports custom/nix/flatpak-wrapper binaries"
             ]
         }),
+        "hermes" => json!({
+            "usage": "bladebro hermes on|off|status [--profile <name>] [--hermes <path>] [--json]",
+            "tool": null,
+            "examples": ["bladebro hermes on", "bladebro hermes off", "bladebro hermes status --json", "bladebro hermes on --profile work"],
+            "notes": ["Uses Hermes' public configuration CLI and the ordinary Bladebro MCP server; no plugin or schema copies. Preserves other disabled toolsets and web search/extraction. off restores the prior MCP entry and browser policy, retaining unrelated settings. Start a new chat and restart gateways/desktop clients after switching. HERMES_HOME or --profile selects the Hermes profile. Chrome/Chromium is required; doctor checks prerequisites."]
+        }),
+        "headless" => crate::launch_mode::help_json(),
         "mcp" => json!({
             "usage": "bladebro mcp",
             "tool": null,
@@ -431,7 +455,7 @@ pub fn help_json(cmd: Option<&str>) -> Result<String> {
     let mut commands = serde_json::Map::new();
     for c in [
         "nav", "see", "act", "state", "run", "vision", "daemon", "stop", "help", "rb", "mcp",
-        "audit", "update", "doctor", "rollback", "version",
+        "audit", "update", "doctor", "rollback", "version", "hermes", "headless",
     ] {
         if let Some(d) = command_help_json(c) {
             commands.insert(c.to_string(), d);
@@ -472,6 +496,7 @@ pub fn help_json(cmd: Option<&str>) -> Result<String> {
             "BLADE_NO_COMPRESS": "set 1 to disable response compression",
             "BLADE_LANE": "real|agent — force the real-browser lane for this process",
             "BLADE_RB_DEBUG": "real lane: set 1 to surface the browser's own stderr on launch failures",
+            "BLADE_HEADLESS": "1|0 (on/off/true/false/yes/no): force the managed browser hidden/visible; beats .bladebro.json and launch.json",
             "BLADE_PLAIN": "plain CLI output — no ANSI even on a TTY (NO_COLOR also honored; CLICOLOR_FORCE=1 forces color off-TTY)",
             "BLADE_TRANSPORT": "mcp transport: WebSocket by default (native webdriver=false); set 'pipe' for the zero-port transport (its automation flag is masked)",
             "CHROME_PATH": "override the Chrome/Chromium binary",
@@ -521,6 +546,10 @@ EXTRACTION
                     products, posts. Site-aware: Reddit POST pages → the
                     full comment tree (every reply incl. collapsed, thread
                     order, complete flag); feeds/GitHub/products get fields.
+                    Envelope: {container,count,items,…} + page_total/partial/paged
+                    when the page claims more results than the DOM holds,
+                    sponsored (paid placements), duplicates_removed,
+                    redirects_unwrapped — each with a `note:` line.
   extract links     all links
   extract forms     all forms with fields
   extract json      custom template (--template '{"items":{…}}' or @file)
@@ -533,12 +562,19 @@ FLAGS
   --budget <N>        max response chars (default 8000)
   --limit <N>         max extract items (default 50; Reddit comments: all ≤1000)
   --logs console|network
+  --artifact <path>   paged read (--offset/--limit count chars; --items counts JSON rows)
+  --preview           extract auto: container/schema without rows
+  --changes           model delta since last capture; --format json for structured fields
+  --clear             read then clear --logs console|network
+  --sort <sort>       Reddit post auto-extract: confidence|top|new|controversial|old|qa
+  --format text|json  json: pure JSON out for extract/artifact/eval reads
   --url <url>         navigate first (or pass the URL positionally)
 
 EXAMPLES
   bladebro see                            interactive elements
   bladebro see content                    page as markdown
   bladebro see extract auto --limit 20    structured items
+  bladebro see extract auto --format json  pure JSON output
   bladebro see example.com content        navigate + read in one call
   bladebro see --find "Submit"            refs by text
   bladebro see --logs network             recent requests
@@ -552,20 +588,37 @@ USAGE
 
 ACTIONS
   click <ref|label>        type <target> <text>      fill <fields> [--submit]
-  select <target> <option> clear <ref>               press <key|chord>
+  select <target> <option> clear <ref|label>         press <key|chord>
   scroll <dx> <dy>         hover <target>            navigate <url> [--block]
   upload <target> <path>   download <url> [--path]  wait <condition> [value]
-  eval <js> [--ref]        collect <url> [--max N]   read <ref>
+  eval <js> [--ref]        collect <url> [--max N]   read <ref|label>
+  paginate <next> [--max N] [--extract auto]  bounded read/advance, retains pages
+  download <url> --body   save an HTTP body without browser cookies (HTTP(S) proxy honored)
+  extract [auto|links|forms|json]   structured data (same as 'see extract …')
   batch <steps|@file|->    pdf [--path] [--landscape]
   back / forward / reload  save <name> / load <name>
   open-tab [url] / switch-tab <id> / close-tab <id>
 
 UNIVERSAL FLAGS (mirror the MCP schema — accepted on every action)
   --ref --label --text --selector --role --nth --key --url --option --condition --timeout
-  --dx --dy --js --submit --block --slim   (per-action: --path, --max, --x/--y…)
+  --next --body --sort --dx --dy --js --submit --block --slim --format  (per-action: --path, --max, --x/--y…)
 
 Multi-word values don't need quotes: 'act click Sign in' works. Big JSON
 payloads: @file or - (stdin). Unknown flags fail loudly (exit 2). Key chords: 'act press Control+a'.
+
+RESULT SHAPES (stable — parse them without guessing)
+  eval          one line: `result: <compact JSON of the returned value>` — read
+                that line, json.loads it. A returned string that CONTAINS JSON is
+                called out in a `note:` line (parse the value once more — do not
+                discard it); a DOM node/Window says what to return instead;
+                undefined reads `result: undefined`. `--format json` returns the
+                bare value, `{"data":…,"note":…}` when a note rides along, or an
+                `{"artifact":…,"bytes":…}` envelope when oversized.
+  extract auto  envelope {container,count,items,…} plus, when they apply:
+                page_total/partial/paged (the page claims more results than the
+                DOM holds), sponsored (paid placements — flagged per item, left in
+                page order), duplicates_removed, redirects_unwrapped/redirects_unresolved. Each has a
+                `note:` line explaining what to do about it.
 
 EXAMPLES
   bladebro act click e5                          click a ref
@@ -580,6 +633,7 @@ EXAMPLES
   bladebro act eval "document.title"             evaluate JS
   bladebro act batch '[{"action":"reload"}]'     sequential steps in ONE call
   bladebro act collect https://x.com/list --max 100   infinite-scroll collect
+  bladebro act extract --format json             structured data as JSON
 "#
         }
         "state" => {
@@ -608,6 +662,11 @@ SESSIONS / CONTROL
   save <name> · load <name>            persist/restore cookies+storage
   block [classes] · block clear        image/font/media/tracker blocking
   compress on|off|status               context pruning
+
+RECORDING (needs ffmpeg + BLADE_RECORD; daemon or MCP only)
+  record-start <name>                  video of the active tab
+  record-stop [--value <note>]         path, bytes, duration, frames, drops
+  (writes <video>.poster.png and <video>.timeline.json next to the video)
 
 EXAMPLES
   bladebro state cookies
@@ -734,6 +793,28 @@ USAGE
                              payload conventions, examples — call ONCE and
                              you know the whole CLI
   bladebro help <cmd> --json per-command machine help
+"#
+        }
+        "headless" => crate::launch_mode::HELP_TEXT,
+        "hermes" => {
+            r#"bladebro hermes — reversible Hermes browser setup
+
+USAGE
+  bladebro hermes on             connect MCP, then disable Hermes' built-in browser tools
+  bladebro hermes off            restore the previous browser policy and MCP entry
+  bladebro hermes status         inspect the managed setup
+  --profile <name>               select a Hermes profile (forwarded as hermes -p)
+  --hermes <path>                select the Hermes CLI executable
+  --json                        one machine-readable result
+
+Uses the ordinary MCP server and Hermes' public configuration commands.
+Web search/extraction and unrelated settings are preserved. Configuration
+recovery is stored privately beside Hermes' config.yaml in .bladebro-browser/.
+An interrupted switch can resume with on or restore with off. Changed MCP
+entries are never overwritten during recovery. Use the same profile for off.
+Start a new chat; restart running gateways/desktop clients after switching.
+Chrome/Chromium must be installed; bladebro doctor checks prerequisites.
+Updates use your normal Bladebro updater; no separate Hermes plugin to update.
 "#
         }
         "mcp" => {

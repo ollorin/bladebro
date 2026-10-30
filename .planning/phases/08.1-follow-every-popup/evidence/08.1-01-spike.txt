@@ -1,0 +1,48 @@
+# popup_live.sh  started 2026-10-26T10:12:56Z  headless=1  fixtures=http://127.0.0.1:8765
+# git: 78a1d90 (+worktree)
+== spike: option A (skip opener re-front while recording)
+[spike:blank rec=1] opener=B03E49E56CF255775CF25345724BC676 port=57031
+[spike:blank] click: outcome: new tab opened — B (tab 1B50A046CDA32EC806393D7A53B4CD3B)
+[spike:blank rec=1] samples=30 popup_head=30 share=100% last_head=1B50A046CDA32EC806393D7A53B4CD3B
+[spike:blank] see before=0.05s after=0.05s bytes_after=248
+[spike:blank] vision exit=0
+[spike:blank] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.rSWewyDtXU/recordings/sp-blank-20261026T101257Z-196d08.webm (bytes 48152, duration 9.4 s, frames 94, dropped 0, segments [0.0 s tab B03E49E56CF255775CF25345724BC676, 3.2 s tab 1B50A046CDA32EC806393D7A53B4CD3B, 8.4 s tab B03E49E56CF255775CF25345724BC676], captured 76)
+[spike:blank] segments: B03E49E56CF255775CF25345724BC676 1B50A046CDA32EC806393D7A53B4CD3B B03E49E56CF255775CF25345724BC676   popup_segment_no_frames=0
+[spike:blank] tone opener-seg=red popup-seg(1)=blue total=9.400000s
+[spike:blank] tone timeline: 0.0=red 0.5=red 1.0=red 1.5=red 2.0=red 2.5=red 3.0=blue 3.5=blue 4.0=blue 4.5=blue 5.0=blue 5.5=blue 6.0=blue 6.5=blue 7.0=blue 7.5=blue 8.0=blue 8.5=red
+[spike:blank] head 1s after act press Tab: B03E49E56CF255775CF25345724BC676 (opener=B03E49E56CF255775CF25345724BC676)
+PASS [spike:blank] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[spike:js rec=1] opener=0DFFF85FE099C8174DA31F19D0226AF1 port=57178
+[spike:js] click: outcome: new tab opened — B (tab 9A8D6B31DDD1D34DF6A650CBC9573FAB)
+[spike:js rec=1] samples=30 popup_head=30 share=100% last_head=9A8D6B31DDD1D34DF6A650CBC9573FAB
+[spike:js] see before=0.05s after=0.05s bytes_after=248
+[spike:js] vision exit=0
+[spike:js] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.v5QVocvvdI/recordings/sp-js-20261026T101313Z-800088.webm (bytes 48862, duration 9.4 s, frames 94, dropped 0, segments [0.0 s tab 0DFFF85FE099C8174DA31F19D0226AF1, 3.2 s tab 9A8D6B31DDD1D34DF6A650CBC9573FAB, 8.4 s tab 0DFFF85FE099C8174DA31F19D0226AF1], captured 78)
+[spike:js] segments: 0DFFF85FE099C8174DA31F19D0226AF1 9A8D6B31DDD1D34DF6A650CBC9573FAB 0DFFF85FE099C8174DA31F19D0226AF1   popup_segment_no_frames=0
+[spike:js] tone opener-seg=red popup-seg(1)=blue total=9.400000s
+[spike:js] tone timeline: 0.0=red 0.5=red 1.0=red 1.5=red 2.0=red 2.5=red 3.0=blue 3.5=blue 4.0=blue 4.5=blue 5.0=blue 5.5=blue 6.0=blue 6.5=blue 7.0=blue 7.5=blue 8.0=blue 8.5=red
+[spike:js] head 1s after act press Tab: 0DFFF85FE099C8174DA31F19D0226AF1 (opener=0DFFF85FE099C8174DA31F19D0226AF1)
+PASS [spike:js] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[spike:blank rec=0] opener=0FDC45579586BF60395AA261C12A8040 port=57356
+[spike:blank] click: outcome: new tab opened — B (tab 57EF9B2EC351668DF2CBF9CCFD2B2C47)
+[spike:blank rec=0] samples=30 popup_head=0 share=0% last_head=0FDC45579586BF60395AA261C12A8040
+[spike:blank rec=0] head ~1s after click: 0FDC45579586BF60395AA261C12A8040 (opener=0FDC45579586BF60395AA261C12A8040) -> returns-to-opener
+PASS [spike:blank] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[spike:js rec=0] opener=1175CEA8BAECD8A56699C46B6B6C387A port=57441
+[spike:js] click: outcome: new tab opened — B (tab 98642AA992DC8906DDAC325C15DD606B)
+[spike:js rec=0] samples=30 popup_head=0 share=0% last_head=1175CEA8BAECD8A56699C46B6B6C387A
+[spike:js rec=0] head ~1s after click: 1175CEA8BAECD8A56699C46B6B6C387A (opener=1175CEA8BAECD8A56699C46B6B6C387A) -> returns-to-opener
+PASS [spike:js] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+FAILS=0
+
+# Summary (rounds: 1 build + 3 runs of the same binary; run 1 had a script bug picking the wrong segment for tone, fixed)
+# criteria, both kinds (blank link, window.open): popup at /json head in 100% of 30 samples over 3 s (>= 90%);
+#   popup segment has frames (no "(no frames)"), tone blue; opener segment red;
+#   `see` on the opener 0.05 s before, 0.05-0.06 s after (<= 2x + 1 s), 248 bytes non-empty; vision exit 0;
+#   recording off: head back on the opener in all samples (popup_head 0%) -> upstream path unchanged.
+# measured: popup segment starts 3.1-3.3 s after record-start (click at ~1 s) under the OLD 1.5 s new-tab rule;
+#   the opener returns to the front at ~8.2 s because `vision` runs bringToFront (documented ping-pong);
+#   `act press Tab` re-fronts the opener (head == opener 1 s later), as designed.
+# POPUP_SETTLE input for Task 4: 300 ms (Option A); no re-front observed while recording, popup stayed head 3 s.
+# follow delay after the opener rule (Task 4, POPUP_SETTLE 300 ms, same fixtures, click at ~1 s): popup segment starts at 1.8 s (blank) and 2.0 s (js) vs 3.2 s under the old 1.5 s rule; opener returns at 7.6-7.8 s (vision bringToFront ping-pong, unchanged). Fake-CDP follow delay (poll 30 + settle 150): asserted < 750 ms.
+SPIKE: PASS (option A)

@@ -87,6 +87,15 @@ pub fn has_full_script() -> bool {
     FULL_SCRIPT.read().map(|s| !s.is_empty()).unwrap_or(false)
 }
 
+/// The GL-spoof decision baked into the most recently registered injection.
+/// Read by the mid-session GL reconciler (`Page::gl_health_refresh`): when a
+/// transition flips the decision (a crashed hardware GPU coming back
+/// software, or a GL-less launch that recovers), the injection must be
+/// rebuilt so the mask matches the live backend - without a restart.
+pub fn gl_spoofed() -> bool {
+    GL_SPOOFED.load(Ordering::Relaxed)
+}
+
 pub type ScriptId = String;
 
 /// Core block (always applied): seed, proxy-mask helpers (PROXY_HELPERS),
@@ -110,21 +119,17 @@ const STEALTH_CORE: &str = include_str!("js/stealth_core.js");
 /// Tail: cdc_ watcher + IIFE close. GL_SPOOF / NOISE assemble between HEAD and TAIL.
 const STEALTH_TAIL: &str = include_str!("js/stealth_tail.js");
 
-/// Media devices patch — applied ONLY when the real machine reports zero
-/// devices (a server tell; real desktops always have audio in/out). Returns
-/// the exact pre-permission shape of real Chrome: devices present, ids and
-/// labels empty. Passthrough whenever real devices exist.
+/// Media devices patch — hides the one server tell: a machine with zero
+/// audio/video devices. Installed when the attach-time count is zero or
+/// unreadable (see `apply`); the page-side gate is the real one: real devices
+/// pass through untouched, and only a page that itself sees none gets the
+/// exact pre-permission shape (devices present, ids and labels empty).
 const MEDIA_PATCH: &str = include_str!("js/media_patch.js");
 
-/// permissions.query('notifications') rewrite — always installed; the
-/// rewrite itself fires only for genuinely-origined documents
-/// (`location.origin !== 'null'`) whose result is 'denied'. On opaque
-/// origins (about:blank) real Chrome also reports 'denied', so the native
-/// result stands; on real origins the only divergent environment
-/// (headless-new: 'denied' everywhere) is masked to 'prompt'. The wrapper
-/// relays with the caller's exact receiver and arguments — native validation
-/// runs first, so zero-arg TypeErrors, non-object TypeErrors, wrong-receiver
-/// 'Illegal invocation' and promise timing stay byte-native.
+/// Headless-only PermissionStatus.state mask for denied notifications on real
+/// origins. query stays native: exact arguments, dictionary getters, promises
+/// and validation timing pass through untouched. The native state getter runs
+/// first to validate receivers; opaque origins and other permissions stay real.
 const PERMISSIONS_PATCH: &str = include_str!("js/permissions_patch.js");
 
 /// `--remote-debugging-pipe` is Chrome's automation transport, and Chrome
@@ -136,12 +141,13 @@ const PERMISSIONS_PATCH: &str = include_str!("js/permissions_patch.js");
 /// skews innerHeight (measured: 932 vs 988) — so the value is masked instead,
 /// exactly like every other environment override: a proxy over the native
 /// getter that delegates first (receiver validation stays byte-native) and
-/// returns `false`. Residual: the proxy shape is lie-engine-visible (measured:
-/// CreepJS `webDriverIsOn: true` → 33% headless), and
-/// `Emulation.setAutomationOverride{enabled:false}` does NOT clear the flag
-/// (accepted, no effect — measured 2026-09-26, page- and browser-level). That
-/// is why the MCP now defaults to WS; this patch serves only the explicit
-/// `BLADE_TRANSPORT=pipe` opt-in.
+/// returns `false`. The getter runs through the shared mask helpers, so the
+/// 4.6.0 cyclic-prototype shield covers it — the old residual (proxy shape
+/// lie-engine-visible; measured on Chrome 151: CreepJS `webDriverIsOn: true`
+/// → 33% headless) is superseded. `Emulation.setAutomationOverride{enabled:false}`
+/// does NOT clear the flag (accepted, no effect — measured 2026-09-26, page-
+/// and browser-level), and that is why the MCP still defaults to WS: this
+/// patch serves only the explicit `BLADE_TRANSPORT=pipe` opt-in.
 const WEBDRIVER_PATCH: &str = include_str!("js/webdriver_patch.js");
 
 /// Locale override — navigator.language/languages must match BLADE_LOCALE.
@@ -218,6 +224,106 @@ fn is_software_gl(renderer: &str) -> bool {
     crate::browser::is_software_renderer(renderer)
 }
 
+/// Decide the WebGL spoof from the launch-time verdict reconciled with the
+/// live page: live truth wins when it exists (spoof software renderers,
+/// report hardware honestly). A *confirmed* absent context against a
+/// GL-bearing verdict demotes the recorded state to `Missing` with a loud
+/// warning and the mid-session-loss marker — pages are never served under a
+/// silently stale GL verdict. Inconclusive probes keep the recorded state
+/// (fail-safe spoof).
+async fn adaptive_gl_spoof(env: &EnvProbe, cdp: &CdpSession) -> bool {
+    use crate::browser::{
+        gpu_state, mark_gl_mid_session_loss, probe_gl_live, reconcile_gl, set_gpu_state, GlLive,
+        GlReconcile, GpuState,
+    };
+    let state = gpu_state();
+    let live: Option<String>;
+    if let Some(renderer) = env.gl_renderer.clone() {
+        live = Some(renderer);
+    } else if matches!(state, Some(GpuState::Missing)) {
+        // Already known GL-less: nothing to confirm, nothing to change.
+        live = None;
+    } else {
+        match probe_gl_live(cdp).await {
+            GlLive::Live(renderer) => live = Some(renderer),
+            GlLive::NoContext { .. } => live = None,
+            GlLive::Unknown => {
+                // Inconclusive (transport failure or a restricted origin):
+                // keep the recorded verdict; fail-safe spoof.
+                return !matches!(state, Some(GpuState::Hardware(_)));
+            }
+        }
+    }
+    match reconcile_gl(state.as_ref(), live.as_deref()) {
+        GlReconcile::Live {
+            spoof,
+            state: st,
+            changed,
+        } => {
+            if changed {
+                let shown = match &st {
+                    GpuState::Hardware(r) | GpuState::Software(r) => r.as_str(),
+                    GpuState::Missing => "",
+                };
+                match &state {
+                    Some(GpuState::Missing) => {
+                        eprintln!("[stealth] GL recovered: {shown} — state updated");
+                    }
+                    Some(_) => {
+                        eprintln!("[stealth] GL now reports {shown} — state updated");
+                    }
+                    None => {
+                        if is_software_gl(shown) {
+                            eprintln!(
+                                "[stealth] real GL is software ({shown}) — registering WebGL spoof"
+                            );
+                        }
+                    }
+                }
+                set_gpu_state(Some(st));
+            } else {
+                // Steady state — the same diagnostic lines as before.
+                match &state {
+                    Some(GpuState::Hardware(rec)) => {
+                        eprintln!("[stealth] GL healthcheck says hardware ({rec}) — no WebGL spoof")
+                    }
+                    Some(GpuState::Software(rec)) => eprintln!(
+                        "[stealth] GL healthcheck says software ({rec}) — registering WebGL spoof"
+                    ),
+                    _ => {}
+                }
+            }
+            spoof
+        }
+        GlReconcile::Dead {
+            spoof,
+            state: st,
+            changed,
+        } => {
+            if changed {
+                if state.is_some() {
+                    eprintln!(
+                        "[stealth] WARNING: WebGL context creation now returns null on this \
+                         browser — the GPU process degraded mid-session (Chrome restarts it \
+                         with GL disabled after a GPU crash). Pages see no WebGL while it \
+                         lasts; the driver keeps re-probing and re-arms the mask \
+                         automatically if GL returns."
+                    );
+                    set_gpu_state(Some(st));
+                    mark_gl_mid_session_loss();
+                } else {
+                    eprintln!(
+                        "[stealth] WARNING: no WebGL context on this browser — pages will see \
+                         getContext('webgl') === null; no GL mask applies."
+                    );
+                    set_gpu_state(Some(st));
+                }
+            }
+            spoof
+        }
+    }
+}
+
 /// Legacy alias kept for external references (doc/examples).
 pub const STEALTH_SCRIPT_TEMPLATE: &str = STEALTH_CORE;
 
@@ -245,49 +351,31 @@ pub async fn apply(cdp: &CdpSession, locale_override: Option<&str>) -> Result<Sc
     // One environment probe drives every adaptive decision (S8/S15).
     let env = probe_environment(cdp).await;
 
-    // Adaptive GL decision. The launch healthcheck (browser.rs) already
-    // probed the real backend when Bladebro launched the browser itself —
-    // trust it: hardware GL is reported honestly (nothing to mask), software
-    // GL gets the spoof. Only an externally-attached browser (no healthcheck
-    // in this process) falls back to a live probe here.
+    // Adaptive GL decision, reconciled against the live page on every
+    // attach (see `adaptive_gl_spoof`). The launch healthcheck (browser.rs)
+    // probes the real backend when Bladebro launches the browser itself, but
+    // a GPU process can degrade mid-session (crash → Chrome restarts it with
+    // GL disabled → every context is null). Trusting the launch verdict
+    // alone served pages a null-GL browser with the spoof inert and no
+    // warning; the live reconcile closes that.
     let gl_mode = std::env::var("BLADE_WEBGL").unwrap_or_else(|_| "auto".to_string());
     let spoof_gl = match gl_mode.as_str() {
         "spoof" => true,
         "real" => false,
-        _ => {
-            match crate::browser::gpu_state() {
-                Some(crate::browser::GpuState::Hardware(renderer)) => {
-                    eprintln!(
-                        "[stealth] GL healthcheck says hardware ({renderer}) — no WebGL spoof"
-                    );
-                    false
-                }
-                Some(crate::browser::GpuState::Software(renderer)) => {
-                    eprintln!("[stealth] GL healthcheck says software ({renderer}) — registering WebGL spoof");
-                    true
-                }
-                // No context existed at launch — the spoof is inert either way;
-                // keep the fail-safe default.
-                Some(crate::browser::GpuState::Missing) => true,
-                None => match &env.gl_renderer {
-                    Some(renderer) => {
-                        let software = is_software_gl(renderer);
-                        if software {
-                            eprintln!("[stealth] real GL is software ({renderer}) — registering WebGL spoof");
-                        }
-                        software
-                    }
-                    // Probe failed — safest default is to spoof (hides SwiftShader).
-                    None => true,
-                },
-            }
-        }
+        _ => adaptive_gl_spoof(&env, cdp).await,
     };
-    // S15: mediaDevices patch only when the machine reports zero devices.
+    // S15: mediaDevices patch — install when the attach-time count is zero OR
+    // unreadable. The probe reads about:blank, a non-secure context where
+    // `navigator.mediaDevices` is `undefined` on every machine, so `== 0`
+    // made this gate dead code: device-less hosts (CI runners exposed it)
+    // skipped the patch that exists precisely for them. The patch's own
+    // page-side gate passes real devices through untouched, so installing it
+    // when the count is unreadable is behavior-neutral on machines that have
+    // devices.
     let patch_media = match std::env::var("BLADE_MEDIA").as_deref() {
         Ok("patch") => true,
         Ok("real") => false,
-        _ => env.media_devices == 0,
+        _ => env.media_devices <= 0,
     };
     if patch_media {
         eprintln!("[stealth] registering mediaDevices patch");
@@ -497,7 +585,7 @@ try{{
   var _swCode='{escaped}';
   var _OrigSW=window.SharedWorker;
   if(_OrigSW){{
-    var _SWProxy=new Proxy(_OrigSW,{{construct:function(t,a,nt){{
+    var _swh={{construct:function(t,a,nt){{
       try{{
         var url=a[0],options=a[1];
         try{{url=new URL(url, document.baseURI).href;}}catch(e){{}}
@@ -510,7 +598,19 @@ try{{
       }}catch(e){{
         return Reflect.construct(t,a,nt);
       }}
-    }}}});
+    }}}};
+    var _SWProxy=new Proxy(_OrigSW,_swh);
+    // 4.6.0 shield: a bare callable proxy fails the cyclic-prototype torture
+    // (RangeError where a native constructor throws
+    // TypeError('Cyclic __proto__ value') at setPrototypeOf); refuse the cycle
+    // explicitly, exactly like the shared mask helpers do.
+    _swh.setPrototypeOf=function(t,p){{
+      if(p!==null&&(typeof p==='object'||typeof p==='function')){{
+        var q=p,i=0;
+        while(q&&i++<256){{if(q===_SWProxy)throw new TypeError('Cyclic __proto__ value');q=Object.getPrototypeOf(q);}}
+      }}
+      return Reflect.setPrototypeOf(t,p);
+    }};
     Object.defineProperty(window,'SharedWorker',{{value:_SWProxy,writable:true,configurable:true,enumerable:false}});
   }}
 }}catch(e){{}}

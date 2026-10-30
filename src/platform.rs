@@ -3,11 +3,16 @@
 //! Every OS-specific operation lives here. The rest of the codebase
 //! calls these helpers — no `#[cfg]` outside this module (except for
 //! transport-level differences that can't be abstracted).
+//! `windows_job` owns kernel cleanup of the driver's browser descendants.
 
 use std::path::PathBuf;
 use std::process::Child;
+#[cfg(windows)]
+mod windows_job;
 #[cfg(unix)]
 use std::time::Duration;
+#[cfg(windows)]
+pub(crate) use windows_job::guard_browser_process_tree;
 
 /// The user's home directory.
 pub fn home_dir() -> PathBuf {
@@ -357,7 +362,8 @@ pub fn validate_write_path(path: &std::path::Path) -> Result<(), String> {
     // A prompt-injected page convincing the agent to write here gains
     // persistence (rc files) or steals credentials (.ssh/.aws/.gnupg).
     const BLOCKED_COMPONENTS: &[&str] = &[
-        ".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config", ".gnome",
+        ".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config", ".gnome", ".git", ".cargo", ".m2",
+        ".vscode", ".atom",
     ];
     for comp in normalized
         .components()
@@ -371,6 +377,24 @@ pub fn validate_write_path(path: &std::path::Path) -> Result<(), String> {
             || cl.starts_with("id_rsa.")
             || cl.starts_with("id_ed25519")
             || cl.starts_with("id_ecdsa")
+            // npm config files: user-level ~/.npmrc, per-project ./.npmrc
+            // (which outranks the user file — a `registry=` line there
+            // redirects installs and runs attacker-served tarballs'
+            // install scripts), and the Windows per-user global
+            // %APPDATA%\npm\etc\npmrc.
+            || cl == ".npmrc"
+            || cl == "npmrc"
+            // Project env files (.env.local/.env.production/...) are read
+            // by Next.js/Vite/dotenv-style tooling; `.env` alone used to be
+            // rc-blocked inside $HOME only.
+            || cl == ".env"
+            || cl.starts_with(".env.")
+            // Conda / yarn / pip user configs — the same poison-the-
+            // toolchain class as .npmrc.
+            || cl == ".condarc"
+            || cl == ".yarnrc"
+            || cl == ".yarnrc.yml"
+            || cl == ".pypirc"
         {
             return Err(format!(
                 "blocked: writing to credential/config location ({comp}) is not allowed"
@@ -433,6 +457,325 @@ pub fn validate_write_path(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a local file READ whose bytes are forwarded into the driven
+/// page (`act upload` → `DOM.setFileInputFiles`). SECURITY: everything set
+/// here is delivered to the page — an untrusted origin — so this is a
+/// disclosure sink, not a neutral file picker: a prompt-injected page
+/// steers the agent toward exactly the credential locations the write path
+/// blocks, plus bladebro's own cleartext credential stores under the data
+/// dir (logins.json, sessions/, realbrowser templates). The artifacts dir
+/// stays uploadable — it is the sanctioned file-exchange zone.
+///
+/// Absolute paths only: Chrome cannot resolve relative or `~` spellings
+/// (they yield an unreadable File and crash the browser process), so
+/// refusing them here turns a crash into a clean error.
+pub fn validate_upload_path(path: &std::path::Path) -> Result<(), String> {
+    validate_upload_path_at(path, &blade_dir())
+}
+
+/// [`validate_upload_path`] with the data dir injected (tests pass a
+/// scratch root instead of mutating global env).
+pub fn validate_upload_path_at(
+    path: &std::path::Path,
+    data_dir: &std::path::Path,
+) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err(format!(
+            "blocked: upload requires an absolute file path (got {:?}) — the browser cannot read relative or ~ spellings",
+            path.display()
+        ));
+    }
+    // Resolve symlinks fully: the check must see the real target, and a
+    // non-existent or unreadable source is a clean error here instead of
+    // a browser crash later.
+    let resolved = std::fs::canonicalize(path)
+        .map_err(|e| format!("upload source cannot be read: {} ({e})", path.display()))?;
+    if !resolved.is_file() {
+        return Err(format!(
+            "upload source is not a regular file: {}",
+            path.display()
+        ));
+    }
+    let path_str = plain_spelling(&resolved);
+
+    #[cfg(unix)]
+    {
+        let blocked_prefixes: &[&str] = &[
+            "/etc",
+            "/usr",
+            "/bin",
+            "/sbin",
+            "/boot",
+            "/dev",
+            "/proc",
+            "/sys",
+            "/var/log",
+            "/var/spool",
+            "/root",
+            "/lib",
+            "/lib64",
+            "/run",
+            "/snap",
+        ];
+        for prefix in blocked_prefixes {
+            let resolved_prefix = std::fs::canonicalize(prefix)
+                .ok()
+                .map(|p| plain_spelling(&p));
+            if path_str.starts_with(prefix)
+                || resolved_prefix
+                    .as_deref()
+                    .is_some_and(|r| path_str.starts_with(r))
+            {
+                return Err(format!(
+                    "blocked: uploading from a system location ({prefix}) is not allowed"
+                ));
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let lower = path_str.to_lowercase();
+        for prefix in ["c:/windows", "c:/program files", "c:/program files (x86)"] {
+            if lower.starts_with(prefix) {
+                return Err(format!(
+                    "blocked: uploading from a system location ({prefix}) is not allowed"
+                ));
+            }
+        }
+    }
+
+    // Credential/config locations, same families the write side blocks.
+    const BLOCKED_COMPONENTS: &[&str] = &[
+        ".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config", ".gnome",
+    ];
+    for comp in resolved.components().filter_map(|c| c.as_os_str().to_str()) {
+        let cl = comp.to_lowercase();
+        if BLOCKED_COMPONENTS.contains(&cl.as_str())
+            || cl == "authorized_keys"
+            || cl == "known_hosts"
+            || cl == "id_rsa"
+            || cl.starts_with("id_rsa.")
+            || cl.starts_with("id_ed25519")
+            || cl.starts_with("id_ecdsa")
+            || cl == ".netrc"
+            || cl == "netrc"
+            || cl == ".npmrc"
+            || cl == "npmrc"
+            || cl == ".git-credentials"
+            || cl == ".pypirc"
+            || cl == ".condarc"
+        {
+            return Err(format!(
+                "blocked: uploading from a credential/config location ({comp}) is not allowed"
+            ));
+        }
+    }
+
+    // Bladebro's own data stores — the complete session jar, saved
+    // sessions, profile templates, the rb clone of the user's real profile.
+    // The artifacts dir is the sanctioned exchange zone and stays
+    // uploadable.
+    let resolve_dir = |dir: &std::path::Path| -> std::path::PathBuf {
+        match std::fs::canonicalize(dir) {
+            Ok(p) => p,
+            Err(_) => match dir.parent().and_then(|p| std::fs::canonicalize(p).ok()) {
+                Some(parent) => parent.join(dir.file_name().unwrap_or_default()),
+                None => dir.to_path_buf(),
+            },
+        }
+    };
+    let data_c = resolve_dir(data_dir);
+    let artifacts_c = resolve_dir(&data_c.join("artifacts"));
+    let in_data = resolved.starts_with(&data_c);
+    let in_artifacts = resolved.starts_with(&artifacts_c);
+    // The legacy ~/.blade spelling can hold state even when the active dir
+    // resolves elsewhere (migration keeps one dir; a stale second copy is
+    // exactly what an attacker would aim at).
+    let legacy_c = resolve_dir(&home_dir().join(".blade"));
+    let in_legacy =
+        resolved.starts_with(&legacy_c) && !resolved.starts_with(legacy_c.join("artifacts"));
+    if (in_data && !in_artifacts) || in_legacy {
+        return Err(format!(
+            "blocked: uploading from bladebro's data directory is not allowed ({} — use the artifacts dir)",
+            resolved.display()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Re-tighten the sensitive parts of an EXISTING state tree on every
+/// launch. SECURITY: the 0600/0700 discipline is creation-time-only; trees
+/// created by pre-3.2.0 binaries — or restored through a mode-stripping
+/// transfer (cloud sync, permission-less filesystems) — keep
+/// world-readable cookie-bearing files (`sessions/*.json`, `logins.json`,
+/// ...) indefinitely. Only components owned by the current uid are
+/// touched — foreign-owned components are left as-is (never silently
+/// legitimize a pre-planted tree). Exec bits are never stripped (downloaded
+/// binaries, backups).
+#[cfg(unix)]
+pub fn reharden_state_tree(root: &std::path::Path) {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let uid = unsafe { libc::getuid() };
+    let owned = |p: &std::path::Path| std::fs::metadata(p).ok().filter(|m| m.uid() == uid);
+    let dir700 = |p: &std::path::Path| {
+        if owned(p).is_some() {
+            let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700));
+        }
+    };
+    // 0600, but never strip an exec bit (downloaded binaries, backups).
+    let file600 = |p: &std::path::Path| {
+        if let Some(m) = owned(p) {
+            if m.permissions().mode() & 0o111 == 0 {
+                let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    };
+    dir700(root);
+    for name in ["logins.json", ".fingerprint.json", "realbrowser.json"] {
+        file600(&root.join(name));
+    }
+    // Saved sessions hold complete cookie sets + localStorage; knowledge
+    // and artifacts hold captured page state. Bounded two-level walk.
+    // Profile template trees are excluded: copy_profile recreates their
+    // dirs 0700 at every sync-back; backups keep their modes for rollback.
+    for name in ["sessions", "knowledge", "artifacts", "downloads"] {
+        let dir = root.join(name);
+        dir700(&dir);
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    dir700(&p);
+                    if let Ok(rd2) = std::fs::read_dir(&p) {
+                        for e2 in rd2.flatten() {
+                            file600(&e2.path());
+                        }
+                    }
+                } else {
+                    file600(&p);
+                }
+            }
+        }
+    }
+}
+
+/// Open a file for reading without following a final-component symlink.
+/// SECURITY: the sidecar files (logins.json, sessions/*.json) are
+/// trust-bearing — a pre-planted symlink must be a refusal, not a read
+/// through to attacker-authored bytes that get re-injected into the
+/// browser. On Unix this is atomic (O_NOFOLLOW); elsewhere a lexical
+/// pre-check stands in (Windows symlink creation needs elevation).
+pub fn open_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+    }
+    #[cfg(not(unix))]
+    {
+        if std::fs::symlink_metadata(path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            return Err(std::io::Error::other("refusing to read through a symlink"));
+        }
+        std::fs::File::open(path)
+    }
+}
+
+/// Read a whole file without following a final-component symlink.
+pub fn read_file_nofollow(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut f = open_nofollow(path)?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+/// Walk a directory's ancestors (root → parent): every existing component
+/// must be a real directory — or an OS-owned symlink, which only the OS
+/// itself can place (macOS /var → private/var, /tmp → private/tmp) — owned
+/// by this uid or the OS (root on Linux/macOS; on Android there is no root
+/// in the app-visible chain: the system UID 1000 owns /data and the
+/// /system links, and no co-resident app uid can write a 0770/0755
+/// system-owned component), and not group/other-writable unless sticky (the
+/// /tmp case — /tmp is root-owned 1777, and stickiness is what makes
+/// creation inside it safe; a non-sticky world-writable ancestor lets any
+/// local user replace this process's freshly created directory with a
+/// symlink between creation and use). Used for the operator-override
+/// profile lanes, where the destination can be far outside the 0700 state
+/// tree.
+pub fn validate_dir_ancestors(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let uid = unsafe { libc::getuid() };
+        let mut cur = std::path::PathBuf::new();
+        let components: Vec<_> = path.components().collect();
+        let Some((_last, ancestors)) = components.split_last() else {
+            return Ok(());
+        };
+        for comp in ancestors {
+            cur.push(comp);
+            let md = match std::fs::symlink_metadata(&cur) {
+                Ok(m) => m,
+                Err(_) => continue, // not there yet — creation handles it
+            };
+            if md.file_type().is_symlink() {
+                // Root-owned symlinks are the OS's own layout — macOS
+                // /var → private/var, /tmp → private/tmp; merged-/usr
+                // /bin → usr/bin. A local co-user cannot create a
+                // root-owned entry, so these are trusted; any other
+                // symlink is an attacker-plantable redirect and refuses.
+                let os_owned = md.uid() == 0 || (cfg!(target_os = "android") && md.uid() == 1000);
+                if !os_owned {
+                    return Err(format!(
+                        "{} resolves through a symlink — refusing it",
+                        cur.display()
+                    ));
+                }
+                continue;
+            }
+            if !md.is_dir() {
+                return Err(format!("{} is not a directory", cur.display()));
+            }
+            let os_owned = md.uid() == 0 || (cfg!(target_os = "android") && md.uid() == 1000);
+            if !os_owned && md.uid() != uid {
+                return Err(format!(
+                    "{} is owned by another user — refusing it",
+                    cur.display()
+                ));
+            }
+            let mode = md.permissions().mode();
+            // On Android the OS-owned chain is 0770/0771 (system:system), and
+            // the system group is OS machinery, not a co-user: untrusted app
+            // uids are neither that uid nor that group and fall under "other",
+            // which holds no write bit there. Pinned to AID_SYSTEM both ways so
+            // the relaxation can never cover some other group with real members.
+            let group_ok = cfg!(target_os = "android")
+                && md.uid() == 1000
+                && md.gid() == 1000
+                && mode & 0o022 == 0o020;
+            if mode & 0o022 != 0 && mode & 0o1000 == 0 && !group_ok {
+                return Err(format!(
+                    "{} is group/other-writable and not sticky — refusing it",
+                    cur.display()
+                ));
+            }
+        }
+    }
+    // Non-unix hosts have no comparable ownership/mode model; the caller's
+    // portable checks (symlink, is-dir) still run.
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
 /// Char-safe string truncation. Byte slicing (`&s[..n]`) panics when `n`
 /// lands inside a multi-byte UTF-8 char — and these strings are often
 /// page-controlled (URLs, exception messages), so a malicious page could
@@ -486,7 +829,7 @@ pub fn process_alive(pid: u32) -> bool {
 
 /// Is this process a Chrome/Chromium process?
 pub fn process_is_chrome(pid: u32) -> bool {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         std::fs::read(format!("/proc/{pid}/cmdline"))
             .ok()
@@ -620,7 +963,7 @@ pub fn shutdown_child(child: &mut Child) {
 /// Both sides must resolve for the second check; otherwise stay quiet rather
 /// than guess. Elsewhere there is no portable signal and this answers false.
 pub fn stale_binary() -> bool {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         use std::path::{Path, PathBuf};
         let exe = match std::fs::read_link("/proc/self/exe") {
@@ -652,7 +995,7 @@ pub fn stale_binary() -> bool {
             _ => false,
         }
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
         false
     }
@@ -810,6 +1153,206 @@ mod write_path_tests {
         let real_etc = std::fs::canonicalize("/etc").expect("canonicalize /etc");
         assert!(validate_write_path(&real_etc.join("bladebro-test")).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod security_hardening_tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn write_path_blocks_toolchain_config_sinks() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/tester".into());
+        for p in [
+            format!("{home}/.npmrc"),
+            "/tmp/proj/.npmrc".to_string(),
+            "/tmp/proj/.git/config".to_string(),
+            format!("{home}/.cargo/config.toml"),
+            format!("{home}/.m2/settings.xml"),
+            "/tmp/proj/.env.local".to_string(),
+            "/tmp/proj/.env".to_string(),
+            format!("{home}/.condarc"),
+        ] {
+            assert!(
+                validate_write_path(std::path::Path::new(&p)).is_err(),
+                "{p} must be blocked"
+            );
+        }
+        for p in ["/tmp/report.pdf", "/tmp/sub/dir/notes.txt"] {
+            assert!(
+                validate_write_path(std::path::Path::new(p)).is_ok(),
+                "{p} should pass"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn upload_path_blocks_credentials_and_data_dir_but_allows_artifacts() {
+        let base = std::env::temp_dir().join(format!("blade-upload-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let data = base.join("blade");
+        let artifacts = data.join("artifacts");
+        std::fs::create_dir_all(&artifacts).unwrap();
+        let ok_file = artifacts.join("shot.png");
+        std::fs::write(&ok_file, b"x").unwrap();
+        let secret = data.join("logins.json");
+        std::fs::write(&secret, b"[]").unwrap();
+        let sessions = data.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let session = sessions.join("bank.json");
+        std::fs::write(&session, b"{}").unwrap();
+        let docs = base.join("docs");
+        std::fs::create_dir_all(&docs).unwrap();
+        let doc = docs.join("report.pdf");
+        std::fs::write(&doc, b"%PDF").unwrap();
+        let sshdir = base.join(".ssh");
+        std::fs::create_dir_all(&sshdir).unwrap();
+        let key = sshdir.join("id_rsa");
+        std::fs::write(&key, b"-----BEGIN").unwrap();
+
+        // Sanctioned zone + ordinary documents pass.
+        assert!(validate_upload_path_at(&ok_file, &data).is_ok());
+        assert!(validate_upload_path_at(&doc, &data).is_ok());
+        // Data-dir stores are refused; artifacts are the only exception.
+        assert!(validate_upload_path_at(&secret, &data).is_err());
+        assert!(validate_upload_path_at(&session, &data).is_err());
+        // Credential locations are refused.
+        assert!(validate_upload_path_at(&key, &data).is_err());
+        // System dirs are refused when they exist.
+        if std::path::Path::new("/etc/hostname").exists() {
+            assert!(validate_upload_path_at(std::path::Path::new("/etc/hostname"), &data).is_err());
+        }
+        // A symlink resolves to its real target — a link to a credential
+        // file is refused on the target's identity, not the spelling.
+        let link = docs.join("innocent.txt");
+        std::os::unix::fs::symlink(&key, &link).unwrap();
+        assert!(validate_upload_path_at(&link, &data).is_err());
+        // Relative + nonexistent are clean errors, not browser crashes.
+        assert!(validate_upload_path_at(std::path::Path::new("relative.txt"), &data).is_err());
+        assert!(validate_upload_path_at(&base.join("missing.txt"), &data).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reharden_state_tree_tightens_owned_loose_state() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("blade-reharden-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sessions")).unwrap();
+        std::fs::create_dir_all(root.join("knowledge/domains")).unwrap();
+        let sess = root.join("sessions/site.json");
+        std::fs::write(&sess, b"{}").unwrap();
+        let side = root.join("logins.json");
+        std::fs::write(&side, b"[]").unwrap();
+        let dom = root.join("knowledge/domains/x.com.json");
+        std::fs::write(&dom, b"{}").unwrap();
+        // Simulate a mode-stripped restore: everything 0755/0644.
+        for (p, m) in [
+            (root.clone(), 0o755),
+            (root.join("sessions"), 0o755),
+            (root.join("knowledge"), 0o755),
+            (root.join("knowledge/domains"), 0o755),
+            (sess.clone(), 0o644),
+            (side.clone(), 0o644),
+            (dom.clone(), 0o644),
+        ] {
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(m)).unwrap();
+        }
+        reharden_state_tree(&root);
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&root), 0o700);
+        assert_eq!(mode(&root.join("sessions")), 0o700);
+        assert_eq!(mode(&sess), 0o600);
+        assert_eq!(mode(&side), 0o600);
+        assert_eq!(mode(&dom), 0o600);
+        // An executable is never de-execed (downloads can carry binaries).
+        let dl = root.join("downloads");
+        std::fs::create_dir_all(&dl).unwrap();
+        let exe = dl.join("tool");
+        std::fs::write(&exe, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        reharden_state_tree(&root);
+        assert_eq!(mode(&exe), 0o755, "exec bit must survive rehardening");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nofollow_reads_refuse_symlinked_sidecars() {
+        let dir = std::env::temp_dir().join(format!("blade-nofollow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let victim = dir.join("attacker.json");
+        std::fs::write(&victim, b"[\"injected\"]").unwrap();
+        let link = dir.join("logins.json");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        assert!(
+            read_file_nofollow(&link).is_err(),
+            "a symlinked sidecar must be refused, not read through"
+        );
+        let real = dir.join("sessions.json");
+        std::fs::write(&real, b"ok").unwrap();
+        assert_eq!(read_file_nofollow(&real).unwrap(), b"ok");
+        assert_eq!(
+            read_file_nofollow(&dir.join("missing")).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dir_ancestor_walk_rejects_writable_or_symlinked_paths() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::temp_dir().join(format!("blade-anc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let safe = base.join("safe/target");
+        std::fs::create_dir_all(&safe).unwrap();
+        // Sticky /tmp + our own 0755 dirs pass.
+        assert!(validate_dir_ancestors(&safe).is_ok());
+        // A non-sticky world-writable ancestor refuses.
+        let loose = base.join("loose");
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(validate_dir_ancestors(&loose.join("target")).is_err());
+        // A user-planted (non-root) symlinked ancestor refuses.
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&safe, &link).unwrap();
+        assert!(validate_dir_ancestors(&link.join("deeper")).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn root_owned_system_symlinks_are_traversed() {
+        use std::os::unix::fs::MetadataExt;
+        // The OS's own redirects must not trip the walk: macOS routes
+        // $TMPDIR through /var → private/var and /tmp → private/tmp;
+        // merged-/usr Linux ships /bin → usr/bin. A local co-user cannot
+        // create a root-owned symlink, so these are trusted, while the
+        // user-owned plant case above still refuses.
+        for probe in ["/var", "/tmp", "/bin"] {
+            let path = std::path::Path::new(probe);
+            let is_root_symlink = path
+                .symlink_metadata()
+                .map(|m| {
+                    m.file_type().is_symlink()
+                        && (m.uid() == 0 || (cfg!(target_os = "android") && m.uid() == 1000))
+                })
+                .unwrap_or(false);
+            if is_root_symlink {
+                assert!(
+                    validate_dir_ancestors(&path.join("blade-ancestor-probe")).is_ok(),
+                    "{probe} is a root-owned system symlink and must be traversed"
+                );
+            }
+        }
+        // The real temp chain — what BLADE_FRESH creation walks — must
+        // pass on every OS (this walk is what failed on macOS CI).
+        assert!(validate_dir_ancestors(&std::env::temp_dir().join("blade-ancestor-probe")).is_ok());
     }
 }
 

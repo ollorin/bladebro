@@ -3,7 +3,7 @@
 
 #[cfg(unix)]
 use super::discover::find_chrome;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use super::display::{apply_xvfb_env, VirtualDisplay};
 #[cfg(unix)]
 use super::flags::{classify_gl, gl_stages, launch_args, stage_label, LaunchCfg};
@@ -119,37 +119,56 @@ impl Browser {
         use tokio::net::unix::pipe;
 
         let chrome_path = find_chrome()?;
+        let extra = super::compat::agent_extra_flags()?;
         let profile = crate::session_profile::SessionProfile::create()?;
         let user_data_dir = profile.dir().to_path_buf();
         font_audit();
 
-        #[cfg(target_os = "linux")]
-        let xvfb = VirtualDisplay::start().ok();
-        #[cfg(target_os = "linux")]
-        if xvfb.is_none() {
+        // Fork hook (.planning/HOOKS.md): BLADE_HEADLESS / launch-mode layers (HEAD-01).
+        let mode = crate::launch_mode::effective().map_err(BladeError::Other)?;
+        let plan = crate::launch_mode::plan_display(
+            mode.headless,
+            cfg!(any(target_os = "linux", target_os = "android")),
+        );
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let xvfb = if plan.try_xvfb {
+            VirtualDisplay::start().ok()
+        } else {
+            None
+        };
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if plan.try_xvfb && xvfb.is_none() {
             eprintln!(
                 "[bladebro] WARNING: Xvfb unavailable — falling back to headless mode (reduced stealth). Install xvfb for headful-on-virtual-display."
             );
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         let headful = xvfb.is_some();
 
-        #[cfg(not(target_os = "linux"))]
-        let headful = true; // macOS/Windows have native window servers
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let headful = plan.native_headful;
 
         // After both bindings: the recording must compile on every target.
         set_launched_headless(!headful);
+        crate::launch_mode::note_launch(&mode, headful);
+        set_launched_no_sandbox(no_sandbox);
 
-        // M18: Proxy support via BLADE_PROXY env var.
-        let proxy = std::env::var("BLADE_PROXY").ok().filter(|p| !p.is_empty());
-        if let Some(p) = &proxy {
-            eprintln!("[bladebro] using proxy: {p}");
+        // M18: Proxy support via BLADE_PROXY env var. Validated + redacted
+        // exactly like the WS lane — same failure mode, same log guarantee.
+        let proxy = match crate::browser::proxy::env_blade_proxy() {
+            Ok(p) => p,
+            Err(reason) => {
+                return Err(BladeError::Other(format!(
+                    "invalid BLADE_PROXY value: {reason} (value redacted)"
+                )));
+            }
+        };
+        if let Some(spec) = &proxy {
+            eprintln!("[bladebro] using proxy: {}", spec.display);
         }
         // Power-user escape hatch (same as the WS path — this used to be
         // WS-only, another quiet lane divergence).
-        let extra: Vec<String> = std::env::var("BLADE_CHROME_FLAGS")
-            .map(|s| s.split_whitespace().map(String::from).collect())
-            .unwrap_or_default();
         set_launched_pipe(true);
         let args = launch_args(&LaunchCfg {
             stage,
@@ -158,7 +177,7 @@ impl Browser {
             transport: Transport::Pipe,
             port: 0,
             user_data_dir: &user_data_dir,
-            proxy: proxy.as_deref(),
+            proxy: proxy.as_ref().map(|s| s.server.as_str()),
             extra: &extra,
         });
 
@@ -183,19 +202,30 @@ impl Browser {
             ));
         }
 
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         let mode_str = if headful {
             "headful (Xvfb)"
         } else {
             "headless"
         };
-        #[cfg(not(target_os = "linux"))]
-        let mode_str = "headful";
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let mode_str = if headful { "headful" } else { "headless" };
         eprintln!("[bladebro] launching Chrome from {chrome_path} on CDP pipe ({mode_str})");
 
         let mut cmd = Command::new(&chrome_path);
-        cmd.args(&args).stdout(Stdio::null()).stderr(Stdio::null());
-        #[cfg(target_os = "linux")]
+        browser_temp_env(&mut cmd);
+        // G11: bounded startup-stderr capture (shared with the WS lane) —
+        // a failed launch must be diagnosable instead of guessed at.
+        cmd.args(&args).stdout(Stdio::null());
+        match super::launch::chrome_stderr_sink() {
+            Some(f) => {
+                cmd.stderr(Stdio::from(f));
+            }
+            None => {
+                cmd.stderr(Stdio::null());
+            }
+        }
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         if let Some(ref xvfb) = xvfb {
             apply_xvfb_env(&mut cmd, xvfb);
         }
@@ -234,11 +264,16 @@ impl Browser {
                         .and_then(|p| p.as_str())
                         .unwrap_or("unknown");
                     eprintln!("[bladebro] Chrome ready: {product} (pipe transport)");
+                    if let Err(error) = super::compat::prepare_incognito(&client).await {
+                        platform::shutdown_child(&mut child);
+                        profile.cleanup();
+                        return Err(error);
+                    }
                     let probe = probe_gl_pipe(&client).await;
                     return Ok((
                         Self {
                             child,
-                            #[cfg(target_os = "linux")]
+                            #[cfg(any(target_os = "linux", target_os = "android"))]
                             xvfb,
                             port: 0,
                             profile,
@@ -251,7 +286,8 @@ impl Browser {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             return Err(BladeError::Other(format!(
-                                "Chrome exited during startup: {status}"
+                                "Chrome exited during startup: {status}{}",
+                                super::launch::chrome_stderr_tail()
                             )));
                         }
                         Ok(None) => {}
@@ -263,9 +299,10 @@ impl Browser {
                     }
                     if Instant::now() >= deadline {
                         let _ = child.kill();
-                        return Err(BladeError::Other(
-                            "Chrome pipe not responding after 20s".into(),
-                        ));
+                        return Err(BladeError::Other(format!(
+                            "Chrome pipe not responding after 20s{}",
+                            super::launch::chrome_stderr_tail()
+                        )));
                     }
                     tokio::time::sleep(Duration::from_millis(300)).await;
                 }

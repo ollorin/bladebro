@@ -1,0 +1,466 @@
+//! Live tests of tab following (08-01) and per-tab files (08-02) over the real binary's MCP stdio server.
+//! All `#[ignore]`: they need Chrome + ffmpeg and local fixtures, and run through
+//! `tools/record_sidecar/scenarios/follow_live.sh` (headless, scratch home,
+//! 127.0.0.1 fixtures only).
+//!
+//! Harness inputs (not product options): REC_HUB_FIX, REC_HUB_FFMPEG, REC_HUB_FFPROBE
+//! as in tests/record_hub.rs; unset REC_HUB_FIX skips the live tests.
+
+mod record_support;
+
+use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
+
+use record_support::*;
+use serde_json::json;
+
+const IGNORE: &str = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)";
+
+#[derive(Debug, PartialEq)]
+enum Tone {
+    Red,
+    Blue,
+    Green,
+    Yellow,
+    Other(u8, u8, u8),
+}
+
+fn tone(rgb: (u8, u8, u8)) -> Tone {
+    match rgb {
+        (r, g, b) if r > 200 && g < 60 && b < 60 => Tone::Red,
+        (r, g, b) if b > 200 && r < 60 && g < 60 => Tone::Blue,
+        (r, g, b) if g > 120 && r < 60 && b < 60 => Tone::Green,
+        (r, g, b) if r > 200 && g > 160 && b < 60 => Tone::Yellow,
+        (r, g, b) => Tone::Other(r, g, b),
+    }
+}
+
+/// Average colour of the frame at `t` seconds (1x1 downscale).
+fn color_at(path: &Path, t: f64) -> Tone {
+    let out = Command::new(ffmpeg())
+        .args(["-v", "error", "-ss", &format!("{t:.2}"), "-i"])
+        .arg(path)
+        .args([
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=1:1",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ])
+        .output()
+        .expect("ffmpeg runs");
+    assert!(out.stdout.len() >= 3, "no frame at {t}s in {path:?}");
+    tone((out.stdout[0], out.stdout[1], out.stdout[2]))
+}
+
+/// Frames the file decodes to.
+fn decoded_frames(path: &Path) -> u64 {
+    let out = Command::new(ffprobe())
+        .args([
+            "-v",
+            "error",
+            "-count_frames",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=nb_read_frames",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .expect("ffprobe runs");
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse()
+        .unwrap_or_else(|_| panic!("frame count of {path:?}"))
+}
+
+/// `(offset_s, label)` from `segments [0.0 s tab A, 4.2 s tab B (no frames)]`.
+fn segments(text: &str) -> Vec<(f64, String)> {
+    let inner = text
+        .split("segments [")
+        .nth(1)
+        .and_then(|r| r.split(']').next())
+        .unwrap_or_else(|| panic!("segments in {text}"));
+    inner
+        .split(", ")
+        .map(|p| {
+            let (off, tab) = p.split_once(" s tab ").expect("segment shape");
+            (off.parse().expect("offset"), tab.to_string())
+        })
+        .collect()
+}
+
+/// `(current, id, url)` per tab from `state tabs`.
+fn tabs(mcp: &mut Mcp) -> Vec<(bool, String, String)> {
+    let (e, t) = mcp.state(json!({"op":"tabs"}));
+    assert!(!e, "tabs: {t}");
+    t.lines()
+        .filter_map(|l| {
+            // Rows are `* ID`, `*R ID`, `*  ID`, ` R ID`, `  ID` (marker width
+            // differs with and without a recording): current = the `*` rows.
+            let cur = l.trim_start().starts_with('*');
+            let rest = l.trim_start().trim_start_matches(['*', 'R']).trim();
+            let id = rest.split_whitespace().next()?;
+            if id.len() != 32 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+                return None;
+            }
+            let url = rest.rsplit(" — ").next().unwrap_or("").to_string();
+            Some((cur, id.to_string(), url))
+        })
+        .collect()
+}
+
+fn current_id(mcp: &mut Mcp) -> String {
+    tabs(mcp)
+        .into_iter()
+        .find(|t| t.0)
+        .map(|t| t.1)
+        .expect("a current tab")
+}
+
+fn opened_id(text: &str) -> String {
+    text.split("tab ")
+        .nth(1)
+        .and_then(|r| r.split_whitespace().next())
+        .map(String::from)
+        .unwrap_or_else(|| panic!("tab id in {text}"))
+}
+
+fn sleep(s: f64) {
+    std::thread::sleep(Duration::from_secs_f64(s));
+}
+
+/// Midpoint of segment `k` on the video clock.
+fn mid(segs: &[(f64, String)], k: usize, total: f64) -> f64 {
+    let end = segs.get(k + 1).map_or(total, |s| s.0);
+    (segs[k].0 + end) / 2.0
+}
+
+fn assert_video(path: &Path, text: &str) {
+    let (codec, w, h) = probe(path).expect("ffprobe reads the file");
+    eprintln!("RESULT ffprobe: {codec} {w}x{h}");
+    assert_eq!((codec.as_str(), w, h), ("vp9", 1280, 720), "constant size");
+    assert!(decodes_clean(path), "full decode must be clean");
+    assert_eq!(
+        decoded_frames(path) as f64,
+        field_after(text, "frames "),
+        "decoded frames equal the reported count: {text}"
+    );
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn follow_switch_open() {
+    let _ = IGNORE;
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn("fsw", &live_env(&[("BLADE_RECORD", "1")], &ff));
+    assert!(!mcp.nav(&format!("{fix}/a.html")).0);
+    let a = current_id(&mut mcp);
+    let (e, start) = mcp.state(json!({"op":"record-start","name":"f"}));
+    assert!(!e, "{start}");
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/b.html")}));
+    assert!(!e, "{t}");
+    let b = opened_id(&t);
+    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"switch-tab","target_id":a}));
+    assert!(!e, "{t}");
+    assert_eq!(current_id(&mut mcp), a);
+    sleep(2.0);
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT follow stop: {stop}");
+    assert!(!e && stop.contains("recording saved: "), "{stop}");
+    let segs = segments(&stop);
+    let ids: Vec<&str> = segs.iter().map(|s| s.1.as_str()).collect();
+    assert_eq!(ids, [a.as_str(), b.as_str(), a.as_str()], "{stop}");
+    assert!(
+        segs[0].0 == 0.0 && segs[1].0 > 0.5 && segs[2].0 > segs[1].0 + 0.5,
+        "{stop}"
+    );
+    let path = saved_path(&stop);
+    assert_video(&path, &stop);
+    let total = field_after(&stop, "duration ");
+    let colors: Vec<Tone> = (0..3)
+        .map(|k| color_at(&path, mid(&segs, k, total)))
+        .collect();
+    eprintln!("RESULT follow colors: {colors:?}");
+    assert_eq!(colors, [Tone::Red, Tone::Blue, Tone::Red], "{stop}");
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn follow_popup() {
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn("fpop", &live_env(&[("BLADE_RECORD", "1")], &ff));
+    assert!(!mcp.nav(&format!("{fix}/popup.html")).0);
+    let opener = current_id(&mut mcp);
+    // 1. A target=_blank link: since 08.1 it is a segment without switch-tab (the popup stays in
+    // front while recording, the agent's page stays the opener).
+    let (e, t) = mcp.state(json!({"op":"record-start","name":"p1"}));
+    assert!(!e, "{t}");
+    sleep(1.0);
+    let (e, t) = mcp.call("act", json!({"action":"click","text":"open c"}));
+    assert!(!e && t.contains("new tab opened"), "{t}");
+    sleep(3.0);
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT popup link stop: {stop}");
+    assert!(!e, "{stop}");
+    let segs = segments(&stop);
+    assert_eq!(segs.len(), 2, "a link popup is a segment: {stop}");
+    assert_eq!(segs[0].1, opener);
+    let path = saved_path(&stop);
+    let total = field_after(&stop, "duration ");
+    assert_eq!(
+        color_at(&path, mid(&segs, 0, total)),
+        Tone::Yellow,
+        "{stop}"
+    );
+    assert_eq!(color_at(&path, mid(&segs, 1, total)), Tone::Green, "{stop}");
+    assert_video(&path, &stop);
+    let first_popup = segs[1].1.clone();
+    let (e, t) = mcp.state(json!({"op":"close-tab","target_id":first_popup}));
+    assert!(!e, "{t}");
+
+    // 2. window.open with window features (a differently sized popup window): followed as well,
+    // no switch-tab needed.
+    let before: Vec<String> = tabs(&mut mcp).into_iter().map(|t| t.1).collect();
+    let (e, t) = mcp.state(json!({"op":"record-start","name":"p2"}));
+    assert!(!e, "{t}");
+    sleep(1.0);
+    let (e, t) = mcp.call("act", json!({"action":"click","text":"window"}));
+    assert!(!e, "{t}");
+    sleep(3.0);
+    let popup = tabs(&mut mcp)
+        .into_iter()
+        .map(|t| t.1)
+        .find(|id| !before.contains(id))
+        .expect("a new popup tab");
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT popup window stop: {stop}");
+    assert!(!e, "{stop}");
+    let segs = segments(&stop);
+    assert!(segs.len() >= 2, "{stop}");
+    assert_eq!(segs.first().expect("first").1, opener, "{stop}");
+    assert_eq!(segs.last().expect("last").1, popup, "{stop}");
+    // Letterboxed into the configured size, whole file decodes.
+    assert_video(&saved_path(&stop), &stop);
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn follow_close_recorded() {
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn("fcl", &live_env(&[("BLADE_RECORD", "1")], &ff));
+    assert!(!mcp.nav(&format!("{fix}/a.html")).0);
+    let a = current_id(&mut mcp);
+    let (e, t) = mcp.state(json!({"op":"record-start","name":"c"}));
+    assert!(!e, "{t}");
+    sleep(1.5);
+    let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/b.html")}));
+    assert!(!e, "{t}");
+    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab","target_id":b}));
+    assert!(!e, "{t}");
+    sleep(2.0);
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT follow close stop: {stop}");
+    assert!(
+        !e,
+        "closing the recorded tab must not fail the recording: {stop}"
+    );
+    assert!(stop.contains("recording saved: "), "{stop}");
+    assert!(stop.contains("gone at "), "{stop}");
+    let segs = segments(&stop);
+    assert_eq!(segs.last().expect("last").1, a, "{stop}");
+    let path = saved_path(&stop);
+    let total = field_after(&stop, "duration ");
+    let k = segs.len() - 2;
+    assert_eq!(color_at(&path, mid(&segs, k, total)), Tone::Blue, "{stop}");
+    assert_eq!(
+        color_at(&path, mid(&segs, segs.len() - 1, total)),
+        Tone::Red,
+        "{stop}"
+    );
+    assert_video(&path, &stop);
+}
+
+/// The per-file lines of a per-tab result: `<path> (bytes ... segments [...] ...)`.
+fn file_lines(text: &str) -> Vec<String> {
+    text.match_indices(" (bytes ")
+        .map(|(i, _)| {
+            let pre = &text[..i];
+            let start = [
+                pre.rfind("; ").map(|x| x + 2),
+                pre.rfind("): ").map(|x| x + 3),
+            ]
+            .into_iter()
+            .flatten()
+            .max()
+            .unwrap_or(0);
+            let end = i + text[i..].find(')').map_or(0, |c| c + 1);
+            text[start..end].to_string()
+        })
+        .collect()
+}
+
+fn line_path(line: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(line.split(" (bytes ").next().expect("path"))
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn per_tab_three_files() {
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn(
+        "ptt",
+        &live_env(
+            &[("BLADE_RECORD", "1"), ("BLADE_RECORD_TABS", "per-tab")],
+            &ff,
+        ),
+    );
+    assert!(!mcp.nav(&format!("{fix}/a.html")).0);
+    let a = current_id(&mut mcp);
+    let (e, start) = mcp.state(json!({"op":"record-start","name":"pt"}));
+    assert!(!e && start.contains("(per-tab files)"), "{start}");
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/b.html")}));
+    assert!(!e, "{t}");
+    let b = opened_id(&t);
+    sleep(2.5);
+    let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/c.html")}));
+    assert!(!e, "{t}");
+    let c = opened_id(&t);
+    sleep(2.5);
+    for (id, secs) in [(&a, 2.0), (&c, 1.5)] {
+        let (e, t) = mcp.state(json!({"op":"switch-tab","target_id":id}));
+        assert!(!e, "{t}");
+        sleep(secs);
+    }
+    // Closing c finalizes its file while the recording runs.
+    let (e, t) = mcp.state(json!({"op":"close-tab","target_id":c}));
+    assert!(!e, "{t}");
+    sleep(1.5);
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT per-tab stop: {stop}");
+    assert!(!e, "{stop}");
+    assert!(
+        stop.starts_with("recording saved (per-tab, 3 files): "),
+        "{stop}"
+    );
+    let lines = file_lines(&stop);
+    assert_eq!(lines.len(), 3, "{stop}");
+    for (i, (line, want)) in lines
+        .iter()
+        .zip([Tone::Red, Tone::Blue, Tone::Green])
+        .enumerate()
+    {
+        let path = line_path(line);
+        assert!(path.is_absolute(), "{path:?}");
+        assert!(
+            path.display()
+                .to_string()
+                .contains(&format!("-tab{}-", i + 1)),
+            "{path:?}"
+        );
+        assert_eq!(
+            std::fs::metadata(&path).expect("file").len() as f64,
+            field_after(line, "bytes "),
+            "{line}"
+        );
+        assert_video(&path, line);
+        let segs = segments(line);
+        let total = field_after(line, "duration ");
+        for k in 0..segs.len() {
+            assert_eq!(
+                color_at(&path, mid(&segs, k, total)),
+                want,
+                "file {} {line}",
+                i + 1
+            );
+        }
+    }
+    let _ = (b, c);
+    assert!(stop.contains(". Note: tab "), "closed note: {stop}");
+    #[cfg(unix)]
+    assert!(
+        ffmpeg_children(mcp.pid()).is_empty(),
+        "no ffmpeg child after stop"
+    );
+}
+
+#[test]
+#[ignore = "live: needs Chrome + ffmpeg (tools/record_sidecar/scenarios/follow_live.sh)"]
+fn per_tab_cap() {
+    let Some(fix) = fix() else { return };
+    let ff = ffmpeg();
+    let mut mcp = Mcp::spawn(
+        "ptcap",
+        &live_env(
+            &[("BLADE_RECORD", "1"), ("BLADE_RECORD_TABS", "per-tab")],
+            &ff,
+        ),
+    );
+    assert!(!mcp.nav(&format!("{fix}/a.html")).0);
+    let (e, start) = mcp.state(json!({"op":"record-start","name":"cap"}));
+    assert!(!e, "{start}");
+    sleep(1.5);
+    let mut ninth = String::new();
+    for i in 0..8 {
+        let page = ["b", "c"][i % 2];
+        let (e, t) = mcp.state(json!({"op":"open-tab","url":format!("{fix}/{page}.html")}));
+        assert!(!e, "{t}");
+        ninth = opened_id(&t);
+        sleep(2.2);
+    }
+    let (e, stop) = mcp.state(json!({"op":"record-stop"}));
+    eprintln!("RESULT per-tab cap stop: {stop}");
+    assert!(!e, "the cap is a note, not a failure: {stop}");
+    assert!(
+        stop.starts_with("recording saved (per-tab, 8 files): "),
+        "{stop}"
+    );
+    assert!(
+        stop.contains(&format!("tab {ninth} not recorded from "))
+            && stop.contains("per-tab cap of 8 open files reached (close a tab to free one)"),
+        "{stop}"
+    );
+    for line in file_lines(&stop) {
+        assert!(line_path(&line).exists(), "{line}");
+    }
+    #[cfg(unix)]
+    assert!(
+        ffmpeg_children(mcp.pid()).is_empty(),
+        "no ffmpeg child after stop"
+    );
+}
+
+#[test]
+fn tab_rows_parse_in_every_marker_form() {
+    // Pure check of the row shapes `state tabs` prints (off and recording).
+    let id = "0123456789ABCDEF0123456789ABCDEF";
+    for (row, cur) in [
+        (format!("* {id}  T"), true),
+        (format!("*R {id}  T"), true),
+        (format!("*  {id}  T"), true),
+        (format!(" R {id}  T"), false),
+        (format!("   {id}  T"), false),
+    ] {
+        let rest = row.trim_start().trim_start_matches(['*', 'R']).trim();
+        assert_eq!(rest.split_whitespace().next(), Some(id), "{row}");
+        assert_eq!(row.trim_start().starts_with('*'), cur, "{row}");
+    }
+}

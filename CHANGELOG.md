@@ -8,6 +8,235 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.5] - 2026-10-19
+
+### Fixed
+- Optional notification permission masking keeps `permissions.query` native: descriptor getters run once, native promises/errors retain their timing, and existing `PermissionStatus` objects track real permission changes without stale own properties. Invalid media-device receivers retain the native rejected promise and microtask order.
+- Visible selector waits include the document root, including same-origin frame roots, so readiness classes/attributes on `<html>` can satisfy waits while hidden frames still cannot.
+- Form fill rejects text/option values on checkboxes, radios and switches instead of silently ignoring the value and toggling. Use `check:true/false` for explicit state, or omit values to toggle. Batch/run share the same refusal and readback behavior.
+
+### Verification
+- Native API behavior has 48 shared assertions covering errors, descriptor side effects, promise scheduling, receiver validation and own properties; audit now checks 111 vectors and the stock-browser oracle compares 99 observations.
+- Native desktop CI exercises root waits and toggle fill in normal/incognito modes. Compact five-tool guidance documents the explicit toggle values without adding parameters.
+
+## [4.6.4] - 2026-10-18
+
+### Fixed
+- Popup links restore the opener's activation before further input, report the new tab ID once, and finish action bookkeeping. Explicit tab switches activate their target. Scroll refuses the first failed dispatch instead of continuing timed-out wheel events.
+- Targeted key presses focus and verify the addressed control before dispatch; macOS Meta+A carries the native select-all editing command; equally ranked text/label matches refuse with candidate refs and context. Error recovery includes one page-state section, and timeout guidance preserves unknown outcomes without prescribing blind retries.
+- Markdown preserves whitespace around inline links/emphasis. Auto-extraction reads descriptions from the live rendered tree, keeps heading titles separate from breadcrumbs, decodes supported redirects and flags opaque destinations. Template fields accept the container's own `@attribute` and invalid CSS reports a concise error.
+- Navigation/fill and inherited run/batch slim output keep verdicts and explicit reads without repeating models. Network logs reset at top-frame navigation; selected console/network logs support read-and-clear. Branch messages distinguish a false condition from the configured wait budget.
+- Reddit API denial returns explicit partial/incomplete DOM fallback metadata without promising a retry will work. Safe transient GET failures retry twice with bounded backoff; policy denials/rate limits stop, and comment sort can be specified.
+
+### Added
+- Bounded pagination through ordinary extraction/click dispatch, with page retention, cycle/cap detection and honest completion metadata.
+- Visible CSS waits across open shadow roots/same-origin frames and a measured 300ms tracked-network idle condition.
+- Artifact item paging with independently usable JSON rows alongside compatible character chunks; sampled auto-extraction schema previews; structured model changes since the last capture.
+- Explicit HTTP body downloads with response status/final URL and bounded size/deadline, separate from browser-session attachments. Resource blocking reports measured refused-request counts without inventing byte/time savings.
+- Compact five-tool definitions and CLI help describe the new contracts; owned-browser report regressions run natively on Linux, macOS and Windows in normal/incognito modes.
+
+## [4.6.3] - 2026-10-16
+
+### Fixed
+- Eval distinguishes expression parse failures from runtime `SyntaxError`s before trying the statement fallback. Code that changed the page and then threw, including `JSON.parse` failures with no stack, executes once.
+- `run` shares ordinary action dispatch with `act`: coordinate clicks, type plus Enter, dialog expectations, scoped reads, validation and recovery hints behave consistently. Element reads retain their text instead of silently cutting it at 200 characters.
+- Form fill reads checkbox/radio/switch state live and verifies the requested state after one click. Impossible radio unchecks, missing field values and malformed arguments fail clearly; malformed text cannot silently clear a field or execute JavaScript.
+- Basic link/form extraction crosses open shadow roots and same-origin frames, handles quoted control IDs and multi-part labels, honors item limits with an explicit omission note, and reports script failures instead of returning a false empty success. Large scans disclose their bounds.
+
+### Performance
+- Composed navigation reuses the shared load/settle/capture path, removing a redundant quiet wait in `run` and explicit batch navigation while retaining late-fetch mount checks.
+
+### Verification
+- New owned-browser MCP regressions run on native Linux, macOS and Windows in normal and incognito modes, covering mutation counts, input readback, action parity, extraction and navigation timing.
+
+## [4.6.2] - 2026-10-15
+
+### Fixed
+- Authenticated cross-origin downloads keep the active browser context and subscribe to the temporary download tab before navigating. Completed attachments no longer report a false failure; rejected/inline responses fail honestly and close the auxiliary tab while preserving the original page.
+- Raspberry Pi OS trixie arm64 agent sessions automatically use a scoped incognito compatibility path for the Chromium network-service hang reported in #45. Other hosts retain persistent profiles; explicit profile overrides and real/external browsers retain their mode. `BLADE_INCOGNITO=auto|0|1` provides an override, with the storage tradeoff disclosed at launch and in `doctor`.
+- Incognito tabs stay in one managed browser context. Browser-wide cookie snapshots and readback use that same context, preserving login restart, explicit logout and named-session restoration instead of silently reading the regular profile's cookie jar.
+- CDP event waits subscribe before the triggering command, so an event arriving before its response cannot disappear. Navigation preserves scheme, fragment and significant trailing paths; hash-router transitions execute instead of reporting false "already here", and do not wait for a full-document event.
+- Browser discovery rejects directories, non-executable files and invalid explicit `CHROME_PATH` overrides. Doctor shares the launcher's discovery, bounds the version probe, returns nonzero on failed checks and reports unmeasured disk space honestly.
+- Updater checksum responses are bounded during reads, including responses without Content-Length. Binary validation verifies the actual file size and reads only its header; SHA256 hashing streams the file instead of allocating a second complete binary.
+- Downloaded-binary startup verification has a five-second deadline, bounds stdout/stderr, reaps failed probes and disables network update checks in the verification child. A wedged candidate fails before installation.
+- Chrome startup logging refuses symlink/FIFO sinks before truncating and reads only the last 4 KiB on failure. A planted log symlink can no longer erase an unrelated file, and large logs do not require an unbounded read.
+
+### Changed
+- Update rustls to 0.23.46 for RUSTSEC-2026-0346–0349; no advisory exceptions added.
+- Update Tokio to 1.53.2, serde_json to 1.0.152 and CI's setup-node action to v7 (Dependabot #42–#44).
+
+### Added
+- Native Linux/macOS/Windows CI verifies authenticated cross-origin downloads twice, including incognito cookies, exact bytes, denied/inline responses, original-page continuity and tab cleanup.
+- Owned-browser regression coverage for setup errors, navigation identity, both incognito entry points, tab/storage continuity, login restart/logout, and WebSocket/pipe MCP sessions.
+- Release candidates can run an additional verification hook before any tag/package is public. Failure, source changes or replaced platform artifacts abort publication; advisory checks refresh afterward. Six new refusal controls verify this gate without publishing anything.
+
+## [4.6.1] - 2026-10-14
+
+### Changed
+- **Cross-platform stealth parity: one ladder, per-platform backends, no foreign strings.** The GL ladder is now explicit per OS — Linux/Android keep `--use-angle=gl-egl` as stage 1 (retried), and it reaches hardware *headless* too (measured: no X display needed — the machine's own GPU is reported, so the mask never installs and headless rendering is hardware-fast); macOS and Windows get an explicit fallback backend behind the platform default (`--use-angle=metal` / `--use-angle=d3d11`); `--disable-gpu` is gone from headless launches. Previously, a software-GL host on Mac or Windows had its mask replay a *Linux Mesa* string (Windows x86) or a *phone GPU* (Apple Silicon) — the identity mismatch this release removes.
+- **WebGL masking detects the machine's GPU on every OS.** `lspci` (Linux/Android, output byte-identical to 4.6.0), `Win32_VideoController` via PowerShell CIM with a `wmic` fallback (Windows), `system_profiler` (macOS) — and the renderer string is built in the detected OS's own ANGLE shape: Direct3D-11 strings on Windows (`ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)`), Metal strings on macOS (`ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)`), Mesa strings on Linux. D3D11 WARP counts as software (the mask engages instead of reporting WARP); Microsoft's no-driver adapters (Basic Display/Render, Remote Display, Hyper-V) are never claimed. `BLADE_GPU` overrides remain (`intel|amd|nvidia|apple|mali|adreno`).
+- **`--disable-remote-fonts` removed.** Measured on stock Chromium 154: with the flag a page's own `@font-face` fetch never happens (0 requests, `NetworkError`, fallback text metrics) — no real Chrome refuses webfonts, and any page loading its own fonts can read the difference, on every platform. The macOS on-demand-font dialog that motivated it (issue #9) is handled by the CSS alias block, now macOS-gated (elsewhere it was a page-visible extra stylesheet no stock browser has).
+- **The cyclic-prototype shield covers function-typed prototypes.** `Object.setPrototypeOf(maskedFn, someFn)` whose chain runs back through the mask is the same creepjs torture with a function as the new proto; an object-only guard let it through to the old `RangeError` recursion (measured in `work/stealth461`). The shared `_cyc` walk — page masks and the SharedWorker wrapper — now walks functions too: native `TypeError: Cyclic __proto__ value` in both shapes.
+- **`bladebro audit` is a gate, not a printout.** Any vector FAIL (parsed from the SCORE footer), failed self-check, or consistency-stamp drift exits non-zero; the report read was also too tight (2000 chars truncated the suite's flattened output — the full report is read now).
+- **CI drives the real audit on every OS.** The built binary runs its own vector suite through a browser on ubuntu, macOS and Windows on each release push and the exit code gates — the "green CI, broken lane on macOS/Windows" class is structurally dead.
+
+### Added
+- `worker-gl-renderer-match`: the worker realm's WebGL renderer must equal the page realm's — the mask's two realms can never drift.
+- `shell-torture` now runs both torture shapes per target (object-proto and function-proto): ten masked-or-native API functions must answer each with the engine's own `TypeError: Cyclic __proto__ value`.
+- `uad-platform` is OS-coherent (it previously hard-required `Linux` — the audit *failed on macOS/Windows* for a perfectly coherent browser).
+- Per-OS UA-override fallback strings (the rare no-UA case used to inject a Linux UA on any OS).
+
+### Fixed
+- Masked functions answer the function-proto cyclic torture with the engine's own `TypeError` (was `RangeError`; residual: the `Reflect`-return channel, advanced-branch only).
+- Windows/macOS fallback profiles can no longer name a different OS's GPU class (the Linux-Mesa-on-Windows / Mali-on-Apple-Silicon mismatch).
+- The battery-API shim (installs only where the engine lacks `getBattery`) returns an EventTarget with the BatteryManager property shape instead of a plain object.
+- Windows CI caught `bladebro audit` building `file://D:\...` from `path.display()` — not a valid URL, and Chrome refuses it (`Cannot navigate to invalid URL`). File URLs are platform-correct now (`file:///D:/...`; the `\\?\` canonicalize prefix is stripped) with unit tests.
+- The zero-device `mediaDevices` gate never fired: the attach-time probe reads `navigator.mediaDevices` on about:blank — a non-secure context where Chrome exposes nothing on any machine — so device-less hosts (the CI runners; invisible on dev machines, which have devices) skipped the patch that exists precisely for them. The patch now installs when the count is zero **or unreadable**; its page-side gate keeps passing real devices through untouched.
+- **`--window-size=1920,1080` is pinned only on Linux/Android**, where the virtual display is ours; on macOS/Windows the agent window opens at the native default on the real desktop. The forced size produced `innerWidth 1028 > screen.width 1024` on a 1024×768 Windows CI desktop — a page-visible incoherence the Windows audit caught on its first full run.
+- **The suite's machine-size checks demand sanity, not desktops**: `hardwareConcurrency >= 4` flagged a 3-vCPU macOS CI runner (VM-sliced core counts are legitimate) and `deviceMemory >= 4` was the same class — both now require presence and a positive value.
+
+## [4.6.0] - 2026-10-14
+
+### Changed
+- **The agent lane renders WebGL on the real GPU under Xvfb.** The GL ladder's first stage is now `--use-angle=gl-egl`: on this machine it reports `ANGLE (Intel, Mesa Intel(R) Graphics (ADL GT2), OpenGL ES 3.2)` — the exact string the machine's own session reports — so the adaptive WebGL mask never installs on hardware hosts (zero GL wrappers, no worker spoof script). 600 fill frames at 1600×1200: 130 ms on the lane vs 122 ms stock gl-egl vs 2904 ms on the old llvmpipe path; creepjs's main page went 1538 → 698 ms and its font battery 17.1 → 6.7 s. The classic `gl` stage stays as the EGL-less fallback (live software context, mask normalizes), SwiftShader last.
+- **Every mask shell now reproduces the native cyclic-prototype refusal.** A callable Proxy could not: V8's cycle check on `Object.setPrototypeOf(fn, Object.create(fn))` compares against the proxy's target, so the assignment succeeded and the follow-up coercion recursed (`RangeError`) where a native function throws `TypeError: Cyclic __proto__ value` — precisely the tell creepjs's prototype lie engine reads (`failed at too much recursion error`). The shared mask helpers now install a `setPrototypeOf` trap that throws the engine's own cycle TypeError when the requested chain runs back through the proxy, and forwards every other assignment untouched. The trap fires only on explicit `setPrototypeOf` calls — never on the call path — so masked calls keep native speed. The SharedWorker constructor wrapper carries the same shield.
+- **The Linux API fabrications are gone** — `navigator.share`, `navigator.canShare`, `window.ContentIndex`, `window.ContactsManager`, `connection.downlinkMax`. Stock headful Chromium 154 on this platform (Xvfb and the real session alike, and the rb-on real lane) exposes none of them, so fabricating their presence was a divergence a differential detector — or a dump like BrowserScan's own Navigator table — can read. Pages now see the platform's real surface.
+- **`screen.availHeight` is native again.** The old shell installed at injection time and manufactured `height - 40`; the display's real work area is what it is (xfwm4 re-publishes the full-screen area after any external set, so a panel-less desktop reads `availHeight == height` — the same value stock Chromium and the real lane report on this machine). No geometry getter is patched.
+
+### Added
+- `shell-torture` in the stealth vector suite: ten masked-or-native API functions (navigator, WebGL1/2, canvas, console, Element) must each answer the cyclic-prototype torture with `TypeError:Cyclic __proto__ value`. A future mask that skips the shared helpers fails the audit. The suite's Linux-polyfill checks became platform-truth checks (`webshare-absent`, `contentindex-absent`, `contactsmanager-absent`). Bar: 62/62.
+
+### Fixed
+- creepjs `tests/prototype.html`: 11 lies / 2369 properties → **0 lies / 2367** (3/3 runs, identical hash), and 0 lies with the GL mask forced on (`BLADE_WEBGL=spoof`) as well. The independent detectability census over 18 interfaces (`work/stealth452/probe_census.py`): 12 → 0. The agent lane's creepjs identity now converges on the rb-on real lane (`extension: unknown`; same `0% headless` / `0% stealth` lines; `38% like-headless` — the value the machine's own browser reads; the old 6% was measured with the mask active).
+
+## [4.5.2] - 2026-10-13
+
+### Changed
+- The pi extension is now one call: it resolves the bladebro binary and registers it with `pi.registerMcpServer()` — pi's own MCP client runs the protocol. The hand-rolled client (spawn, framing, handshake, tool-call proxy, restart logic, TUI formatters) is gone: the file goes from 521 lines to 63, and the five tools, their schemas and the `initialize` instructions all come from the binary, so there is nothing left to drift. Exposure is `direct` (tools declared to the model; the first prompt waits for the connection) and the request timeout is 180s to cover `run`/`batch`/`collect`. A missing binary registers nothing and says exactly why at session start.
+- The bundled pi skill is now the empty, user-editable template its name implies: bladebro needs no skill — guidance rides the MCP handshake — so `skills/bladebro/SKILL.md` exists only for a user who wants their own house rules for the agent.
+
+### Added
+- Source-level Android support: the Linux gates this driver leans on (Xvfb display, `/proc` reads, `SO_PEERCRED` peer checks, ancestor validation, updater magic bytes) now compile for `target_os = "android"`, and a CI job checks `aarch64-linux-android` on every push so the port cannot rot. No Android artifact is published — see the updater note below.
+
+### Fixed
+- `bladebro -u` on Android refuses before downloading and names the real update path, instead of fetching a glibc-linked Linux binary that can never run on bionic and then failing the run check with a message that blamed corruption or the wrong architecture. `bladebro -v` says the same instead of suggesting `-u` where it cannot work.
+- The Android ancestor-validation relaxation is pinned to the system identity (uid 1000 **and** gid 1000): group-write is forgiven only for that group, never for a group ordinary app uids belong to.
+
+## [4.5.1] - 2026-10-13
+
+### Added
+- `act eval` has a stated result contract. Text mode answers ONE line, `result: <compact JSON of the returned value>` — parse that line and you have the value; a returned string that itself contains JSON is called out in a note (parse it once more, do not throw it away), a DOM node/Window says what to return instead, and `undefined` is stated in words. `format:"json"` returns the bare value, `{data,note}` when a note rides along, or an `{artifact,bytes,next_offset}` envelope when oversized.
+- `extract auto` states what the DOM actually holds: `page_total` with `partial`/`paged` when the page claims more results than are loaded (lazy load or pagination), `sponsored` counts for paid placements (still flagged per item, still in page order), `duplicates_removed`, and `redirects_unwrapped` — redirect/tracking wrappers (Amazon `/sspa/click`, Google `/url?q=`, ad `/aclk`, …) resolve to their canonical destination instead of an interstitial.
+- An unknown `act` action answers with the full vocabulary, the correct step when the word is really a step field (`{"action":"url"}` gets the navigate step verbatim), and a `did you mean` for typos. The vocabulary now lives next to the `Action` enum, so the schema, the CLI parser and the error cannot drift apart again.
+- The MCP `initialize` instructions carry the working loop, not just the tool names (extract-first on list pages, page-scoped refs, observations after every action, what each honesty signal means) — every client gets it at connect. The npm package ships the same guidance as a bundled pi skill (`pi.skills` → `skills/bladebro/SKILL.md`).
+
+### Fixed
+- A range filter the site ignores is now visible: when a URL carries a `min-max` filter and every readable item price falls outside it, `extract auto` states both numbers, so unfiltered results cannot be mistaken for filtered ones.
+- Navigation reports requested query parameters that the final URL dropped or rewrote — a filter is never silently assumed applied.
+- Oversized `extract auto` payloads trim optional fields (description → image_alt → image) and keep the full untruncated payload in an artifact file, instead of dumping everything inline or cutting it without a signal.
+- `run`-step eval output is capped with an explicit `… (+N chars truncated)` marker; it used to cut JSON mid-value with no signal, which reads as a complete value.
+- The Xvfb reaper recognizes orphans on systemd hosts, where an adopted process's parent is `systemd --user` rather than PID 1. Previously the `ppid == 1` test never matched there, so abandoned virtual displays were never reaped; the dead-claim plus exact-cmdline ownership contract is unchanged.
+
+## [4.5.0] - 2026-10-10
+
+### Added
+- `extract` works anywhere an act action does: top-level, in `batch`/`run` steps, and as a CLI command — aliasing `see extract=auto|links|forms|json` (a `url=` on the step navigates first). Composed sequences read structured data in the same call.
+- `see format=json` returns pure parseable JSON for `extract=` and `artifact=` reads — a bare payload, `{data,note}` when a caveat applies, or an `{artifact,bytes,next_offset}` envelope when oversized. Artifact paging under `format=json` returns always-valid `{path,offset,next_offset,total_chars,data}` pages, so every page parses.
+- `clear` and `read` accept label addressing like click/type/fill.
+
+### Fixed
+- Non-page URL schemes (`ftp:`, `javascript:`, …) are rejected immediately with a clear error instead of hanging for ~10 seconds and then reporting a false "already here". Navigation attempts that Chrome fails to load now return the load error (with a download hint for aborted file downloads) instead of a false verdict.
+- A dispatched click whose DOM stays quiet now reads `outcome: clicked (no observable DOM change)` — the dispatch happened once, and the verdict says so instead of reading like a failure; `no-effect` is reserved for clicks where no activation lane dispatched at all. Coordinate clicks name the element that actually receives the click.
+- `type` falling back to a JavaScript value setter (key events did not register) is now a loud error tagged `trusted:false` — never a normal-looking verdict — with retry/restart guidance.
+- CDP timeouts and transport failures are tagged `degraded:true` (client-side), so they cannot be mistaken for page-side outcomes.
+- Mid-session WebGL loss is a transient advisory: the driver keeps re-probing the GPU and restores the GL mask automatically when the backend reports software again (no client restart; an existing mask is never removed automatically).
+- A selector miss with zero raw matches now reports `0 raw matches, 0 actionable` with a spelling hint; a label miss on a localized page names the page's language.
+- `run` step failures return as a structured result — `run stopped at step N of M (K ok)` plus the failure and every prior step observation — instead of an error that discards the collected context. `see`/`extract` steps honor `url=` and `optional:true` like every other step.
+
+## [4.4.0] - 2026-10-10
+
+### Added
+- Dialog expectations: arm a one-use `act dialog` (type, optional message match, prompt answer, expiry) before the action that triggers a confirm or prompt. Mismatches keep the safe default cancel, unused expectations are reported, and stacked dialogs stay predictable.
+- PDF pages read as an explicit explanation with the supported paths: `act download` hands over the real bytes for your own reader, or vision for the viewer, instead of a silent empty read.
+- Support matrix (`SUPPORT-MATRIX.md`): verified platforms, engines and instruments, with explicit not-verified gaps.
+
+### Fixed
+- Options (`role=option`) and hidden checkboxes/radios reachable through their visible labels are captured, addressable by selector and text, routed to the visible label for trusted clicks, and report `checked`/`aria-selected` state readbacks; ambiguous labels refuse clearly. Selecting never submits a form.
+- `act wait condition=js` takes the expression from `js=` (the `text=` field stays as the documented alias), rejects missing or conflicting expressions, returns JavaScript syntax errors immediately and surfaces runtime exceptions at the deadline; timeouts are integers 0 to 3600 seconds. Same contract across act, batch, run and the CLI.
+- Act responses keep their context-pruning tier across `see` reads, so act/see loops stop re-sending full-budget page state; content reads state their truncation explicitly (`truncated: N chars total, showed M`).
+- Template extraction: rendered text is the default with `raw=true` opt-in, `_omitted` accounts for fields skipped by policy, missing is distinguishable from empty, shadow roots and same-origin iframe rows are included, and `__blade_meta` carries provenance.
+- Product extraction binds price, seller, availability and specs to the same selected offer/variant, and reports uncertainty instead of guessing when an offer cannot be bound.
+- GL health reports main-thread and worker evidence separately, detects loss and recovery, and never claims a cause it did not verify.
+- Proxy values are validated before launch and credentials are redacted from every log path; malformed values fail with a safe message that never echoes the input.
+- Update checksum fetches retry transient transport failures with clearer diagnostics, and browser startup captures a bounded stderr tail so launch failures identify the actual cause before any fallback.
+- No-effect verdicts include measured control state (targeted state unchanged, or the state transition), with the absence of navigation and DOM change phrased honestly.
+
+## [4.3.0] - 2026-10-09
+
+### Added
+- Native DeepSeek Harness plugin in the existing `bladebro` npm package. Install through Web or Desktop Plugins, or `dsh plugin --profile web add bladebro`; the host manages the shared five-tool MCP connection, permissions, cancellation and reconnects.
+
+### Fixed
+- Update downloads stream to disk, retain interrupted progress and validate resumed byte ranges and size limits before checksum verification.
+- Windows-owned browser processes are cleaned up when their driver is forcibly terminated, allowing MCP clients to reconnect without abandoned Chrome processes locking profiles.
+
+## [4.2.4] - 2026-10-08
+
+### Added
+- Reversible Hermes Agent setup: `bladebro hermes on|off|status` connects the standard five-tool MCP server, disables only native browser tools, and restores prior settings. Supports profiles, private recovery, configuration readback, and existing server environment settings.
+
+### Fixed
+- Short Unicode input now uses native IME commits, preserving non-Latin text, combining marks and emoji in form fields and editors.
+- Chromium launches tolerate long Unix temporary paths supplied by agent harnesses, avoiding fatal singleton socket path errors across WebSocket, pipe and real-browser launches.
+
+## [4.2.3] - 2026-10-08
+
+### Added
+- Helium in `rb use` on Linux, macOS and Windows, with its native profile roots, Linux PATH wrappers and `HELIUM_CONFIG_HOME`. Clone, profile and attach use the existing real-browser lane; portable/AppImage installs use `rb use --binary` (#31).
+
+### Fixed
+- `rb forget` rejects malformed browser IDs before deletion, preventing saved-config paths from escaping the clone namespace.
+- `rb use --json` and `rb profile --json` return one structured JSON object. Discovery skips non-executable candidates and ignores relative/empty Linux config homes; deleted, symlinked and path-traversing profile metadata cannot win selection, and a removed saved profile no longer prevents selecting its replacement.
+- Scoped product reads obey the requested subtree; markdown excludes stylesheet-hidden content. Outlines and element conditions include visible same-origin iframe content; text conditions exclude hidden and script text in shadow roots.
+
+## [4.2.2] - 2026-10-07
+
+### Fixed
+
+- **Shadow-DOM and same-origin-iframe mutations are counted by action verdicts.** A `MutationObserver` on the document cannot see inside a shadow root or an iframe (a platform limitation), so a shadow button that swapped its own text read `outcome: no-effect` while the very same response's model showed the new name — the perception layer pierces shadow roots, the verdict classifier did not. The dispatch-time watcher now attaches to every open shadow root and same-origin iframe document (bounded discovery walk; childList records keep added subtrees in step), so verdicts and content-change detection cover exactly the tree the capture reads. Nested shadow roots included; a click inside a same-origin iframe that mutates its own document no longer reads as a no-op.
+- **`about:blank` keeps its elements through same-document navigation.** A `pushState` fragment on `about:blank` (`about:blank#route`) made the URL look like browser chrome, and the capture wiped every element — "0 actionable" against a live DOM with buttons in it. `about:blank` in all its fragment/query shapes is now treated as an ordinary empty page (agents inject their own DOM into it constantly); `chrome://`, `chrome-extension://`, `devtools://`, `edge://` and non-blank `about:` pages stay uncapturable.
+- **Condition checks (`wait` / `if` / `while`) and `see` reads pierce shadow roots.** `if element="…"` skipped against a shadow-DOM element the very same model displayed; `if text="…"` read light-DOM `innerText` only. Element conditions now use the same shadow-piercing walk as the capture; text conditions add a bounded deep sweep over open shadow roots and same-origin iframes on top of the visible-text fast path.
+- **`see mode=content`, auto-content and the heading outline read shadow and iframe text.** The markdown walk only recursed `childNodes`, and the plain-text probe cloned the body — `cloneNode` does not clone shadow trees, so every shadow and iframe text was lost on component-library pages (LWC, Shoelace, …) whose text lives in shadow roots. Both readers now descend open shadow roots and same-origin iframes, and the outline finds headings inside open shadow roots.
+- **The plain-text read no longer leaks hidden text.** `innerText` on the detached clone degraded to `textContent` (including `display:none` content) against the documented visible-text contract. The probe is now a bounded live-tree walk with computed-style visibility that still strips ads and renders `select` options.
+- The SPA route guard's content signature samples shadow-root text too, so a route render that happens only inside shadow components can no longer read as "stable" before it painted; the scroll-movement probe and the container leaf-target search hop shadow boundaries as well.
+
+## [4.2.1] - 2026-10-07
+
+### Fixed
+
+- **A mid-session WebGL loss is detected instead of silently served.** A GPU-process crash makes Chrome restart the GPU with GL disabled (`--use-gl=disabled`) — every `getContext('webgl')` then returns null, the recorded GL verdict still said "software", the WebGL mask had nothing to mask, and nothing anywhere said so (field report: a long MCP session ran with a dead GL profile while `bladebro audit` — which launches its own browser — stayed at 61/61). The GL verdict is now reconciled against the live page on every tab attach and re-checked on a bounded 60-second cadence from tool calls; a confirmed loss demotes the recorded state, prints a loud warning, and delivers a one-shot note to the agent on the very result that detected it ("this browser LOST WebGL mid-session … restart the client for a fresh browser"). Inconclusive probes (transport failures, restricted `chrome://` origins) never demote — only answered-without-a-context replies do — and a fresh healthy verdict re-arms the advisory for the next browser generation.
+- **All applicable one-shot advisories now reach the agent.** The single note slot could silently drop a second applicable note in the same response (e.g. a relaunch note plus a GL-loss note); the lanes batch every note.
+- **New one-shot advisories for previously stderr-only degradations:** headless fallback (no Xvfb display), `--no-sandbox` fallback (sandboxed startup failed — root or restricted container), `BLADE_PROXY` set without `BLADE_TZ` (timezone/IP mismatch that detection will catch), a failed stealth injection, and a failed headless UA override.
+- Release publishing waits up to five minutes for npm registry propagation before failing closed; the previous two-minute window could expire while npm was still processing a platform package (the 4.2.0 Windows package needed ~3 minutes).
+
+## [4.2.0] - 2026-10-07
+
+### Security
+
+- **Prompt-injection file-read surface closed for `act upload`.** A hostile page could steer the agent into attaching credential files (`~/.ssh/id_rsa`, `~/.aws/credentials`) or bladebro's own cookie/session sidecars to a page's file input and exfiltrate their bytes. Uploads now require an absolute path to an existing regular file, refuse system directories and credential/config locations anywhere in the path, and refuse everything under the data dir except the artifacts exchange zone. The check runs at the single dispatch point — `act`, `run`/`batch` steps and the CLI all pass through it. Relative and `~` spellings (which crashed the browser process) now fail as a clean error.
+- **`act pdf path=` no longer silently destroys existing files.** A steered export onto an existing path (saved sessions, project source, `.git` objects, keychain files) replaced it with PDF bytes irreversibly. Existing targets — file, directory or symlink — are now refused before rendering; the write-path blocklist also gained the developer-toolchain config sinks it was missing (`.npmrc`/`npmrc`, `.git`, `.cargo`, `.m2`, `.vscode`, `.atom`, `.env`/`.env.*`, `.condarc`, `.yarnrc`, `.pypirc`), closing the one-call npm-registry / `.env.local` poisoning lane.
+- **The stealth display is cookie-authorized and ownership-verified.** Xvfb runs with a per-session `-auth` MIT-MAGIC-COOKIE-1 (0600, O_EXCL, unpredictable name; `XAUTHORITY` handed to Chrome, the window manager and the geometry probes) instead of `-ac`, so a local co-user can no longer attach to the live browser's display for screen capture or XTEST input. Readiness now requires both the pathname and abstract X sockets to be served by the Xvfb bladebro spawned (SO_PEERCRED) — not any listener in the world-writable `/tmp/.X11-unix` — and deadline expiry is a failure. Xauthority files are cleaned on drop and by the orphan reaper.
+- **The CLI daemon channel is authenticated by the state directory and the peer's uid.** A co-user with write access to a loose state dir could bind `cli.sock`, lock the genuine daemon out ("already running"), capture every `{"tool","args"}` request and author every response the CLI prints. The daemon now refuses to run — and clients refuse to trust — a socket whose parent dir is not an owner-only directory owned by this user, and both sides verify the connected peer runs as this user (SO_PEERCRED / getpeereid).
+- **Real-browser-lane debug endpoint: closed by default where no human is watching, verified everywhere.** Headless rb sessions now idle-close like the agent lane (a visible session keeps the user's-browser contract), and `rb on` warns that browser control is served on a loopback endpoint any local user can reach. Owned launches on both lanes verify the endpoint is served by the browser process bladebro spawned before trusting a `200 /json/version`, the fixed-port `9222` fallback is gone, and attach/auto-attach require a live browser of this user to actually hold the port — a stale `DevToolsActivePort` file or a squatter is refused instead of driven.
+- **CDP event bus byte-bounded; worker auto-attach no longer parks.** Page-authored bulk payloads (WebSocket frames, SSE data, oversized URLs) were retained up to 16384 × per-event bytes (≈16 GiB at 1 MB events) while any subscriber lagged. Oversized events now keep only their small identity fields (request id, type, status, dialog kind), capping worst-case retention at capacity × 16 KiB, and the worker/GL handler runs each attach in its own task so a busy-looping service worker can no longer freeze the subscriber loop, pin the ring, and drop attach/dialog events.
+- **Sidecars, state tree, profiles and rollback hardened against local co-users.** `logins.json` / session reads refuse symlinked files (O_NOFOLLOW); `state save` is disabled on the real-browser lane (it would persist the user's real cookie jar under the data dir); legacy or mode-stripped state trees are re-tightened on every launch (owned components only, exec bits preserved); `BLADE_FRESH` ephemeral profiles use an unpredictable name with exclusive `mkdir`; `BLADE_PROFILE_DIR` overrides validate ownership, symlinks and ancestors before use; and `bladebro --rollback` refuses symlinked or foreign-owned backups — backups are also written with O_EXCL semantics.
+- **Stored consent selectors are re-validated before clicking.** A poisoned knowledge-store entry could auto-click an arbitrary element on every navigation under a domain. Stored selectors must now match a visible element inside a consent-looking container with consent vocabulary before firing; everything else falls through to full detection.
+
+### Fixed
+
+- `bladebro doctor`'s profile write-probe uses an unpredictable name with O_EXCL (a fixed name could be turned into a symlink write), and its stale-lock hint now points at a directory only the user can write.
+- README documents the `BLADE_PROFILE_DIR` ownership requirement.
+
 ## [4.1.1] - 2026-10-06
 
 ### Security
@@ -1900,7 +2129,23 @@ Pre-release. Hardening pass complete, CLI update pending.
 - Fill only handled text fields (auto-detect type)
 - Multi-tab hang (5s timeout on Input events, 3s on Target.getTargets)
 
-[Unreleased]: https://github.com/dondai44423/bladebro/compare/v4.1.1...HEAD
+[Unreleased]: https://github.com/dondai44423/bladebro/compare/v4.6.5...HEAD
+[4.6.5]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.5
+[4.6.4]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.4
+[4.6.3]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.3
+[4.6.2]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.2
+[4.6.1]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.1
+[4.6.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.0
+[4.5.2]: https://github.com/dondai44423/bladebro/releases/tag/v4.5.2
+[4.5.1]: https://github.com/dondai44423/bladebro/releases/tag/v4.5.1
+[4.5.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.5.0
+[4.4.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.4.0
+[4.3.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.3.0
+[4.2.4]: https://github.com/dondai44423/bladebro/releases/tag/v4.2.4
+[4.2.3]: https://github.com/dondai44423/bladebro/releases/tag/v4.2.3
+[4.2.2]: https://github.com/dondai44423/bladebro/releases/tag/v4.2.2
+[4.2.1]: https://github.com/dondai44423/bladebro/releases/tag/v4.2.1
+[4.2.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.2.0
 [4.1.1]: https://github.com/dondai44423/bladebro/releases/tag/v4.1.1
 [4.1.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.1.0
 [4.0.3]: https://github.com/dondai44423/bladebro/releases/tag/v4.0.3

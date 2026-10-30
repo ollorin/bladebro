@@ -27,36 +27,32 @@ else{var _wp=(typeof Window!=='undefined'&&Window.prototype)?Window.prototype:Ob
 }
 }catch(e){}
 
-// Screen geometry on Screen.prototype (real location, not the instance).
-// Only the *incoherent* case is corrected: a window manager gives the screen
-// a real work area (availHeight < height) and that native value then stays
-// untouched (D14 — coherence over noise). availWidth is left native always:
-// a horizontal panel keeps it equal to width, and a narrow one is an honest
-// side dock — masking it would hide a real desk, not a tell.
-try{
-var _sp=(typeof Screen!=='undefined'&&Screen.prototype)?Screen.prototype:Object.getPrototypeOf(screen);
-if(screen.height-screen.availHeight<16){_defGet(_sp,'availHeight',_ogs(_sp,'availHeight'),function(th,a,og){var v=og.apply(th,a);return (screen.height-v<16)?(screen.height-40):v;});}
-}catch(e){}
+// Screen geometry: fully native (4.6.0 removed the availHeight shell). The
+// old shell installed whenever the work area looked incoherent at injection
+// time and then manufactured `height-40` — but the lane's WM (xfwm4)
+// re-publishes the full-screen work area after our xprop set (measured
+// 2026-10-14 on a live lane: _NET_WORKAREA = 0,0,1920,1080), so the truthful
+// value is availHeight == height — exactly what stock Chromium on the same
+// display and the rb-on real lane report. A fabricated 1040 was a divergence
+// from both AND a bare-Proxy lie surface (creepjs flagged it). Coherence over
+// noise, D14: report what the display actually says. availWidth was always
+// native and stays that way (a horizontal panel keeps it equal to width; a
+// narrow one is an honest side dock).
 
-// permissions.query rewrite lives in PERMISSIONS_PATCH (apply()): a
-// perfect native relay; only a real-origin 'denied' notifications result
-// is rewritten (the headless tell). Opaque origins keep native results.
+// PermissionStatus.state mask lives in PERMISSIONS_PATCH (apply()): only
+// real-origin denied notifications are rewritten. query stays native; opaque
+// origins and all other permission states keep their native result.
 
-// Web API polyfills (Linux-headless absence signals). Polyfill targets use
-// the shared bound placeholder, so a polyfilled method is shaped exactly
-// like a native one (no 'prototype', {length,name}, native toString).
-try{
-var _np=(typeof Navigator!=='undefined'&&Navigator.prototype)?Navigator.prototype:Object.getPrototypeOf(navigator);
-if(!('share' in navigator)){_defFnN(_np,'share',function(){return Promise.reject(new TypeError('Not supported'));},1);}
-if(!('canShare' in navigator)){_defFnN(_np,'canShare',function(){return false;},1);}
-if(!('ContentIndex' in window)){_defCtor('ContentIndex',function(){throw new TypeError('Illegal constructor');});}
-if(!('ContactsManager' in window)){_defCtor('ContactsManager',function(){throw new TypeError('Illegal constructor');});}
-if(navigator.connection){
-  var _pr=Object.getPrototypeOf(navigator.connection);
-  if(_pr&&!('downlinkMax' in _pr)){_defGetN(_pr,'downlinkMax',function(){return Infinity;});}
-  if(typeof window.NetworkInformation==='undefined'){try{Object.defineProperty(window,'NetworkInformation',{value:navigator.connection.constructor,writable:true,configurable:true,enumerable:false});}catch(e){}}
-}
-}catch(e){}
+// Web API polyfills: REMOVED in 4.6.0 (share, canShare, ContentIndex,
+// ContactsManager, connection.downlinkMax, NetworkInformation). The old
+// comment called their absence a "Linux-headless signal" — measured false for
+// this engine on this platform: stock Chromium 154 headful (on Xvfb AND on the
+// real Wayland session, and the rb-on real lane) exposes NONE of them, so
+// fabricating them was a divergence from the platform truth that a
+// differential detector (or a dump like BrowserScan's own Navigator table)
+// can read — and every fabricated function was one more shell. The platform's
+// honest surface wins; when a future engine really ships these, pages will see
+// them natively.
 
 // ── Additional stealth layers ───────────────────────────────
 
@@ -78,10 +74,22 @@ if(!window.chrome.loadTimes){window.chrome.loadTimes=_fix(_mkN(function(){return
 // with it) is coherent and unremarkable — the differential oracle shows
 // stock Chrome on the same box reports 0.
 
-// Battery API: headless may not have navigator.getBattery.
+// Battery API: stock Chrome exposes navigator.getBattery on every desktop
+// platform, so this shape only installs where the engine genuinely lacks it.
+// 4.6.1: the returned object is an EventTarget carrying the BatteryManager
+// property shape (getter-backed state + on* handler slots + toStringTag) —
+// the old plain object lacked addEventListener and stringified as
+// [object Object], both readable.
 try{
 if(!navigator.getBattery){
-  _defFnN(Navigator.prototype,'getBattery',function(){return Promise.resolve({charging:true,chargingTime:0,dischargingTime:Infinity,level:1,onchargingchange:null,onchargingtimechange:null,ondischargingtimechange:null,onlevelchange:null});},0);
+  _defFnN(Navigator.prototype,'getBattery',function(){
+    var b=new EventTarget();
+    try{Object.defineProperty(b,Symbol.toStringTag,{value:'BatteryManager',configurable:true});}catch(e){}
+    var st={charging:true,chargingTime:0,dischargingTime:Infinity,level:1};
+    for(var k in st){(function(kk){try{Object.defineProperty(b,kk,{get:function(){return st[kk];},configurable:true});}catch(e){}})(k);}
+    ['onchargingchange','onchargingtimechange','ondischargingtimechange','onlevelchange'].forEach(function(n){try{Object.defineProperty(b,n,{value:null,writable:true,configurable:true});}catch(e){}});
+    return Promise.resolve(b);
+  },0);
 }
 }catch(e){}
 
@@ -204,16 +212,22 @@ try{Object.defineProperty(window,_uk,{value:_uxa,writable:true,configurable:true
 // page CSS but not installed. We inject a stylesheet that defines
 // @font-face aliases mapping these font names to system fonts that are
 // always available. This intercepts the font request before it reaches
-// macOS's CoreText download system. --disable-remote-fonts (launch flag)
-// handles the web-font side; this handles the CSS font-family side.
+// macOS's CoreText download system. (4.6.1: --disable-remote-fonts was
+// REMOVED — it blocked legitimate @font-face loads everywhere, measured in
+// work/stealth461 — and this block is macOS-gated: elsewhere the aliases are
+// pointless AND the injected stylesheet is page-visible
+// (document.styleSheets, querySelectorAll('style')) — an extra sheet no
+// stock browser has.)
 // Note: addScriptToEvaluateOnNewDocument runs before HTML parsing, so
 // documentElement/head may be null. Create the element now, append when
 // the DOM is ready.
 try{
+if(navigator.platform.indexOf('Mac')===0){
 var _fs=document.createElement('style');
 _fs.textContent="@font-face{font-family:'Osaka';src:local('Helvetica'),local('Arial'),local('sans-serif');}@font-face{font-family:'STHeiti';src:local('Helvetica'),local('Arial'),local('sans-serif');}@font-face{font-family:'STHeiti Light';src:local('Helvetica'),local('Arial'),local('sans-serif');}@font-face{font-family:'Hiragino Sans';src:local('Helvetica'),local('Arial'),local('sans-serif');}@font-face{font-family:'Hiragino Mincho ProN';src:local('Times New Roman'),local('serif');}";
 if(document.documentElement){(document.head||document.documentElement).appendChild(_fs);}
 else{document.addEventListener('DOMContentLoaded',function(){try{(document.head||document.documentElement).appendChild(_fs);}catch(e){}});}
+}
 }catch(e){}
 }catch(e){}
 

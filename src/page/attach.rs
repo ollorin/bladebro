@@ -13,10 +13,32 @@ impl Page {
     /// `browser_client` is the browser-level connection in pipe mode (S1) —
     /// used for tab listing since pipe mode has no HTTP debug endpoint.
     pub async fn attach(
-        cdp: CdpSession,
+        mut cdp: CdpSession,
         base: &str,
         browser_client: Option<CdpClient>,
     ) -> Result<Self> {
+        if crate::browser::launched_incognito() && !crate::realbrowser::real_lane() {
+            let info = cdp.send("Target.getTargetInfo", None).await?;
+            let context = info["targetInfo"]["browserContextId"]
+                .as_str()
+                .ok_or_else(|| {
+                    BladeError::Other(
+                        "incognito compatibility: target has no browser context".into(),
+                    )
+                })?
+                .to_string();
+            let browser = match &browser_client {
+                Some(client) => client.clone(),
+                None => {
+                    let version = crate::cdp::version(base).await?;
+                    let ws = version.web_socket_debugger_url.ok_or_else(|| {
+                        BladeError::Other("Chrome returned no browser WebSocket URL".into())
+                    })?;
+                    CdpClient::connect(&ws).await?
+                }
+            };
+            cdp.set_cookie_context(browser, context);
+        }
         #[allow(unused_assignments)]
         let mut worker_task: Option<tokio::task::JoinHandle<()>> = None;
         cdp.enable("Page").await?;
@@ -72,46 +94,51 @@ impl Page {
         // honestly reports HeadlessChrome. Masks are exactly what this lane
         // deletes.
         if need_override && !crate::realbrowser::real_lane() {
-            let real_ua = ua_info.as_ref()
+            let real_ua = ua_info
+                .as_ref()
                 .and_then(|v| v.get("ua").and_then(|u| u.as_str()))
-                .unwrap_or({
-                    #[cfg(target_arch = "aarch64")]
-                    { "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36" }
-                    #[cfg(not(target_arch = "aarch64"))]
-                    { "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36" }
-                });
+                .unwrap_or(fallback_ua());
             let fixed_ua = real_ua.replace("HeadlessChrome", "Chrome");
             let real_platform = ua_info
                 .as_ref()
                 .and_then(|v| v.get("plt").and_then(|p| p.as_str()))
-                .unwrap_or({
-                    #[cfg(target_arch = "aarch64")]
-                    {
-                        "Linux aarch64"
-                    }
-                    #[cfg(not(target_arch = "aarch64"))]
-                    {
-                        "Linux x86_64"
-                    }
-                });
+                .unwrap_or(fallback_platform());
 
-            // Override ONLY userAgent + platform. The previous version also
-            // sent a hand-built userAgentMetadata with a hardcoded GREASE
-            // brand ("Not:A-Brand"/99) that matched no real Chrome build —
-            // the real Sec-CH-UA headers would never equal it. Chrome keeps
-            // generating coherent metadata (brands, GREASE, full versions)
-            // from its true version, which matches the fixed UA string
-            // (only "HeadlessChrome" → "Chrome" differs).
+            // The old hand-built metadata hardcoded a GREASE brand
+            // ("Not:A-Brand"/99) matching no real build; the metadata below
+            // instead uses Chromium's own deterministic GREASE algorithm plus
+            // the browser's real full version (Browser.getVersion).
+            // (4.1) Measured on Chrome 154 headless: an override without
+            // metadata leaves navigator.userAgentData empty, so metadata is
+            // attached on the headless path (see launch_mode::uad).
+            let mut ua_params = serde_json::json!({
+                "userAgent": fixed_ua,
+                "platform": real_platform,
+            });
+            // Headless-by-request only: any other path (e.g. the unset Linux
+            // no-Xvfb fallback) keeps the pre-4.1 override, unmeasured.
+            if crate::launch_mode::headless_by_request() {
+                let product = cdp
+                    .send("Browser.getVersion", None)
+                    .await
+                    .ok()
+                    .and_then(|r| r["product"].as_str().map(String::from));
+                let real_full = product
+                    .as_deref()
+                    .and_then(crate::launch_mode::uad::product_version);
+                if let Some(meta) = crate::launch_mode::uad::derive(
+                    &fixed_ua,
+                    real_full.as_deref(),
+                    &crate::launch_mode::uad::platform_version(),
+                ) {
+                    ua_params["userAgentMetadata"] = meta;
+                }
+            }
             if let Err(e) = cdp
-                .send(
-                    "Network.setUserAgentOverride",
-                    Some(serde_json::json!({
-                        "userAgent": fixed_ua,
-                        "platform": real_platform,
-                    })),
-                )
+                .send("Network.setUserAgentOverride", Some(ua_params))
                 .await
             {
+                crate::browser::set_ua_override_failed();
                 eprintln!("[bladebro] WARNING: UA override failed: {e}");
             }
         }
@@ -164,6 +191,7 @@ impl Page {
         let stealth_script_id = match crate::stealth::apply_stealth(&cdp, None).await {
             Ok(id) => Some(id),
             Err(e) => {
+                crate::browser::set_stealth_inject_failed();
                 eprintln!("[bladebro] WARNING: stealth injection failed: {e}");
                 None
             }
@@ -217,133 +245,158 @@ impl Page {
                             let target_type = target_info
                                 .and_then(|t| t.get("type"))
                                 .and_then(|t| t.as_str())
-                                .unwrap_or("");
+                                .unwrap_or("")
+                                .to_string();
                             let session_id = event
                                 .params
                                 .get("sessionId")
                                 .and_then(|s| s.as_str())
-                                .unwrap_or("");
+                                .unwrap_or("")
+                                .to_string();
                             if session_id.is_empty() {
                                 continue;
                             }
                             if dbg {
                                 eprintln!("[workers] attach type={target_type} sid={session_id}");
                             }
-                            let worker_session = CdpSession::child(client.clone(), session_id);
-                            // Runtime.evaluate against a PAUSED service worker
-                            // deadlocks — its execution context only exists once
-                            // the script runs — and the 30s command timeout then
-                            // froze this whole handler (every later target stayed
-                            // paused; live effect: hung SW registration and
-                            // CreepJS's worker card reading `blocked`). Service
-                            // workers are resumed FIRST, then patched best-effort.
-                            let is_sw = target_type == "service_worker";
-                            if is_sw {
-                                let res = worker_session
-                                    .send("Runtime.runIfWaitingForDebugger", None)
-                                    .await;
-                                if dbg {
-                                    eprintln!(
-                                        "[workers] resume(sw-first) {target_type}: {}",
-                                        if res.is_ok() {
-                                            "ok".to_string()
-                                        } else {
-                                            format!("ERR {:?}", res.err())
-                                        }
-                                    );
-                                }
-                            }
-                            match target_type {
-                                "worker" | "shared_worker" => {
-                                    if let Some(ref script) = worker_script {
-                                        // Bounded: a pathological target must not
-                                        // stall the attach pipeline.
-                                        let res = worker_session
-                                            .send_with_timeout(
-                                                "Runtime.evaluate",
-                                                Some(serde_json::json!({
-                                                    "expression": script,
-                                                    "returnByValue": true,
-                                                })),
-                                                std::time::Duration::from_secs(5),
-                                            )
-                                            .await;
-                                        if dbg {
-                                            eprintln!(
-                                                "[workers] eval {target_type}: {}",
-                                                if res.is_ok() {
-                                                    "ok".to_string()
-                                                } else {
-                                                    format!("ERR {:?}", res.err())
-                                                }
-                                            );
-                                        }
+                            // SECURITY: handle each attach in its OWN task. A
+                            // sequential handler parked in a per-attach send
+                            // (e.g. a busy-looping service worker eating the
+                            // 3s eval timeout) froze this loop's recv(),
+                            // pinning the broadcast ring's retention window at
+                            // capacity (16384 × per-event bytes of
+                            // page-authored events) and dropping attach/
+                            // dialog events — the exact failure the
+                            // EVENT_BUS_CAPACITY comment warns about. The
+                            // loop itself now only ever awaits recv();
+                            // per-target ordering (resume → eval → resume) is
+                            // preserved inside the task, and tasks are
+                            // bounded by the same 3–5s/30s command timeouts.
+                            let client = client.clone();
+                            let worker_script = worker_script.clone();
+                            let full_script = full_script.clone();
+                            tokio::spawn(async move {
+                                let worker_session = CdpSession::child(client, session_id);
+                                // Runtime.evaluate against a PAUSED service
+                                // worker deadlocks — its execution context
+                                // only exists once the script runs — and the
+                                // 30s command timeout then froze the old
+                                // sequential handler (every later target
+                                // stayed paused; live effect: hung SW
+                                // registration and CreepJS's worker card
+                                // reading `blocked`). Service workers are
+                                // resumed FIRST, then patched best-effort.
+                                let is_sw = target_type == "service_worker";
+                                if is_sw {
+                                    let res = worker_session
+                                        .send("Runtime.runIfWaitingForDebugger", None)
+                                        .await;
+                                    if dbg {
+                                        eprintln!(
+                                            "[workers] resume(sw-first) {target_type}: {}",
+                                            if res.is_ok() {
+                                                "ok".to_string()
+                                            } else {
+                                                format!("ERR {:?}", res.err())
+                                            }
+                                        );
                                     }
                                 }
-                                "service_worker" => {
-                                    // Already resumed above. The SW realm has no
-                                    // WebGL; this only matters for the locale
-                                    // patch — best-effort, bounded.
-                                    if let Some(ref script) = worker_script {
-                                        let res = worker_session
-                                            .send_with_timeout(
-                                                "Runtime.evaluate",
-                                                Some(serde_json::json!({
-                                                    "expression": script,
-                                                    "returnByValue": true,
-                                                })),
-                                                std::time::Duration::from_secs(3),
-                                            )
-                                            .await;
-                                        if dbg {
-                                            eprintln!(
-                                                "[workers] eval {target_type}: {}",
-                                                if res.is_ok() {
-                                                    "ok".to_string()
-                                                } else {
-                                                    format!("ERR {:?}", res.err())
-                                                }
-                                            );
+                                match target_type.as_str() {
+                                    "worker" | "shared_worker" => {
+                                        if let Some(ref script) = worker_script {
+                                            // Bounded: a pathological target
+                                            // must not stall the pipeline.
+                                            let res = worker_session
+                                                .send_with_timeout(
+                                                    "Runtime.evaluate",
+                                                    Some(serde_json::json!({
+                                                        "expression": script,
+                                                        "returnByValue": true,
+                                                    })),
+                                                    std::time::Duration::from_secs(5),
+                                                )
+                                                .await;
+                                            if dbg {
+                                                eprintln!(
+                                                    "[workers] eval {target_type}: {}",
+                                                    if res.is_ok() {
+                                                        "ok".to_string()
+                                                    } else {
+                                                        format!("ERR {:?}", res.err())
+                                                    }
+                                                );
+                                            }
                                         }
                                     }
+                                    "service_worker" => {
+                                        // Already resumed above. The SW realm
+                                        // has no WebGL; this only matters for
+                                        // the locale patch — best-effort,
+                                        // bounded.
+                                        if let Some(ref script) = worker_script {
+                                            let res = worker_session
+                                                .send_with_timeout(
+                                                    "Runtime.evaluate",
+                                                    Some(serde_json::json!({
+                                                        "expression": script,
+                                                        "returnByValue": true,
+                                                    })),
+                                                    std::time::Duration::from_secs(3),
+                                                )
+                                                .await;
+                                            if dbg {
+                                                eprintln!(
+                                                    "[workers] eval {target_type}: {}",
+                                                    if res.is_ok() {
+                                                        "ok".to_string()
+                                                    } else {
+                                                        format!("ERR {:?}", res.err())
+                                                    }
+                                                );
+                                            }
+                                        }
+                                    }
+                                    "iframe" | "oopif" => {
+                                        // Full stealth into out-of-process
+                                        // frames: document_start semantics via
+                                        // evaluate before resume, so the
+                                        // frame's scripts run against the
+                                        // patched environment.
+                                        if let Some(ref script) = full_script {
+                                            let _ = worker_session
+                                                .send_with_timeout(
+                                                    "Runtime.evaluate",
+                                                    Some(serde_json::json!({
+                                                        "expression": script,
+                                                        "returnByValue": true,
+                                                    })),
+                                                    std::time::Duration::from_secs(5),
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                    _ => {}
                                 }
-                                "iframe" | "oopif" => {
-                                    // Full stealth into out-of-process frames:
-                                    // document_start semantics via evaluate
-                                    // before resume, so the frame's scripts
-                                    // run against the patched environment.
-                                    if let Some(ref script) = full_script {
-                                        let _ = worker_session
-                                            .send_with_timeout(
-                                                "Runtime.evaluate",
-                                                Some(serde_json::json!({
-                                                    "expression": script,
-                                                    "returnByValue": true,
-                                                })),
-                                                std::time::Duration::from_secs(5),
-                                            )
-                                            .await;
+                                // ALWAYS resume — an unresumed target stays
+                                // frozen. (Service workers were already
+                                // resumed above.)
+                                if !is_sw {
+                                    let res = worker_session
+                                        .send("Runtime.runIfWaitingForDebugger", None)
+                                        .await;
+                                    if dbg {
+                                        eprintln!(
+                                            "[workers] resume {target_type}: {}",
+                                            if res.is_ok() {
+                                                "ok".to_string()
+                                            } else {
+                                                format!("ERR {:?}", res.err())
+                                            }
+                                        );
                                     }
                                 }
-                                _ => {}
-                            }
-                            // ALWAYS resume — an unresumed target stays frozen.
-                            // (Service workers were already resumed above.)
-                            if !is_sw {
-                                let res = worker_session
-                                    .send("Runtime.runIfWaitingForDebugger", None)
-                                    .await;
-                                if dbg {
-                                    eprintln!(
-                                        "[workers] resume {target_type}: {}",
-                                        if res.is_ok() {
-                                            "ok".to_string()
-                                        } else {
-                                            format!("ERR {:?}", res.err())
-                                        }
-                                    );
-                                }
-                            }
+                            });
                         }
                         Ok(_) => {}
                         // Lagged: we skipped events but the connection is
@@ -387,12 +440,37 @@ impl Page {
         // confirm/prompt/beforeunload=cancel (safer — don't accidentally
         // confirm destructive actions).
         let dialogs: Arc<Mutex<Vec<DialogInfo>>> = Arc::new(Mutex::new(Vec::new()));
+        // G03: one-use dialog expectation, armed via `act dialog` and shared
+        // with the dialog task below.
+        let dialog_expect: Arc<Mutex<Option<DialogExpect>>> = Arc::new(Mutex::new(None));
         let cdp_for_dialogs = cdp.clone();
         let dq = dialogs.clone();
+        let dex = dialog_expect.clone();
         let dialog_task = tokio::spawn(async move {
             let mut rx = cdp_for_dialogs.subscribe();
+            // G03: track the main frame's last-known URL so an armed
+            // expectation can refuse dialogs on a different origin.
+            let mut last_main_url: Option<String> = None;
             loop {
                 match rx.recv().await {
+                    Ok(ev) if ev.method == "Page.frameNavigated" => {
+                        if ev
+                            .params
+                            .get("frame")
+                            .and_then(|f| f.get("parentId"))
+                            .is_none()
+                        {
+                            if let Some(url) = ev
+                                .params
+                                .get("frame")
+                                .and_then(|f| f.get("url"))
+                                .and_then(|u| u.as_str())
+                            {
+                                last_main_url = Some(url.to_string());
+                            }
+                        }
+                        continue;
+                    }
                     Ok(ev) if ev.method == "Page.javascriptDialogOpening" => {
                         let kind = ev
                             .params
@@ -415,12 +493,55 @@ impl Page {
                         // beforeunload=accept: the agent ISSUED the navigation —
                         // cancelling it would silently block every nav away
                         // from a dirty form.
-                        let accepted = kind == "alert" || kind == "beforeunload";
+                        let mut accepted = kind == "alert" || kind == "beforeunload";
+                        let mut prompt_to_send: Option<String> = None;
+                        let mut via = "default".to_string();
+                        let mut note: Option<String> = None;
+                        // G03: consult the armed one-use expectation. It is
+                        // consumed ONLY on a real match; a mismatch keeps it
+                        // armed (the right dialog may still come) and the
+                        // safe default applies to this one.
+                        if let Ok(mut slot) = dex.lock() {
+                            if let Some(exp) = slot.as_mut() {
+                                if std::time::Instant::now() >= exp.deadline {
+                                    note = Some(format!(
+                                        "armed '{}' expectation had expired; default handling applied",
+                                        exp.kind
+                                    ));
+                                    *slot = None;
+                                } else {
+                                    match super::match_dialog_expect(
+                                        exp,
+                                        &kind,
+                                        &message,
+                                        last_main_url.as_deref(),
+                                    ) {
+                                        Ok((acc, pt)) => {
+                                            accepted = acc;
+                                            prompt_to_send = pt;
+                                            via = "expectation".to_string();
+                                            note = Some(format!(
+                                                "answered via the armed '{}' expectation (one use consumed)",
+                                                exp.kind
+                                            ));
+                                            *slot = None;
+                                        }
+                                        Err(reason) => {
+                                            note = Some(format!(
+                                                "armed '{}' expectation did not match ({reason}); default handling applied",
+                                                exp.kind
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        let mut params = serde_json::json!({ "accept": accepted });
+                        if let Some(pt) = &prompt_to_send {
+                            params["promptText"] = serde_json::json!(pt);
+                        }
                         let _ = cdp_for_dialogs
-                            .send(
-                                "Page.handleJavaScriptDialog",
-                                Some(serde_json::json!({ "accept": accepted })),
-                            )
+                            .send("Page.handleJavaScriptDialog", Some(params))
                             .await;
                         if let Ok(mut q) = dq.lock() {
                             q.push(DialogInfo {
@@ -428,6 +549,8 @@ impl Page {
                                 message,
                                 default_prompt,
                                 accepted,
+                                via,
+                                note,
                             });
                         }
                     }
@@ -546,6 +669,13 @@ impl Page {
         let net_log_t = net_log.clone();
         let xhr_log_t = xhr_log.clone();
         let route_t = route.clone();
+        let main_frame = cdp
+            .send("Page.getFrameTree", None)
+            .await?
+            .pointer("/frameTree/frame/id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let network_task = tokio::spawn(async move {
             use std::collections::HashMap;
             let mut rx = cdp_for_net.subscribe();
@@ -580,6 +710,19 @@ impl Page {
                             .get("requestId")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+                        if ty == "Document"
+                            && ev.params.get("frameId").and_then(Value::as_str)
+                                == Some(main_frame.as_str())
+                        {
+                            if let Ok(mut log) = net_log_t.lock() {
+                                log.clear();
+                            }
+                            if let Ok(mut log) = xhr_log_t.lock() {
+                                log.clear();
+                            }
+                            pending.clear();
+                            open.clear();
+                        }
                         if !id.is_empty() && ty != "WebSocket" && ty != "EventSource" {
                             open.insert(id.to_string(), std::time::Instant::now());
                             let req = ev.params.get("request");
@@ -744,6 +887,14 @@ impl Page {
                     // with the old route's content.
                     Some(Ok(ev)) if ev.method == "Page.navigatedWithinDocument" => {
                         route_t.note_nav();
+                        if ev.params.get("frameId").and_then(Value::as_str)
+                            == Some(main_frame.as_str())
+                        {
+                            if let Ok(mut log) = net_log_t.lock() {
+                                log.clear();
+                            }
+                            pending.clear();
+                        }
                     }
                     Some(Ok(_)) => {}
                     Some(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {
@@ -827,6 +978,7 @@ impl Page {
             browser_client,
             lpm,
             dialogs,
+            dialog_expect,
             dialog_task: Some(dialog_task),
             in_flight,
             route,
@@ -857,5 +1009,55 @@ impl Page {
         let cap = capture(&page.cdp).await?;
         page.lpm.ingest(cap);
         Ok(page)
+    }
+}
+
+/// Per-OS fallback UA for the rare case the version endpoint carried none.
+/// Must name the platform the browser actually runs on — a Linux UA string
+/// injected on macOS/Windows is a first-order tell. (Apple Silicon Macs
+/// report the Intel token in Chrome's UA, exactly like Intel Macs.)
+fn fallback_ua() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        #[cfg(target_arch = "aarch64")]
+        {
+            "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+        }
+    }
+}
+
+/// Per-OS `navigator.platform` fallback (must match the UA above — Chrome on
+/// macOS reports `MacIntel` on Intel and Apple Silicon alike).
+fn fallback_platform() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "MacIntel"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "Win32"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        #[cfg(target_arch = "aarch64")]
+        {
+            "Linux aarch64"
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            "Linux x86_64"
+        }
     }
 }

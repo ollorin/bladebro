@@ -4,7 +4,11 @@
 Lanes: daemon (persistent, WS), one-shot (--no-daemon, WS, own Xvfb+WM),
 MCP (stdio; WebSocket by default, zero-port pipe via BLADE_TRANSPORT=pipe).
 The probe checks the two things the whole stealth layer depends on: a live
-WebGL context with the coherent mask, and a display with an honest work area.
+WebGL context whose identity matches the machine's GPU profile (hardware
+through EGL on 4.6.0 lanes, the adaptive mask on software boxes — both report
+the same coherent surface), and a coherent display geometry (real decorations;
+the JS geometry shells are gone in 4.6.0, so a panel-less WM truthfully reads
+availHeight == height, exactly like the machine's own session).
 
 Real lane: real-clone (isolated BLADE_HOME, BLADE_LANE=real, invisible) —
 the probe checks the REAL-lane contract instead of the mask: navigator.webdriver
@@ -17,6 +21,10 @@ touches the user's real data dir.
 Binary under test: `BLADEBRO` env -> the repo build (`target/release/bladebro`)
 -> `~/.local/bin/bladebro`; printed at startup. The real lane refuses a binary
 that predates `rb` (BLADE_LANE=real would be silently ignored).
+
+Exit 0 only when every label is clean; exit 1 when any result carries a
+BAD/FAIL/LEAKED label (each labeled line above names one); exit 2 when the
+binary lacks real-lane support.
 """
 import json, os, shutil, signal, subprocess, sys, tempfile, time
 
@@ -43,26 +51,48 @@ PROBE = ("(function(){var o={};try{var c=document.createElement('canvas');var g=
 
 
 def parse_result(payload):
-    """`result: "{...}"` — the CLI/MCP wraps the eval value in a JSON
-    string, so unwrap twice."""
-    val = payload.split("result: ", 1)[1]
-    j = json.loads(val)
-    if isinstance(j, str):
-        j = json.loads(j)
-    return j
+    """`result: <compact JSON>` — the value is the rest of that ONE line.
+    The driver may append `note:` lines (a returned string containing JSON
+    gets one), and they are not part of the value; the next line is not
+    JSON. A value that is itself a JSON string is unwrapped once more."""
+    for line in payload.splitlines():
+        if line.startswith("result: "):
+            j = json.loads(line[len("result: "):])
+            if isinstance(j, str):
+                j = json.loads(j)
+            return j
+    raise ValueError(f"no result line in payload: {payload[:120]!r}")
 
 
 def classify(j):
     ok = []
     gl = j.get("gl", "")
-    if gl.startswith("ANGLE (Intel") and j.get("exts") == 36 and j.get("maxc") == 64:
-        ok.append("gl-mask")
+    # Identity: the lane must never end up on a software renderer, and it must
+    # report a real renderer. On this machine (the captured Intel profile) the
+    # strict 36-extension / maxc-64 assertions apply; on another vendor's box
+    # the lane reports that vendor's real renderer — hardware through EGL
+    # (4.6.0) or the adaptive mask replaying the *detected* profile — so the
+    # gate there is "not software, real renderer string".
+    lowered = gl.lower()
+    if any(s in lowered for s in ("llvmpipe", "swiftshader", "softpipe", "software")):
+        ok.append(f"GL-BAD({gl[:40]},exts={j.get('exts')},maxc={j.get('maxc')})")
+    elif gl.startswith("ANGLE (Intel") and j.get("exts") == 36 and j.get("maxc") == 64:
+        ok.append("gl-intel")
+    elif gl.startswith("ANGLE (") and (j.get("exts") or 0) > 0:
+        ok.append(f"gl-hw({gl[:26]})")
     else:
         ok.append(f"GL-BAD({gl[:40]},exts={j.get('exts')},maxc={j.get('maxc')})")
-    if j.get("h", 0) - j.get("ah", 0) >= 16:
+    # Work area: after the 4.6.0 removal of the availHeight shell, the honest
+    # value on a panel-less WM is availHeight == height (measured: stock
+    # Chromium on the same Xvfb and the machine's real niri session both read
+    # 1080/1080 — xfwm4 re-publishes the full-screen area). The old `>= 16`
+    # assertion was only satisfiable by the removed mask. A real panel
+    # reservation (>= 16px) stays valid; slivers and impossible values stay bad.
+    h, ah = j.get("h", 0), j.get("ah", 0)
+    if 0 < ah <= h and (ah == h or h - ah >= 16):
         ok.append("workarea")
     else:
-        ok.append(f"WORKAREA-BAD({j.get('ah')}/{j.get('h')})")
+        ok.append(f"WORKAREA-BAD({ah}/{h})")
     if j.get("ow", 0) > j.get("iw", 0):
         ok.append("decorations")
     else:
@@ -94,6 +124,11 @@ def classify_real(j):
     else:
         ok.append(f"WD-BAD({j.get('wd')})")
     return ok
+
+
+def _bad(res):
+    """Any defect label fails the matrix run (see __main__ exit code)."""
+    return any(tag in res for tag in ("BAD", "FAIL", "LEAKED"))
 
 
 def lane_real(rounds=5):
@@ -345,23 +380,26 @@ if __name__ == "__main__":
     print(f"bladebro under test: {BLADE}")
     if lane in ("real", "all"):
         require_real_lane_support()
+    bad = 0
+
+    def show(name, res_list):
+        global bad
+        print(f"== {name}")
+        for n, res in res_list:
+            print(f"  #{n}: {res}")
+            bad += _bad(res)
+
     if lane in ("daemon", "all"):
-        print("== daemon lane")
-        for n, res in lane_daemon(rounds):
-            print(f"  #{n}: {res}")
+        show("daemon lane", lane_daemon(rounds))
     if lane in ("oneshot", "all"):
-        print("== one-shot lane")
-        for n, res in lane_oneshot(rounds):
-            print(f"  #{n}: {res}")
+        show("one-shot lane", lane_oneshot(rounds))
     if lane in ("mcp", "all"):
-        print("== mcp (stdio, default WS) lane")
-        for n, res in lane_mcp(rounds):
-            print(f"  #{n}: {res}")
+        show("mcp (stdio, default WS) lane", lane_mcp(rounds))
     if lane in ("mcp-pipe", "all"):
-        print("== mcp (pipe opt-in) lane")
-        for n, res in lane_mcp(rounds, env_extra={"BLADE_TRANSPORT": "pipe"}):
-            print(f"  #{n}: {res}")
+        show("mcp (pipe opt-in) lane", lane_mcp(rounds, env_extra={"BLADE_TRANSPORT": "pipe"}))
     if lane in ("real", "all"):
-        print("== real lane (clone, isolated home, invisible)")
-        for n, res in lane_real(rounds):
-            print(f"  #{n}: {res}")
+        show("real lane (clone, isolated home, invisible)", lane_real(rounds))
+
+    if bad:
+        sys.stderr.write(f"LANE MATRIX: {bad} bad result(s) - the labeled lines above name each one\n")
+        sys.exit(1)

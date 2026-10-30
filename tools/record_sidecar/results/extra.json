@@ -1,0 +1,1122 @@
+{
+  "scenario": "extra",
+  "host": {
+    "os": "macOS arm64",
+    "ffmpeg": "n9.0.2",
+    "transport": "ws"
+  },
+  "viewport": {
+    "fixed": {
+      "stop_reason": "duration",
+      "wall_ms": 35061,
+      "frames_received": 3363,
+      "stale_frames": 0,
+      "acks_sent": 3363,
+      "acks_ok": 3363,
+      "acks_err": 0,
+      "frames_dropped": 0,
+      "effective_fps_recv": 95.92,
+      "max_gap_ms": 274,
+      "frame_sizes": {
+        "1185x720": 1062,
+        "1124x720": 667,
+        "1280x714": 767,
+        "1280x713": 867
+      },
+      "fps_buckets": [
+        92,
+        100,
+        100,
+        101,
+        100,
+        70,
+        97,
+        100,
+        99,
+        101,
+        100,
+        99,
+        71,
+        98,
+        100,
+        100,
+        101,
+        99,
+        70,
+        97,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        69,
+        98,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        101
+      ],
+      "events": [
+        {
+          "t_ms": 5001,
+          "action": "emulate=1001x641",
+          "ok": true,
+          "error": null
+        },
+        {
+          "t_ms": 12000,
+          "action": "emulate-clear",
+          "ok": true,
+          "error": null
+        },
+        {
+          "t_ms": 18000,
+          "action": "window=1101x701",
+          "ok": true,
+          "error": null
+        },
+        {
+          "t_ms": 26002,
+          "action": "window=1280x800",
+          "ok": true,
+          "error": null
+        }
+      ],
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "duration_s": 34.993,
+        "nb_read_frames": 3364,
+        "playable": false,
+        "decode_error_lines": 89
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 10.481,
+          "stime_s": 2.47,
+          "rtime_s": 31.336
+        }
+      },
+      "drift_pct": -0.194,
+      "bytes_per_min": 6183136.1,
+      "note": "35 s; emulate 1001x641 at 5 s, clear at 12 s, window 1101x701 at 18 s, 1280x800 at 26 s"
+    },
+    "even": {
+      "stop_reason": "duration",
+      "wall_ms": 20059,
+      "frames_received": 1924,
+      "stale_frames": 0,
+      "acks_sent": 1924,
+      "acks_ok": 1924,
+      "acks_err": 0,
+      "frames_dropped": 0,
+      "effective_fps_recv": 95.92,
+      "max_gap_ms": 272,
+      "frame_sizes": {
+        "1280x713": 1258,
+        "1124x720": 666
+      },
+      "fps_buckets": [
+        92,
+        99,
+        100,
+        100,
+        100,
+        70,
+        96,
+        100,
+        100,
+        100,
+        100,
+        100,
+        68,
+        99,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "events": [
+        {
+          "t_ms": 5003,
+          "action": "emulate=1001x641",
+          "ok": true,
+          "error": null
+        },
+        {
+          "t_ms": 12002,
+          "action": "emulate-clear",
+          "ok": true,
+          "error": null
+        }
+      ],
+      "probe": {
+        "width": 1280,
+        "height": 712,
+        "duration_s": 19.998,
+        "nb_read_frames": 1925,
+        "playable": false,
+        "decode_error_lines": 7
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 6.721,
+          "stime_s": 1.443,
+          "rtime_s": 16.873
+        }
+      },
+      "drift_pct": -0.304,
+      "bytes_per_min": 6664317.4,
+      "note": "20 s; emulate 1001x641 at 5 s, clear at 12 s; even size mode"
+    }
+  },
+  "headless": {
+    "headed_reference": {
+      "source": "core.json runs.fps_default (same fixture, same 20 s)",
+      "effective_fps_recv": 99.31
+    },
+    "chrome_headless_processes_seen": 1,
+    "fps_headless": {
+      "stop_reason": "duration",
+      "wall_ms": 20071,
+      "frames_received": 1200,
+      "stale_frames": 0,
+      "acks_sent": 1200,
+      "acks_ok": 1200,
+      "acks_err": 0,
+      "frames_dropped": 0,
+      "effective_fps_recv": 59.79,
+      "max_gap_ms": 21,
+      "frame_sizes": {
+        "756x469": 1200
+      },
+      "fps_buckets": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ],
+      "events": [],
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "duration_s": 19.995,
+        "nb_read_frames": 1201,
+        "playable": false,
+        "decode_error_lines": 38
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 5.392,
+          "stime_s": 1.103,
+          "rtime_s": 13.422
+        }
+      },
+      "drift_pct": -0.379,
+      "bytes_per_min": 7360111
+    },
+    "idle_headless_drift": {
+      "stop_reason": "duration",
+      "wall_ms": 20078,
+      "frames_received": 1,
+      "stale_frames": 0,
+      "acks_sent": 1,
+      "acks_ok": 1,
+      "acks_err": 0,
+      "frames_dropped": 0,
+      "effective_fps_recv": 0.05,
+      "max_gap_ms": null,
+      "frame_sizes": {
+        "756x469": 1
+      },
+      "fps_buckets": [
+        1
+      ],
+      "events": [],
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "duration_s": 19.998,
+        "nb_read_frames": 2,
+        "playable": true,
+        "decode_error_lines": 0
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.025,
+          "stime_s": 0.022,
+          "rtime_s": 0.032
+        }
+      },
+      "drift_pct": -0.398,
+      "bytes_per_min": 51383.1,
+      "note": "idle.html delivers ~1 frame per run: drift only shows the tail hold"
+    },
+    "tick_headless_drift": {
+      "stop_reason": "duration",
+      "wall_ms": 20094,
+      "frames_received": 21,
+      "stale_frames": 0,
+      "acks_sent": 21,
+      "acks_ok": 21,
+      "acks_err": 0,
+      "frames_dropped": 0,
+      "effective_fps_recv": 1.05,
+      "max_gap_ms": 1023,
+      "frame_sizes": {
+        "756x469": 21
+      },
+      "fps_buckets": [
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "events": [],
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "duration_s": 20.001,
+        "nb_read_frames": 22,
+        "playable": true,
+        "decode_error_lines": 0
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 0.086,
+          "stime_s": 0.034,
+          "rtime_s": 0.048
+        }
+      },
+      "drift_pct": -0.463,
+      "bytes_per_min": 64187.8
+    }
+  },
+  "background": {
+    "headed": {
+      "stop_reason": "duration",
+      "wall_ms": 25073,
+      "frames_received": 795,
+      "stale_frames": 0,
+      "acks_sent": 795,
+      "acks_ok": 795,
+      "acks_err": 0,
+      "frames_dropped": 1,
+      "effective_fps_recv": 31.71,
+      "max_gap_ms": 25,
+      "frame_sizes": {
+        "1185x720": 795
+      },
+      "fps_buckets": [
+        93,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        2
+      ],
+      "events": [],
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "duration_s": 25.001,
+        "nb_read_frames": 795,
+        "playable": false,
+        "decode_error_lines": 6
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 2.474,
+          "stime_s": 0.611,
+          "rtime_s": 21.331
+        }
+      },
+      "drift_pct": -0.287,
+      "bytes_per_min": 1977746.5,
+      "open_tab_offset_s": 8.046,
+      "frames_before_switch": 793,
+      "seconds_before_switch": 8,
+      "fps_before_switch": 99.13,
+      "frames_after_switch": 0,
+      "seconds_after_switch": 16,
+      "fps_after_switch": 0
+    },
+    "headless": {
+      "stop_reason": "duration",
+      "wall_ms": 25080,
+      "frames_received": 482,
+      "stale_frames": 0,
+      "acks_sent": 482,
+      "acks_ok": 482,
+      "acks_err": 0,
+      "frames_dropped": 0,
+      "effective_fps_recv": 19.22,
+      "max_gap_ms": 22,
+      "frame_sizes": {
+        "756x469": 482
+      },
+      "fps_buckets": [
+        59,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        61,
+        2
+      ],
+      "events": [],
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "duration_s": 24.991,
+        "nb_read_frames": 483,
+        "playable": false,
+        "decode_error_lines": 8
+      },
+      "encoder": {
+        "finalized": true,
+        "bench": {
+          "utime_s": 1.647,
+          "stime_s": 0.357,
+          "rtime_s": 18.376
+        }
+      },
+      "drift_pct": -0.355,
+      "bytes_per_min": 2315292.7,
+      "open_tab_offset_s": 8.059,
+      "frames_before_switch": 480,
+      "seconds_before_switch": 8,
+      "fps_before_switch": 60,
+      "frames_after_switch": 0,
+      "seconds_after_switch": 16,
+      "fps_after_switch": 0
+    },
+    "note": "the recorded anim page is backgrounded by open-tab at ~8 s; window stays visible in headed mode"
+  },
+  "minimized": {
+    "stop_reason": "duration",
+    "wall_ms": 30056,
+    "frames_received": 1934,
+    "stale_frames": 0,
+    "acks_sent": 1934,
+    "acks_ok": 1934,
+    "acks_err": 0,
+    "frames_dropped": 0,
+    "effective_fps_recv": 64.35,
+    "max_gap_ms": 8976,
+    "frame_sizes": {
+      "1185x720": 1934
+    },
+    "fps_buckets": [
+      93,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      null,
+      3,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      42,
+      96,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100
+    ],
+    "events": [
+      {
+        "t_ms": 8002,
+        "action": "minimize",
+        "ok": true,
+        "error": null
+      },
+      {
+        "t_ms": 18002,
+        "action": "restore",
+        "ok": true,
+        "error": null
+      }
+    ],
+    "probe": {
+      "width": 1280,
+      "height": 720,
+      "duration_s": 29.995,
+      "nb_read_frames": 1935,
+      "playable": false,
+      "decode_error_lines": 17
+    },
+    "encoder": {
+      "finalized": true,
+      "bench": {
+        "utime_s": 6.309,
+        "stime_s": 1.429,
+        "rtime_s": 26.322
+      }
+    },
+    "drift_pct": -0.203,
+    "bytes_per_min": 3781758.3,
+    "window_8s_to_18s": {
+      "frames": 3,
+      "seconds": 10,
+      "fps": 0.3
+    },
+    "outside_window": {
+      "frames": 1931,
+      "seconds": 20
+    },
+    "note": "minimize at 8 s, restore at 18 s"
+  },
+  "xvfb": {
+    "not_measured_because": "macOS host has no Xvfb; Linux Xvfb cadence must be measured on a Linux host before Phase 6"
+  },
+  "codecs": {
+    "method": "encode-bench re-encodes one 60 s concat spool (same captured frames) per row; cpu_s_per_min = (utime+stime)/duration*60; 1920x1080 is an upscale from the ~1185x720 capture",
+    "matrix": [
+      {
+        "codec": "vp8",
+        "fps": 10,
+        "size": "1280x720",
+        "utime_s": 25.239,
+        "stime_s": 0.501,
+        "rtime_s": 2.979,
+        "out_bytes": 2785919,
+        "duration_s": 60,
+        "cpu_s_per_min": 25.74,
+        "bytes_per_min": 2785919,
+        "playable": true
+      },
+      {
+        "codec": "vp8",
+        "fps": 15,
+        "size": "1280x720",
+        "utime_s": 20.563,
+        "stime_s": 0.479,
+        "rtime_s": 2.787,
+        "out_bytes": 3726402,
+        "duration_s": 60.067,
+        "cpu_s_per_min": 21.019,
+        "bytes_per_min": 3722245.5,
+        "playable": true
+      },
+      {
+        "codec": "vp8",
+        "fps": 5,
+        "size": "1280x720",
+        "utime_s": 7.423,
+        "stime_s": 0.284,
+        "rtime_s": 1.989,
+        "out_bytes": 1135728,
+        "duration_s": 60,
+        "cpu_s_per_min": 7.707,
+        "bytes_per_min": 1135728,
+        "playable": true
+      },
+      {
+        "codec": "vp9",
+        "fps": 10,
+        "size": "1280x720",
+        "utime_s": 3.881,
+        "stime_s": 0.664,
+        "rtime_s": 1.855,
+        "out_bytes": 870778,
+        "duration_s": 60,
+        "cpu_s_per_min": 4.545,
+        "bytes_per_min": 870778,
+        "playable": true
+      },
+      {
+        "codec": "vp9",
+        "fps": 15,
+        "size": "1280x720",
+        "utime_s": 4.532,
+        "stime_s": 0.877,
+        "rtime_s": 1.87,
+        "out_bytes": 1152136,
+        "duration_s": 60.067,
+        "cpu_s_per_min": 5.403,
+        "bytes_per_min": 1150850.9,
+        "playable": true
+      },
+      {
+        "codec": "vp9",
+        "fps": 5,
+        "size": "1280x720",
+        "utime_s": 3.136,
+        "stime_s": 0.5,
+        "rtime_s": 1.865,
+        "out_bytes": 396855,
+        "duration_s": 60,
+        "cpu_s_per_min": 3.636,
+        "bytes_per_min": 396855,
+        "playable": true
+      },
+      {
+        "codec": "vp9",
+        "fps": 10,
+        "size": "1920x1080",
+        "utime_s": 5.385,
+        "stime_s": 0.796,
+        "rtime_s": 1.889,
+        "out_bytes": 1124821,
+        "duration_s": 60,
+        "cpu_s_per_min": 6.181,
+        "bytes_per_min": 1124821,
+        "playable": true
+      },
+      {
+        "codec": "vp9",
+        "fps": 10,
+        "size": "960x540",
+        "utime_s": 3.568,
+        "stime_s": 0.521,
+        "rtime_s": 1.849,
+        "out_bytes": 587902,
+        "duration_s": 60,
+        "cpu_s_per_min": 4.089,
+        "bytes_per_min": 587902,
+        "playable": true
+      },
+      {
+        "codec": "x264",
+        "fps": 10,
+        "size": "1280x720",
+        "utime_s": 4.164,
+        "stime_s": 0.533,
+        "rtime_s": 1.852,
+        "out_bytes": 535374,
+        "duration_s": 60,
+        "cpu_s_per_min": 4.697,
+        "bytes_per_min": 535374,
+        "playable": true
+      },
+      {
+        "codec": "x264",
+        "fps": 15,
+        "size": "1280x720",
+        "utime_s": 4.955,
+        "stime_s": 0.672,
+        "rtime_s": 1.862,
+        "out_bytes": 645145,
+        "duration_s": 60.066667,
+        "cpu_s_per_min": 5.621,
+        "bytes_per_min": 644429,
+        "playable": true
+      },
+      {
+        "codec": "x264",
+        "fps": 5,
+        "size": "1280x720",
+        "utime_s": 3.208,
+        "stime_s": 0.344,
+        "rtime_s": 1.835,
+        "out_bytes": 321869,
+        "duration_s": 60,
+        "cpu_s_per_min": 3.552,
+        "bytes_per_min": 321869,
+        "playable": true
+      }
+    ],
+    "live_30s_wallclock": {
+      "vp9": {
+        "stop_reason": "duration",
+        "wall_ms": 30057,
+        "frames_received": 2994,
+        "stale_frames": 0,
+        "acks_sent": 2994,
+        "acks_ok": 2994,
+        "acks_err": 0,
+        "frames_dropped": 0,
+        "effective_fps_recv": 99.61,
+        "max_gap_ms": 19,
+        "frame_sizes": {
+          "1185x720": 2994
+        },
+        "fps_buckets": [
+          94,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "events": [],
+        "probe": {
+          "width": 1280,
+          "height": 720,
+          "duration_s": 29.993,
+          "nb_read_frames": 2995,
+          "playable": false,
+          "decode_error_lines": 36
+        },
+        "encoder": {
+          "finalized": true,
+          "bench": {
+            "utime_s": 9.789,
+            "stime_s": 2.229,
+            "rtime_s": 26.328
+          }
+        },
+        "drift_pct": -0.213,
+        "bytes_per_min": 5910669.2
+      },
+      "vp8": {
+        "stop_reason": "duration",
+        "wall_ms": 30036,
+        "frames_received": 2989,
+        "stale_frames": 0,
+        "acks_sent": 2989,
+        "acks_ok": 2989,
+        "acks_err": 0,
+        "frames_dropped": 55,
+        "effective_fps_recv": 99.51,
+        "max_gap_ms": 25,
+        "frame_sizes": {
+          "1185x720": 2989
+        },
+        "fps_buckets": [
+          90,
+          99,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "events": [],
+        "probe": {
+          "width": 1280,
+          "height": 720,
+          "duration_s": 29.986,
+          "nb_read_frames": 2935,
+          "playable": false,
+          "decode_error_lines": 45
+        },
+        "encoder": {
+          "finalized": true,
+          "bench": {
+            "utime_s": 44.492,
+            "stime_s": 0.865,
+            "rtime_s": 26.55
+          }
+        },
+        "drift_pct": -0.166,
+        "bytes_per_min": 14613075.4
+      },
+      "x264": {
+        "stop_reason": "duration",
+        "wall_ms": 30048,
+        "frames_received": 2990,
+        "stale_frames": 0,
+        "acks_sent": 2990,
+        "acks_ok": 2990,
+        "acks_err": 0,
+        "frames_dropped": 0,
+        "effective_fps_recv": 99.51,
+        "max_gap_ms": 19,
+        "frame_sizes": {
+          "1185x720": 2990
+        },
+        "fps_buckets": [
+          91,
+          99,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "events": [],
+        "probe": {
+          "width": 1280,
+          "height": 720,
+          "duration_s": 29.977,
+          "nb_read_frames": 2991,
+          "playable": false,
+          "decode_error_lines": 9
+        },
+        "encoder": {
+          "finalized": true,
+          "bench": {
+            "utime_s": 10.789,
+            "stime_s": 1.966,
+            "rtime_s": 26.599
+          }
+        },
+        "drift_pct": -0.236,
+        "bytes_per_min": 2289127
+      }
+    },
+    "note_row_count": "11 encode rows (plan text said 12; the listed matrix is 11)"
+  },
+  "coexistence": {
+    "baseline": {
+      "steps": [
+        {
+          "step": "nav_a",
+          "rc": 0,
+          "elapsed_s": 0.045,
+          "first_line": "outcome: already here"
+        },
+        {
+          "step": "see_before",
+          "rc": 0,
+          "elapsed_s": 0.035,
+          "first_line": "# Tab A"
+        },
+        {
+          "step": "click",
+          "rc": 0,
+          "elapsed_s": 0.782,
+          "first_line": "outcome: dom-changed (content-only) via mouse"
+        },
+        {
+          "step": "eval",
+          "rc": 0,
+          "elapsed_s": 0.036,
+          "first_line": "result: \"clicked\""
+        },
+        {
+          "step": "see_after",
+          "rc": 0,
+          "elapsed_s": 0.034,
+          "first_line": "# Tab A"
+        },
+        {
+          "step": "tabs",
+          "rc": 0,
+          "elapsed_s": 0.034,
+          "first_line": "* 074D87185710BFFB5E75CB5C9422E30B  A — http://127.0.0.1:8765/a.html"
+        },
+        {
+          "step": "vision",
+          "rc": 0,
+          "elapsed_s": 0.105,
+          "first_line": "screenshot"
+        },
+        {
+          "step": "nav_anim",
+          "rc": 0,
+          "elapsed_s": 0.323,
+          "first_line": "outcome: navigated → http://127.0.0.1:8765/anim.html"
+        }
+      ],
+      "kept_working": true,
+      "events_flowing": {
+        "nav_completed": true,
+        "click_verdict_line": "outcome: dom-changed (content-only) via mouse",
+        "see_reflects_change": true,
+        "eval_readback": "result: \"clicked\""
+      },
+      "vision_image_path": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.JmSPZ27vk1/artifacts/blade-43741-0001.png",
+      "vision_image_exists": true
+    },
+    "with_sidecar": {
+      "steps": [
+        {
+          "step": "nav_a",
+          "rc": 0,
+          "elapsed_s": 0.041,
+          "first_line": "outcome: already here"
+        },
+        {
+          "step": "see_before",
+          "rc": 0,
+          "elapsed_s": 0.036,
+          "first_line": "# Tab A"
+        },
+        {
+          "step": "click",
+          "rc": 0,
+          "elapsed_s": 0.629,
+          "first_line": "outcome: dom-changed (content-only) via mouse"
+        },
+        {
+          "step": "eval",
+          "rc": 0,
+          "elapsed_s": 0.035,
+          "first_line": "result: \"clicked\""
+        },
+        {
+          "step": "see_after",
+          "rc": 0,
+          "elapsed_s": 0.036,
+          "first_line": "# Tab A"
+        },
+        {
+          "step": "tabs",
+          "rc": 0,
+          "elapsed_s": 0.036,
+          "first_line": "* 074D87185710BFFB5E75CB5C9422E30B  A — http://127.0.0.1:8765/a.html"
+        },
+        {
+          "step": "vision",
+          "rc": 0,
+          "elapsed_s": 0.098,
+          "first_line": "screenshot"
+        },
+        {
+          "step": "nav_anim",
+          "rc": 0,
+          "elapsed_s": 0.303,
+          "first_line": "outcome: navigated → http://127.0.0.1:8765/anim.html"
+        }
+      ],
+      "kept_working": true,
+      "events_flowing": {
+        "nav_completed": true,
+        "click_verdict_line": "outcome: dom-changed (content-only) via mouse",
+        "see_reflects_change": true,
+        "eval_readback": "result: \"clicked\""
+      },
+      "vision_image_path": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.JmSPZ27vk1/artifacts/blade-43823-0001.png",
+      "vision_image_exists": true,
+      "sidecar": {
+        "stop_reason": "duration",
+        "wall_ms": 60063,
+        "frames_received": 5987,
+        "stale_frames": 0,
+        "acks_sent": 5987,
+        "acks_ok": 5986,
+        "acks_err": 1,
+        "frames_dropped": 3,
+        "effective_fps_recv": 99.68,
+        "max_gap_ms": 25,
+        "frame_sizes": {
+          "1185x720": 5987
+        },
+        "fps_buckets": [
+          92,
+          93,
+          92,
+          108,
+          102,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          99,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          1
+        ],
+        "events": [],
+        "probe": {
+          "width": 1280,
+          "height": 720,
+          "duration_s": 59.987,
+          "nb_read_frames": 5985,
+          "playable": false,
+          "decode_error_lines": 26
+        },
+        "encoder": {
+          "finalized": true,
+          "bench": {
+            "utime_s": 19.913,
+            "stime_s": 4.433,
+            "rtime_s": 55.552
+          }
+        },
+        "drift_pct": -0.127,
+        "bytes_per_min": 5633968.7
+      },
+      "nav_anim_offset_s": 2.405,
+      "seconds_available_before_same_tab_nav": 2,
+      "fps_5s_before_same_tab_nav": 92.5,
+      "fps_5s_after_same_tab_nav": 102,
+      "segments": [
+        {
+          "t_ms": 0,
+          "targetId": "074D87185710BFFB5E75CB5C9422E30B",
+          "url": "http://127.0.0.1:8765/a.html",
+          "frames": 5987,
+          "switch_ms": null
+        }
+      ]
+    },
+    "kept_working": true,
+    "note": "kept_working requires every command rc 0 and the eval readback clicked, in both runs"
+  }
+}

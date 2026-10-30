@@ -1,0 +1,4 @@
+- id: bladebro
+  config:
+    env:
+      BLADE_HEADLESS: "1"

@@ -9,6 +9,7 @@ impl Page {
     /// recaptures and returns the delta. Shared by `act navigate`, `run`
     /// navigate steps, and the CLI `nav` command.
     pub async fn navigate(&mut self, url: &str) -> Result<PageDelta> {
+        self.activate().await?;
         // S4+S5: track action timing for pacing + idle hum.
         self.is_busy
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -25,6 +26,12 @@ impl Page {
     }
 
     async fn navigate_inner(&mut self, url: &str) -> Result<PageDelta> {
+        // R1: reject schemes that cannot load a page BEFORE any CDP work.
+        // ftp://, javascript:, chrome:// etc. used to sail into
+        // Page.navigate, where the browser silently refused: the driver
+        // paid the full 10s frameNavigated wait and then reported the
+        // unchanged page as "already here". The gate answers instantly.
+        validate_nav_url(url)?;
         // M16: Idempotent navigate \u{2014} if already on this URL, skip reload.
         if !self.lpm.url().is_empty() && normalize_url(url) == normalize_url(self.lpm.url()) {
             let cap = capture(&self.cdp).await?;
@@ -72,12 +79,52 @@ impl Page {
             .cdp
             .wait_for("Page.frameNavigated", Duration::from_secs(10));
         let target = with_scheme(url);
-        self.cdp
-            .send("Page.navigate", Some(serde_json::json!({ "url": target })))
+        let nav_res = self
+            .cdp
+            .send("Page.navigate", Some(serde_json::json!({ "url": &target })))
             .await?;
+        let nav_error: Option<String> = nav_res
+            .get("errorText")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from);
         _t("sent");
-        let _ = tokio::time::timeout(Duration::from_secs(10), wait).await;
+        // R1: when the browser reports WHY it refused the navigation, give a
+        // superseded page-side navigation a short grace to fire its own
+        // frameNavigated. If nothing navigated, surface the browser's reason
+        // instead of waiting the full 10s and then reporting the unchanged
+        // page as "already here" - a confident lie that branch-switched
+        // agents into wrong work.
+        let grace = if nav_error.is_some() {
+            Duration::from_millis(1500)
+        } else {
+            Duration::from_secs(10)
+        };
+        if nav_res.get("isDownload").and_then(Value::as_bool) == Some(true) {
+            return Err(BladeError::Other(format!("navigation to {target} started a download — use act download url=... to retrieve the file")));
+        }
+        // CDP omits loaderId for same-document navigations; those emit
+        // navigatedWithinDocument, never frameNavigated. Waiting for the
+        // latter adds ten seconds to every hash-router transition.
+        let same_document = nav_error.is_none() && nav_res.get("loaderId").is_none();
+        let nav_event = if same_document {
+            None
+        } else {
+            Some(tokio::time::timeout(grace, wait).await)
+        };
         _t("frameNavigated");
+        if matches!(nav_event, Some(result) if !matches!(result, Ok(Ok(_)))) {
+            if let Some(err) = nav_error {
+                let hint = if err.contains("ERR_ABORTED") {
+                    " (the URL may be a file download - try act download url=...)"
+                } else {
+                    ""
+                };
+                return Err(crate::error::BladeError::Other(format!(
+                    "navigation to {target} failed: {err}{hint}"
+                )));
+            }
+        }
         wait_for_load(&self.cdp, Duration::from_secs(10)).await?;
         _t("load");
         let _settle_t = std::time::Instant::now();
@@ -355,6 +402,20 @@ impl Page {
         _t("consent/block");
         let r = self.recapture().await;
         _t("recapture");
+        // P1: query parameters the caller asked for that the final URL does not
+        // carry. Sites silently rewrite their own URLs (Amazon drops rh=p_36,
+        // search engines strip filters); the page then renders happily and the
+        // agent trusts results that never had the filter applied. Observation
+        // only — it names what is missing, never why.
+        if let Ok(delta) = &r {
+            if delta.navigated {
+                if let Some(note) = nav_params_note(url, self.lpm.url()) {
+                    if let Ok(mut a) = self.ambient.lock() {
+                        a.push(note);
+                    }
+                }
+            }
+        }
         r
     }
 
@@ -609,15 +670,17 @@ pub(crate) fn with_scheme(url: &str) -> String {
     let u = url.trim();
     if u.is_empty()
         || u.contains("://")
-        || u.starts_with("about:")
-        || u.starts_with("file:")
-        || u.starts_with("data:")
-        || u.starts_with("blob:")
-        || u.starts_with("javascript:")
+        || scheme_prefix(u).is_some_and(|s| {
+            matches!(
+                s.to_ascii_lowercase().as_str(),
+                "about" | "file" | "data" | "blob" | "javascript"
+            )
+        })
     {
         return u.to_string();
     }
-    let host = u.split('/').next().unwrap_or(u);
+    let parsed = url::Url::parse(&format!("http://{u}")).ok();
+    let host = parsed.as_ref().and_then(|url| url.host_str()).unwrap_or("");
     // localhost, loopback/private IPs, or an explicit port (dev-server
     // signal) default to http://; public hosts to https://.
     let is_local = host.eq_ignore_ascii_case("localhost")
@@ -628,6 +691,10 @@ pub(crate) fn with_scheme(url: &str) -> String {
                 std::net::IpAddr::V6(v6) => v6.is_loopback() || v6.is_unique_local(),
             })
             .unwrap_or(false)
+        || u.split(['/', '?', '#'])
+            .next()
+            .and_then(|authority| authority.rsplit_once(':'))
+            .is_some_and(|(_, port)| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()))
         || host.contains(':');
     if is_local {
         format!("http://{u}")
@@ -636,29 +703,191 @@ pub(crate) fn with_scheme(url: &str) -> String {
     }
 }
 
-/// Normalize a URL for comparison: strip scheme, fragment, trailing slash.
-fn normalize_url(url: &str) -> String {
-    let (s, https) = url
-        .strip_prefix("https://")
-        .map(|s| (s, true))
-        .or_else(|| url.strip_prefix("http://").map(|s| (s, false)))
-        .unwrap_or((url, false));
-    let s = s.split('#').next().unwrap_or(s);
-    // Strip default ports: :443 on https, :80 on http (host part only).
-    let default_port = if https { ":443" } else { ":80" };
-    let s = if let Some(slash) = s.find('/') {
-        let (host, path) = s.split_at(slash);
-        let host = host.strip_suffix(default_port).unwrap_or(host);
-        format!("{host}{path}")
-    } else {
-        s.strip_suffix(default_port).unwrap_or(s).to_string()
+/// R1: reject a navigation target whose scheme cannot produce a page, before
+/// any browser work. `ftp://`, `javascript:`, `mailto:` etc. used to reach
+/// `Page.navigate`, where Chrome refused silently: the driver then burned
+/// the full 10s frameNavigated wait and reported the unchanged page as
+/// "already here" (10.3s + a false verdict, reproduced twice). The gate
+/// answers in microseconds with the supported set.
+///
+/// Allowed: http(s) (and about/data/file/blob, which can load documents).
+/// A bare host or `host:port` (all-digit port) is not a scheme - it passes
+/// through for [`with_scheme`]. The scheme names that conflict with the
+/// `host:port` shape (javascript:1, ftp:...) are rejected by name so a
+/// digit-only tail cannot smuggle them through.
+pub(crate) fn validate_nav_url(url: &str) -> Result<()> {
+    let u = url.trim();
+    if u.is_empty() {
+        return Err(crate::error::BladeError::Other(
+            "navigate: empty URL - pass the page to open".into(),
+        ));
+    }
+    let Some(scheme) = scheme_prefix(u) else {
+        return Ok(()); // bare host or path form - with_scheme handles it
     };
-    s.strip_suffix('/').unwrap_or(&s).to_string()
+    let s = scheme.to_ascii_lowercase();
+    const NAVIGABLE: &[&str] = &["http", "https", "about", "data", "file", "blob"];
+    if NAVIGABLE.contains(&s.as_str()) {
+        return Ok(());
+    }
+    // Known non-page schemes must be rejected even when their tail looks
+    // like a port (`javascript:1`, `tel:555`). Everything else that is not
+    // host:port falls through to the same explicit error.
+    let rest = &u[scheme.len() + 1..];
+    let portish = !rest.is_empty()
+        && rest
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or("")
+            .bytes()
+            .all(|b| b.is_ascii_digit());
+    if portish && !is_known_scheme_name(&s) {
+        return Ok(()); // `localhost:3000`, `example.com:8080/x`
+    }
+    Err(crate::error::BladeError::Other(format!(
+        "unsupported URL scheme \"{s}:\" - navigable schemes are http(s), about, data, file and blob (this target was rejected before any browser work)"
+    )))
+}
+
+/// The scheme prefix of a URL (`scheme:` before any `/`, `?`, `#`), or None.
+/// Scheme grammar: ASCII alpha, then alnum/`+`/`-`/`.`, then `:`.
+fn scheme_prefix(url: &str) -> Option<&str> {
+    let bytes = url.as_bytes();
+    if !bytes.first().is_some_and(|b| b.is_ascii_alphabetic()) {
+        return None;
+    }
+    for (i, &b) in bytes.iter().enumerate().skip(1) {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'+' | b'-' | b'.' => {}
+            b':' => return Some(&url[..i]),
+            _ => return None, // '/' '?' '#' or invalid scheme byte
+        }
+    }
+    None
+}
+
+/// Scheme names that look like they could be `host:port` but are schemes.
+fn is_known_scheme_name(s: &str) -> bool {
+    matches!(
+        s,
+        "javascript"
+            | "ftp"
+            | "ftps"
+            | "ws"
+            | "wss"
+            | "mailto"
+            | "tel"
+            | "sms"
+            | "callto"
+            | "chrome"
+            | "chrome-extension"
+            | "devtools"
+            | "edge"
+            | "view-source"
+            | "magnet"
+            | "intent"
+            | "market"
+            | "itms-apps"
+    )
+}
+
+pub(crate) fn query_params(url: &str) -> Option<Vec<(String, String)>> {
+    let q = url.split_once('?')?.1.split('#').next().unwrap_or("");
+    if q.is_empty() {
+        return None;
+    }
+    Some(
+        q.split('&')
+            .filter(|p| !p.is_empty())
+            .map(|p| match p.split_once('=') {
+                Some((k, v)) => (k.to_string(), v.to_string()),
+                None => (p.to_string(), String::new()),
+            })
+            .collect(),
+    )
+}
+
+/// Query parameters that exist for ATTRIBUTION only. A site dropping these is
+/// not a lost filter, and reporting them would train the caller to ignore the
+/// real signal.
+const TRACKING_PARAMS: &[&str] = &[
+    "gclid",
+    "fbclid",
+    "msclkid",
+    "yclid",
+    "twclid",
+    "srsltid",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "_ga",
+    "ref",
+    "ref_",
+    "referrer",
+    "source",
+    "spm",
+    "psc",
+    "th",
+    "ascsubtag",
+    "linkcode",
+    "creative",
+    "si",
+];
+
+fn is_tracking_param(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.starts_with("utm_") || TRACKING_PARAMS.contains(&n.as_str())
+}
+
+/// The note for requested query parameters the final URL does not carry, or
+/// None when every meaningful parameter survived.
+fn nav_params_note(requested: &str, final_url: &str) -> Option<String> {
+    let req = query_params(requested)?;
+    let fin = query_params(final_url).unwrap_or_default();
+    let mut missing: Vec<String> = Vec::new();
+    let mut rewritten: Vec<String> = Vec::new();
+    for (k, v) in &req {
+        if is_tracking_param(k) {
+            continue;
+        }
+        match fin.iter().find(|(fk, _)| fk == k) {
+            None => missing.push(k.clone()),
+            Some((_, fv)) => {
+                if !v.is_empty() && fv != v {
+                    rewritten.push(k.clone());
+                }
+            }
+        }
+    }
+    if missing.is_empty() && rewritten.is_empty() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if !missing.is_empty() {
+        parts.push(format!("dropped: {}", missing.join(", ")));
+    }
+    if !rewritten.is_empty() {
+        parts.push(format!("value changed: {}", rewritten.join(", ")));
+    }
+    Some(format!(
+        "url params: the final URL does not carry the requested query parameter(s) ({}) — the site rewrote the request, so do not assume those filters or options were applied",
+        parts.join("; ")
+    ))
+}
+
+/// Canonical comparison preserves the origin, fragment and significant path.
+/// Only URL-standard equivalences (host case, default ports, root slash) may
+/// suppress a navigation; hash routers and /x versus /x/ are different pages.
+fn normalize_url(value: &str) -> String {
+    let value = with_scheme(value);
+    url::Url::parse(&value)
+        .map(|url| url.to_string())
+        .unwrap_or(value)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_domain, normalize_url};
+    use super::{extract_domain, nav_params_note, normalize_url, query_params, validate_nav_url};
 
     #[test]
     fn extract_domain_strips_scheme_port_and_www() {
@@ -671,16 +900,143 @@ mod tests {
     }
 
     #[test]
-    fn normalize_url_strips_scheme_fragment_and_default_port() {
-        assert_eq!(normalize_url("https://example.com/"), "example.com");
-        assert_eq!(
-            normalize_url("https://example.com:443/x#frag"),
-            "example.com/x"
+    fn dropped_query_params_are_reported_and_tracking_noise_is_not() {
+        // The Amazon case: the site rewrote the URL without the price filter.
+        let note = nav_params_note(
+            "https://www.amazon.in/s?k=ssd&rh=p_36%3A35000-45000",
+            "https://www.amazon.in/s?k=ssd",
+        )
+        .expect("a dropped filter must be reported");
+        assert!(note.contains("rh"), "{note}");
+        assert!(note.contains("dropped"), "{note}");
+        // Surviving params stay quiet — no news is the normal case.
+        assert!(nav_params_note(
+            "https://example.com/s?q=x&page=2",
+            "https://example.com/s?q=x&page=2"
+        )
+        .is_none());
+        // A rewritten value is named as such, not as a drop.
+        let note = nav_params_note("https://e.com/s?page=2", "https://e.com/s?page=1")
+            .expect("rewritten value must be reported");
+        assert!(
+            note.contains("value changed") && note.contains("page"),
+            "{note}"
         );
-        assert_eq!(normalize_url("http://example.com:80"), "example.com");
+        // Attribution-only params never fire (that noise trains callers to
+        // ignore the real signal).
+        assert!(nav_params_note(
+            "https://e.com/s?q=x&utm_source=nl&gclid=1",
+            "https://e.com/s?q=x"
+        )
+        .is_none());
+        // No query at all → nothing to compare.
+        assert!(nav_params_note("https://e.com/", "https://e.com/").is_none());
+    }
+
+    #[test]
+    fn query_params_parses_valueless_and_fragmented_forms() {
+        let p = query_params("https://e.com/s?flag&x=1#frag").expect("parse");
         assert_eq!(
-            normalize_url("http://example.com:8080/x/"),
-            "example.com:8080/x"
+            p,
+            vec![
+                ("flag".to_string(), String::new()),
+                ("x".to_string(), "1".to_string())
+            ]
         );
+        assert!(query_params("https://e.com/s").is_none());
+        assert!(query_params("https://e.com/s?").is_none());
+    }
+
+    #[test]
+    fn navigation_identity_preserves_origin_hash_and_path() {
+        assert_eq!(
+            normalize_url("https://EXAMPLE.com:443"),
+            "https://example.com/"
+        );
+        assert_eq!(normalize_url("example.com"), "https://example.com/");
+        assert_eq!(
+            normalize_url("http://example.com:80"),
+            "http://example.com/"
+        );
+        for (a, b) in [
+            ("http://example.com/", "https://example.com/"),
+            ("https://example.com/#old", "https://example.com/#new"),
+            ("https://example.com/x", "https://example.com/x/"),
+            ("https://example.com/?q=1", "https://example.com/?q=2"),
+            ("http://example.com:8080/", "http://example.com:8081/"),
+        ] {
+            assert_ne!(
+                normalize_url(a),
+                normalize_url(b),
+                "{a} and {b} must navigate"
+            );
+        }
+    }
+
+    #[test]
+    fn bare_local_urls_keep_http_with_queries_and_fragments() {
+        use super::with_scheme;
+        for u in [
+            "localhost?x=1",
+            "localhost#view",
+            "127.0.0.1?x=1",
+            "localhost:80/x",
+            "example.com:80/x",
+        ] {
+            assert_eq!(with_scheme(u), format!("http://{u}"));
+        }
+        assert_eq!(with_scheme("DATA:text/html,hello"), "DATA:text/html,hello");
+        assert_eq!(with_scheme("ABOUT:blank"), "ABOUT:blank");
+        assert_eq!(with_scheme("example.com?x=1"), "https://example.com?x=1");
+    }
+
+    /// R1: the scheme gate. The rejected set is exactly the class that used
+    /// to burn 10s and then report "already here" (ftp/javascript/mailto);
+    /// host:port forms and the document-capable schemes must pass through.
+    #[test]
+    fn nav_scheme_gate_rejects_non_page_schemes() {
+        for bad in [
+            "ftp://example.com/",
+            "javascript:1",
+            "javascript:alert(1)",
+            "mailto:user@example.com",
+            "tel:5551234",
+            "chrome://settings",
+            "view-source:https://example.com",
+            "ws://example.com/socket",
+        ] {
+            let err = validate_nav_url(bad).unwrap_err().to_string();
+            assert!(err.contains("unsupported URL scheme"), "{bad}: {err}");
+        }
+        assert!(validate_nav_url("").is_err());
+        assert!(validate_nav_url("   ").is_err());
+        // Accepted: page-capable schemes, bare hosts, host:port forms.
+        for ok in [
+            "https://example.com",
+            "http://127.0.0.1:8080/fixture.html",
+            "example.com/path?q=1",
+            "localhost:3000",
+            "127.0.0.1:9222",
+            "about:blank",
+            "data:text/html,<b>hi</b>",
+            "file:///tmp/page.html",
+        ] {
+            assert!(validate_nav_url(ok).is_ok(), "{ok} must pass the gate");
+        }
+    }
+
+    /// The scheme grammar splitter: only a real `scheme:` prefix counts;
+    /// `host:port`, paths with colons and fragments must not be misread.
+    #[test]
+    fn scheme_prefix_reads_only_a_real_scheme() {
+        use super::scheme_prefix;
+        assert_eq!(scheme_prefix("https://x"), Some("https"));
+        assert_eq!(scheme_prefix("javascript:1"), Some("javascript"));
+        assert_eq!(scheme_prefix("localhost:3000/x"), Some("localhost"));
+        assert_eq!(scheme_prefix("example.com:8080"), Some("example.com"));
+        assert_eq!(scheme_prefix("/path:with:colons"), None);
+        assert_eq!(scheme_prefix("example.com/path"), None);
+        assert_eq!(scheme_prefix("sub/path:1"), None);
+        assert_eq!(scheme_prefix(""), None);
     }
 }

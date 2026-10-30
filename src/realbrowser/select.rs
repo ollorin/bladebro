@@ -107,7 +107,7 @@ pub fn resolve_selection(cfg: &Config) -> Result<(BrowserSpec, ProfileInfo)> {
     let browsers = discover();
     if browsers.is_empty() {
         return Err(BladeError::Other(
-            "no Chromium-family browser found. Install one (Chromium, Chrome, Brave, Edge, Vivaldi, Opera) or set a custom binary via `bladebro rb use --binary <path>`.".into(),
+            "no Chromium-family browser found. Install one (Chromium, Chrome, Brave, Helium, Edge, Vivaldi, Opera) or set a custom binary via `bladebro rb use --binary <path>`.".into(),
         ));
     }
 
@@ -232,7 +232,14 @@ pub fn session_drifted(
 pub fn effective_mode(cfg: &Config, user_data_root: &Path) -> Mode {
     match cfg.mode {
         Mode::Auto => {
-            if devtools_port(user_data_root).is_some() {
+            // SECURITY: `Auto` must not attach on a dead flag file — the
+            // endpoint named by a stale DevToolsActivePort (deleted only on
+            // graceful exit) could be squatted. Require a live browser of
+            // this user to actually hold the port (Linux; elsewhere the
+            // file's existence remains the signal).
+            if devtools_port(user_data_root)
+                .is_some_and(crate::browser::endpoint_owned_by_own_browser)
+            {
                 Mode::Attach
             } else {
                 Mode::Clone

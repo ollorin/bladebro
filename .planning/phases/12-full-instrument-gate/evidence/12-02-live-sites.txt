@@ -1,0 +1,25 @@
+# live_sites mode=off 2026-10-27T10:22:31Z bin=/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (e4648a9-dirty)) headless home=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.v00mtzet
+SITE sannysoft mode=off passed=31 warn=0 failed=0 failed_rows=[]
+SITE incolumitas mode=off ok=35 fail=1 fail_keys=['WEBDRIVER'] score='behavioralClassificationScore gives a rating between 0 (Bot) and 1 (Human) based on advanced behavioral heuri'
+SITE creepjs mode=off like_headless=38% headless=33% stealth=0%
+# live_sites mode=off done: failures=0 leftovers_killed=0
+live_off_exit=0
+# live_sites mode=on 2026-10-27T10:23:44Z bin=/Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (e4648a9-dirty)) headless home=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln
+  record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln/recordings/live-sannysoft-20261027T102346Z-9e0d60.webm (tab A8DBDAA7D2EA1148B00CCA2D77405213); first frame not awaited. record-stop saves it.
+SITE sannysoft mode=on passed=31 warn=0 failed=0 failed_rows=[]
+  record-stop OK nb_read_frames=109: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln/recordings/live-sannysoft-20261027T102346Z-9e0d60.webm (bytes 76689, duration 10.9 s, frames 109, dropped 0, segments [0.0 s tab A8DBDAA7D2EA1148B00CCA2D77405213], captured 5). Note: no new frames for 10.9 s (n
+  record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln/recordings/live-incolumitas-20261027T102359Z-29b619.webm (tab A8DBDAA7D2EA1148B00CCA2D77405213); first frame not awaited. record-stop saves it.
+SITE incolumitas mode=on ok=35 fail=1 fail_keys=['WEBDRIVER'] score='behavioralClassificationScore gives a rating between 0 (Bot) and 1 (Human) based on advanced behavioral heuri'
+  record-stop OK nb_read_frames=209: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln/recordings/live-incolumitas-20261027T102359Z-29b619.webm (bytes 99891, duration 20.9 s, frames 209, dropped 0, segments [0.0 s tab A8DBDAA7D2EA1148B00CCA2D77405213], captured 6). Note: no new frames for 20.9 s 
+  record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln/recordings/live-creepjs-20261027T102422Z-e02172.webm (tab A8DBDAA7D2EA1148B00CCA2D77405213); first frame not awaited. record-stop saves it.
+SITE creepjs mode=on like_headless=38% headless=33% stealth=0%
+  record-stop OK nb_read_frames=255: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bblive.y7o65qln/recordings/live-creepjs-20261027T102422Z-e02172.webm (bytes 84589, duration 25.5 s, frames 255, dropped 0, segments [0.0 s tab A8DBDAA7D2EA1148B00CCA2D77405213], captured 13). Note: no new frames for 24.9 s (no
+# live_sites mode=on done: failures=0 leftovers_killed=0
+live_on_exit=0
+## before (recording off) / after (recording on), headless, macOS arm64, Chrome 156.0.8078.48
+| site | off | on | equal |
+| sannysoft | passed=31 warn=0 failed=0 failed_rows=[] | passed=31 warn=0 failed=0 failed_rows=[] | yes |
+| incolumitas | ok=35 fail=1 fail_keys=['WEBDRIVER'] (score text identical) | ok=35 fail=1 fail_keys=['WEBDRIVER'] (score text identical) | yes |
+| creepjs | like_headless=38% headless=33% stealth=0% | like_headless=38% headless=33% stealth=0% | yes |
+## AGENTS.md targets (defined for a headed browser): sannysoft all pass: met (headless: 31 passed, 0 failed); incolumitas no bot detection: not met (headless: WEBDRIVER FAIL, 1 of 36); creepjs headless 0% / stealth 0%: not met for headless (headless 33%, like headless 38%), met for stealth (0%). Headless baseline: the same values appear with recording off, so they are not caused by recording. Headed run (not done here, needs a visible window; user decision): python3 -I tools/record_sidecar/lib/live_sites.py --mode off|on --headed --out <file>
+## on-mode frames: nb_read_frames 109 / 209 / 255 (ffprobe, encoder output incl. held frames); screencast captured 5 / 6 / 13 new frames: the pages are static after the reload, so the product note 'no new frames for N s' applies; the video holds the last frame.

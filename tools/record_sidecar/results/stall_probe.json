@@ -1,0 +1,312 @@
+{
+  "scenario": "stall_probe",
+  "purpose": "diagnose screencast silence seen in core acks_60s",
+  "runs": [
+    {
+      "run": 1,
+      "name": "stall_probe_run1",
+      "wall_ms": 60064,
+      "frames_received": 5993,
+      "acks_sent": 5993,
+      "acks_err": 0,
+      "fps_buckets": [
+        93,
+        99,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        1
+      ],
+      "stall": {
+        "interior_stall_s": 0,
+        "trailing_silence_s": 0,
+        "stall_seconds": 0
+      },
+      "last_frame_bucket_s": 60,
+      "page_counter_samples": [
+        {
+          "t_s": 5.069,
+          "frames": 887,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 10.163,
+          "frames": 1500,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 15.251,
+          "frames": 2110,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 20.343,
+          "frames": 2721,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 25.429,
+          "frames": 3331,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 30.517,
+          "frames": 3941,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 35.607,
+          "frames": 4552,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 40.702,
+          "frames": 5164,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 45.794,
+          "frames": 5775,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 50.89,
+          "frames": 6386,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 55.97,
+          "frames": 6997,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 61.084,
+          "frames": 7608,
+          "vis": "visible",
+          "focus": true
+        }
+      ],
+      "page_counter_growth_after_last_frame": null,
+      "reading": "no screencast silence in this run (frames through the end of the run)"
+    },
+    {
+      "run": 2,
+      "name": "stall_probe_run2",
+      "wall_ms": 60060,
+      "frames_received": 5994,
+      "acks_sent": 5994,
+      "acks_err": 0,
+      "fps_buckets": [
+        93,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        101,
+        99,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        101,
+        99,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        1
+      ],
+      "stall": {
+        "interior_stall_s": 0,
+        "trailing_silence_s": 0,
+        "stall_seconds": 0
+      },
+      "last_frame_bucket_s": 60,
+      "page_counter_samples": [
+        {
+          "t_s": 5.055,
+          "frames": 887,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 10.137,
+          "frames": 1498,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 15.216,
+          "frames": 2107,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 20.31,
+          "frames": 2718,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 25.398,
+          "frames": 3329,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 30.485,
+          "frames": 3939,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 35.577,
+          "frames": 4550,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 40.662,
+          "frames": 5161,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 45.749,
+          "frames": 5771,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 50.84,
+          "frames": 6382,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 55.931,
+          "frames": 6993,
+          "vis": "visible",
+          "focus": true
+        },
+        {
+          "t_s": 61.037,
+          "frames": 7604,
+          "vis": "visible",
+          "focus": true
+        }
+      ],
+      "page_counter_growth_after_last_frame": null,
+      "reading": "no screencast silence in this run (frames through the end of the run)"
+    }
+  ]
+}

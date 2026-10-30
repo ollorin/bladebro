@@ -5,6 +5,14 @@ use super::*;
 use crate::cdp::list_page_targets;
 
 impl Page {
+    /// Input is delivered to this target, including after a foreground popup.
+    pub async fn activate(&self) -> Result<()> {
+        self.cdp
+            .send_with_timeout("Page.bringToFront", None, Duration::from_secs(5))
+            .await?;
+        Ok(())
+    }
+
     /// Evaluate a JS expression in an isolated world. The isolated world has
     /// DOM access but its own JavaScript context — anti-bot scripts in the
     /// main world cannot observe our queries via patched DOM methods or
@@ -161,10 +169,12 @@ impl Page {
         // reads "localhost:" as the scheme — leaving a stuck about:blank tab
         // whose screenshot then burns its full CDP timeout (reproduced live).
         let url = with_scheme(url);
+        let mut params = json!({"url":url.as_str()});
+        if let Some(id) = self.cdp.browser_context_id() {
+            params["browserContextId"] = json!(id);
+        }
         if let Some(bc) = &self.browser_client {
-            let res = bc
-                .send("Target.createTarget", Some(json!({ "url": url.as_str() })))
-                .await?;
+            let res = bc.send("Target.createTarget", Some(params)).await?;
             return res
                 .get("targetId")
                 .and_then(|v| v.as_str())
@@ -177,25 +187,15 @@ impl Page {
             .web_socket_debugger_url
             .ok_or_else(|| BladeError::Other("browser has no webSocketDebuggerUrl".into()))?;
         let client = CdpClient::connect(&ws).await?;
-        let res = client
-            .send("Target.createTarget", Some(json!({ "url": url.as_str() })))
-            .await?;
+        let res = client.send("Target.createTarget", Some(params)).await?;
         res.get("targetId")
             .and_then(|v| v.as_str())
             .map(String::from)
             .ok_or_else(|| BladeError::Other("no targetId from Target.createTarget".into()))
     }
 
-    /// Switch the session to a different tab (target id from
-    /// `state tabs`). The whole page state is rebuilt against the
-    /// new tab: domains re-enabled, stealth re-injected, fresh
-    /// capture. The old tab stays OPEN — this is focus switching,
-    /// not closing. `*self = new_page` drops the old Page, whose
-    /// Drop aborts its background tasks (dialogs/network/hum).
-    pub async fn switch_tab(&mut self, target_id: &str) -> Result<()> {
-        // Attach to the NEW target FIRST. The old code detached
-        // the current session first — if the attach then failed,
-        // the session was detached from everything (bricked).
+    /// Attach an auxiliary tab without detaching or replacing the active page.
+    pub(crate) async fn attach_tab_target(&self, target_id: &str) -> Result<Page> {
         let session = if let Some(client) = &self.browser_client {
             // Pipe mode: flat-session attach via the browser-level client.
             let res = client
@@ -228,6 +228,21 @@ impl Page {
             let client = CdpClient::connect(t.ws_url()?).await?;
             CdpSession::root(client)
         };
+        Page::attach(session, &self.base, self.browser_client.clone()).await
+    }
+
+    /// Switch the session to a different tab (target id from
+    /// `state tabs`). The whole page state is rebuilt against the
+    /// new tab: domains re-enabled, stealth re-injected, fresh
+    /// capture. The old tab stays OPEN — this is focus switching,
+    /// not closing. `*self = new_page` drops the old Page, whose
+    /// Drop aborts its background tasks (dialogs/network/hum).
+    pub async fn switch_tab(&mut self, target_id: &str) -> Result<()> {
+        // Attach to the NEW target FIRST. The old code detached
+        // the current session first — if the attach then failed,
+        // the session was detached from everything (bricked).
+        let new_page = self.attach_tab_target(target_id).await?;
+        new_page.activate().await?;
         // New session attached — now detach the OLD one (pipe
         // mode) so only one session stays attached. Failure
         // here is harmless (two sessions attached briefly).
@@ -241,7 +256,6 @@ impl Page {
                     .await;
             }
         }
-        let new_page = Page::attach(session, &self.base, self.browser_client.clone()).await?;
         *self = new_page;
         Ok(())
     }

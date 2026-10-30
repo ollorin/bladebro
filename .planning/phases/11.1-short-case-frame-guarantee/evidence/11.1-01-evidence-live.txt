@@ -1,0 +1,257 @@
+# evidence_live.sh  started 2026-10-26T16:56:54Z  headless=1  fixtures=http://127.0.0.1:8765  ids=all-10-01
+# new binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  git: 013eb94
+# baseline binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+[poster] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WAaQjmiJWq/recordings/poster-20261026T165655Z-7c95e0.webm (tab 6EBCD3D85A91C4DCD269DAD1777A8D9F); first frame not awaited. record-stop saves it.
+[poster] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[poster] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WAaQjmiJWq/recordings/poster-20261026T165655Z-7c95e0.webm (bytes 34982, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 6EBCD3D85A91C4DCD269DAD1777A8D9F], captured 39). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WAaQjmiJWq/recordings/poster-20261026T165655Z-7c95e0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WAaQjmiJWq/recordings/poster-20261026T165655Z-7c95e0.timeline.json (1 action)
+PASS [poster] record-stop exits 0 and saves the webm
+[poster] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WAaQjmiJWq/recordings/poster-20261026T165655Z-7c95e0.poster.png
+PASS [poster] stop text has '. Poster: <abs>.poster.png'
+PASS [poster] poster sits next to the video, named <video stem>.poster.png
+PASS [poster] poster mode 600 (is 600)
+PASS [poster] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[poster] poster ffprobe: png,1280,720   video ffprobe: vp9,1280,720
+PASS [poster] poster is png at the video's width x height
+PASS [poster] poster shows the last frame: 1x1 tone is blue (rgb 2 66 251 )
+PASS [poster] video full decode exit=0 stderr_lines=0
+PASS [poster] decoded frames (38) == reported frames (38)
+PASS [poster] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[poster-mp4] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.veD0wkNi7d/recordings/poster-mp4-20261026T165701Z-91ce00.mp4 (tab 7AF43207BF756058B6087AB786B49518); first frame not awaited. record-stop saves it.
+[poster-mp4] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[poster-mp4] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.veD0wkNi7d/recordings/poster-mp4-20261026T165701Z-91ce00.mp4 (bytes 14830, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 7AF43207BF756058B6087AB786B49518]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.veD0wkNi7d/recordings/poster-mp4-20261026T165701Z-91ce00.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.veD0wkNi7d/recordings/poster-mp4-20261026T165701Z-91ce00.timeline.json (1 action)
+PASS [poster-mp4] record-stop exits 0 and saves the mp4
+[poster-mp4] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.veD0wkNi7d/recordings/poster-mp4-20261026T165701Z-91ce00.poster.png
+PASS [poster-mp4] stop text has '. Poster: <abs>.poster.png'
+PASS [poster-mp4] poster sits next to the video, named <video stem>.poster.png
+PASS [poster-mp4] poster mode 600 (is 600)
+PASS [poster-mp4] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[poster-mp4] poster ffprobe: png,1280,720   video ffprobe: h264,1280,720
+PASS [poster-mp4] poster is png at the video's width x height
+PASS [poster-mp4] poster shows the last frame: 1x1 tone is blue (rgb 2 65 252 )
+PASS [poster-mp4] video full decode exit=0 stderr_lines=0
+PASS [poster-mp4] decoded frames (39) == reported frames (39)
+PASS [poster-mp4] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[marker] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.rzqThE7f48/recordings/marker-20261026T165707Z-c495e0.webm (tab 0DC1F1747B8CB94E779CA8FF134DEEE1); first frame not awaited. record-stop saves it.
+[marker] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[marker] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.rzqThE7f48/recordings/marker-20261026T165707Z-c495e0.webm (bytes 34746, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 0DC1F1747B8CB94E779CA8FF134DEEE1]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.rzqThE7f48/recordings/marker-20261026T165707Z-c495e0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.rzqThE7f48/recordings/marker-20261026T165707Z-c495e0.timeline.json (1 action). Marker at 3.7 s
+PASS [marker] record-stop exits 0 and saves the file
+PASS [marker] marker offset present (T=3.7 s, duration 3.8 s)
+PASS [marker] marker T in [duration-0.6, duration]
+PASS [marker] note text is not echoed in the result
+[marker] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.rzqThE7f48/recordings/marker-20261026T165707Z-c495e0.poster.png
+PASS [marker] stop text has '. Poster: <abs>.poster.png'
+PASS [marker] poster sits next to the video, named <video stem>.poster.png
+PASS [marker] poster mode 600 (is 600)
+PASS [marker] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[marker] poster ffprobe: png,1280,720   video ffprobe: vp9,1280,720
+PASS [marker] poster is png at the video's width x height
+PASS [marker] poster shows the last frame: 1x1 tone is blue (rgb 2 66 251 )
+PASS [marker] video full decode exit=0 stderr_lines=0
+PASS [marker] decoded frames (38) == reported frames (38)
+PASS [marker] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[marker-bad] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.KXo4ZxdGfO/recordings/marker-bad-20261026T165713Z-adc0e0.webm (tab 994C88F453C54DB2124F369C7C75B45D); first frame not awaited. record-stop saves it.
+[marker-bad] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[marker-bad] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.KXo4ZxdGfO/recordings/marker-bad-20261026T165713Z-adc0e0.webm (bytes 34991, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 994C88F453C54DB2124F369C7C75B45D]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.KXo4ZxdGfO/recordings/marker-bad-20261026T165713Z-adc0e0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.KXo4ZxdGfO/recordings/marker-bad-20261026T165713Z-adc0e0.timeline.json (1 action). Marker not placed: empty note
+PASS [marker-bad] record-stop exits 0 and saves the file
+PASS [marker-bad] empty note: '. Marker not placed: empty note'
+PASS [marker-bad] no marker offset in the result
+PASS [marker-bad] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[per-tab] record-start: recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.a320fqGXl7/recordings/pt-tab1-20261026T165719Z-d82220.webm (tab 5D108FB2A993B048597C7097D8FF9574); first frame not awaited. record-stop saves every tab's file.
+[per-tab] open-tab: ✓ opened + switched to tab 722015A2C1311BEBD9A19684FB91CE8D
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+e1 button "turn blue"
+e2 button "turn green"
+[per-tab] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[per-tab] stop rc=0: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.a320fqGXl7/recordings/pt-tab1-20261026T165719Z-d82220.webm (bytes 14576, duration 5.1 s, frames 51, dropped 0, segments [0.0 s tab 5D108FB2A993B048597C7097D8FF9574], captured 17); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.a320fqGXl7/recordings/pt-tab2-20261026T165721Z-0de659.webm (bytes 32804, duration 3.6 s, frames 36, dropped 0, segments [0.0 s tab 722015A2C1311BEBD9A19684FB91CE8D]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.a320fqGXl7/recordings/pt-tab2-20261026T165721Z-0de659.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.a320fqGXl7/recordings/pt-tab1-20261026T165719Z-d82220.timeline.json (2 actions)
+PASS [per-tab] stop exits 0 with two per-tab files
+PASS [per-tab] exactly one Poster in the result
+PASS [per-tab] poster is named after the -tab2- file (the followed tab)
+[per-tab] poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.a320fqGXl7/recordings/pt-tab2-20261026T165721Z-0de659.poster.png
+PASS [per-tab] stop text has '. Poster: <abs>.poster.png'
+PASS [per-tab] poster sits next to the video, named <video stem>.poster.png
+PASS [per-tab] poster mode 600 (is 600)
+PASS [per-tab] poster starts with the PNG magic (is 89504e470d0a1a0a)
+[per-tab] poster ffprobe: png,1280,720   video ffprobe: vp9,1280,720
+PASS [per-tab] poster is png at the video's width x height
+PASS [per-tab] poster shows the last frame: 1x1 tone is green (rgb 1 158 0 )
+PASS [per-tab] video full decode exit=0 stderr_lines=0
+PASS [per-tab] decoded frames (36) == reported frames (36)
+PASS [per-tab] tab2 file ends green (frame at 3.3 s: green)
+PASS [per-tab] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== latency: 3 interleaved runs each of the same poster scenario (stop call wall time)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] base run 1: 0.647s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.u8gjiXjuzq/recordings/lat-20261026T165727Z-8c6e78.webm (bytes 36543, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 8BBD53547C38BEC22F0D713E88EBE902]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.u8gjiXjuzq/recordings/lat-20261026T165727Z-8c6e78.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.u8gjiXjuzq/recordings/lat-20261026T165727Z-8c6e78.timeline.json (1 action)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] new run 1: 0.654s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.UNI5cBmKAI/recordings/lat-20261026T165733Z-bdc180.webm (bytes 35152, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 0A056E91FABAF14FD1FFBCE3CF857C0F]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.UNI5cBmKAI/recordings/lat-20261026T165733Z-bdc180.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.UNI5cBmKAI/recordings/lat-20261026T165733Z-bdc180.timeline.json (1 action)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] base run 2: 0.656s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.pZ46xYkG34/recordings/lat-20261026T165739Z-b0eb40.webm (bytes 35146, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 817A2493A4E0595AEC4303A412A8E0A1]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.pZ46xYkG34/recordings/lat-20261026T165739Z-b0eb40.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.pZ46xYkG34/recordings/lat-20261026T165739Z-b0eb40.timeline.json (1 action)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] new run 2: 0.658s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ztpORvZkB2/recordings/lat-20261026T165745Z-aecd18.webm (bytes 35232, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 243D2722ABA96115CA13FC4F766EB47A]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ztpORvZkB2/recordings/lat-20261026T165745Z-aecd18.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ztpORvZkB2/recordings/lat-20261026T165745Z-aecd18.timeline.json (1 action)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] base run 3: 0.654s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.PY9KU8Avks/recordings/lat-20261026T165752Z-acb488.webm (bytes 36303, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab ED7E30B99AC8A31F82ADF5BD540C4E40], captured 39). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.PY9KU8Avks/recordings/lat-20261026T165752Z-acb488.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.PY9KU8Avks/recordings/lat-20261026T165752Z-acb488.timeline.json (1 action)
+PASS [latency] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[latency] new run 3: 0.654s  stop text: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.qgbMtnHnSD/recordings/lat-20261026T165758Z-b0cbc0.webm (bytes 36053, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 75796E72E965CAA4355ABEE6FC3455D4]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.qgbMtnHnSD/recordings/lat-20261026T165758Z-b0cbc0.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.qgbMtnHnSD/recordings/lat-20261026T165758Z-b0cbc0.timeline.json (1 action)
+record-stop latency base 0.654 s (runs 0.647 0.656 0.654) / new 0.654 s (runs 0.654 0.658 0.654) median
+PASS [latency] new - base median <= 1.0 s (delta 0.0 s)
+poster ffmpeg alone (3 recordings x 5 runs, same argv as make_poster): 0.072 0.072 0.074 0.072 0.075 0.071 0.072 0.075 0.074 0.071 0.076 0.073 0.071 0.072 0.072
+poster ffmpeg alone: typ 0.072 s, max 0.076 s
+[timeline] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.AqHrDJ682i/recordings/timeline-20261026T165805Z-cc5400.webm (tab 56257655A622CCD227836F84F24E8009); first frame not awaited. record-stop saves it.
+[timeline] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline] click: ✗ error: no element matching "no such button" found
+[timeline] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.AqHrDJ682i/recordings/timeline-20261026T165805Z-cc5400.webm (bytes 45099, duration 7.1 s, frames 71, dropped 0, segments [0.0 s tab 56257655A622CCD227836F84F24E8009]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.AqHrDJ682i/recordings/timeline-20261026T165805Z-cc5400.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.AqHrDJ682i/recordings/timeline-20261026T165805Z-cc5400.timeline.json (3 actions). Marker at 7.0 s
+PASS [timeline] record-stop exits 0 and saves the webm
+[timeline] timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.AqHrDJ682i/recordings/timeline-20261026T165805Z-cc5400.timeline.json  video: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.AqHrDJ682i/recordings/timeline-20261026T165805Z-cc5400.webm
+PASS [timeline] timeline path printed: '. Timeline: <abs>.timeline.json (N actions)'
+PASS [timeline] timeline mode 600 (is 600)
+PASS [timeline] timeline named <video stem>.timeline.json next to the video
+PASS [timeline] JSON version 1, basenames only, dropped 0
+PASS [timeline] result N actions == action entries in the JSON
+[timeline] entries: action click ok=True at_s=1.53 end_s=2.24 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=True at_s=3.76 end_s=4.41 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=False at_s=5.93 end_s=5.94 verdict='no element matching "no such button" found' note=None | marker None ok=None at_s=6.98 end_s=None verdict=None note='FAIL: demo'
+PASS [timeline] entries in order: click(ok) click(ok) click(ok:false) marker
+PASS [timeline] failed click carries a non-empty verdict
+PASS [timeline] marker entry note is 'FAIL: demo' and last on the clock
+PASS [timeline] note text is not echoed in the result
+PASS [timeline] every at_s and end_s <= duration_s (7.1 s)
+[timeline] container duration: 7.100000 s
+PASS [timeline] blue click: end_s+0.4 s is blue at 2.64 s (frame is blue)
+PASS [timeline] blue click: at_s-0.3 s is the previous colour (red) at 1.23 s (frame is red)
+PASS [timeline] green click: end_s+0.4 s is green at 4.81 s (frame is green)
+PASS [timeline] green click: at_s-0.3 s is the previous colour (blue) at 3.46 s (frame is blue)
+alignment error blue click: -0.3 s (end_s 2.24, first blue frame at 1.94 s; 0.1 s scan step)
+alignment error green click: -0.3 s (end_s 4.41, first green frame at 4.11 s; 0.1 s scan step)
+PASS [timeline] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[timeline-mp4] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ybAQpmQuRz/recordings/timeline-mp4-20261026T165815Z-bf2998.mp4 (tab 5B9B429711FE60FCBAD69C316C96DCC3); first frame not awaited. record-stop saves it.
+[timeline-mp4] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline-mp4] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline-mp4] click: ✗ error: no element matching "no such button" found
+[timeline-mp4] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ybAQpmQuRz/recordings/timeline-mp4-20261026T165815Z-bf2998.mp4 (bytes 21458, duration 7.0 s, frames 70, dropped 0, segments [0.0 s tab 5B9B429711FE60FCBAD69C316C96DCC3]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ybAQpmQuRz/recordings/timeline-mp4-20261026T165815Z-bf2998.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ybAQpmQuRz/recordings/timeline-mp4-20261026T165815Z-bf2998.timeline.json (3 actions). Marker at 6.9 s
+PASS [timeline-mp4] record-stop exits 0 and saves the mp4
+[timeline-mp4] timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ybAQpmQuRz/recordings/timeline-mp4-20261026T165815Z-bf2998.timeline.json  video: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.ybAQpmQuRz/recordings/timeline-mp4-20261026T165815Z-bf2998.mp4
+PASS [timeline-mp4] timeline path printed: '. Timeline: <abs>.timeline.json (N actions)'
+PASS [timeline-mp4] timeline mode 600 (is 600)
+PASS [timeline-mp4] timeline named <video stem>.timeline.json next to the video
+PASS [timeline-mp4] JSON version 1, basenames only, dropped 0
+PASS [timeline-mp4] result N actions == action entries in the JSON
+[timeline-mp4] entries: action click ok=True at_s=1.54 end_s=2.18 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=True at_s=3.71 end_s=4.38 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=False at_s=5.9 end_s=5.9 verdict='no element matching "no such button" found' note=None | marker None ok=None at_s=6.94 end_s=None verdict=None note='FAIL: demo'
+PASS [timeline-mp4] entries in order: click(ok) click(ok) click(ok:false) marker
+PASS [timeline-mp4] failed click carries a non-empty verdict
+PASS [timeline-mp4] marker entry note is 'FAIL: demo' and last on the clock
+PASS [timeline-mp4] note text is not echoed in the result
+PASS [timeline-mp4] every at_s and end_s <= duration_s (7.0 s)
+[timeline-mp4] container duration: 7.000000 s
+PASS [timeline-mp4] blue click: end_s+0.4 s is blue at 2.58 s (frame is blue)
+PASS [timeline-mp4] blue click: at_s-0.3 s is the previous colour (red) at 1.24 s (frame is red)
+PASS [timeline-mp4] green click: end_s+0.4 s is green at 4.78 s (frame is green)
+PASS [timeline-mp4] green click: at_s-0.3 s is the previous colour (blue) at 3.41 s (frame is blue)
+alignment error blue click: -0.2 s (end_s 2.18, first blue frame at 1.98 s; 0.1 s scan step)
+alignment error green click: -0.3 s (end_s 4.38, first green frame at 4.08 s; 0.1 s scan step)
+PASS [timeline-mp4] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[timeline-run] run rc=0: step 1: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline-run] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.nhUdZCY1wf/recordings/timeline-run-20261026T165826Z-073ea8.webm (bytes 41721, duration 4.7 s, frames 47, dropped 0, segments [0.0 s tab C5E4233AFB2FBF4DB9F72ECFAADF795C]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.nhUdZCY1wf/recordings/timeline-run-20261026T165826Z-073ea8.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.nhUdZCY1wf/recordings/timeline-run-20261026T165826Z-073ea8.timeline.json (1 action)
+PASS [timeline-run] run exits 0 and the stop saves a file with a timeline
+[timeline-run] entries: [('action', 'run', 'run', 3, True)]
+PASS [timeline-run] one entry: tool run, action run, steps 3, ok true
+PASS [timeline-run] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[per-tab-timeline] record-start done
+[per-tab-timeline] click tab1: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[per-tab-timeline] open-tab: ✓ opened + switched to tab DA4D98775FBA518EE5977044926F3C30
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+e1 button "turn blue"
+e2 button "turn green"
+[per-tab-timeline] click tab2: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[per-tab-timeline] stop rc=0: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.0ptOv8eW3o/recordings/per-tab-timeline-tab1-20261026T165833Z-ade6b8.webm (bytes 38597, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab A23747A5CD177B865ADBADCD85B5ABF3], captured 38); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.0ptOv8eW3o/recordings/per-tab-timeline-tab2-20261026T165837Z-4c3731.webm (bytes 28941, duration 2.8 s, frames 28, dropped 0, segments [0.0 s tab DA4D98775FBA518EE5977044926F3C30], captured 29). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.0ptOv8eW3o/recordings/per-tab-timeline-tab2-20261026T165837Z-4c3731.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.0ptOv8eW3o/recordings/per-tab-timeline-tab1-20261026T165833Z-ade6b8.timeline.json (3 actions)
+PASS [per-tab-timeline] stop exits 0 with two per-tab files
+PASS [per-tab-timeline] exactly one Timeline in the result, named after the -tab1- file
+PASS [per-tab-timeline] one timeline file in the recordings dir
+PASS [per-tab-timeline] files[] lists 2 files; file 2 starts after the clock origin
+[per-tab-timeline] files: [{'duration_s': 6.6, 'file': 'per-tab-timeline-tab1-20261026T165833Z-ade6b8.webm', 'start_s': 0.0}, {'duration_s': 2.8, 'file': 'per-tab-timeline-tab2-20261026T165837Z-4c3731.webm', 'start_s': 3.91}]
+PASS [per-tab-timeline] both per-tab videos exist and decode
+[per-tab-timeline] entries: [('action', 'click', True, 1.54, 2.15), ('action', 'open-tab', True, 3.67, 3.92), ('action', 'click', True, 4.48, 5.12)]
+PASS [per-tab-timeline] entries: click(ok), open-tab(ok), click(ok) in order
+PASS [per-tab-timeline] green click starts inside file 2 (local at_s 0.57 s, file 2 is 2.8 s)
+PASS [per-tab-timeline] green click, file 2: local end_s+0.4 s is green at 1.61 s (frame is green)
+PASS [per-tab-timeline] blue click, file 1: end_s+0.4 s is blue at 2.55 s (frame is blue)
+alignment error green click: -0.3 s (end_s 1.21, first green frame at 0.91 s; 0.1 s scan step)
+PASS [per-tab-timeline] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== off: recording OFF: CDP method trace, normalized stdout and sidecar absence, base d18dae1 vs HEAD
+[off] base: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+[off] new:  /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 11
+[off] base run 1: total=106 Page.bringToFront=3 Target.getTargets=1
+[off] base run 2: total=108 Page.bringToFront=3 Target.getTargets=1
+[off] new distinct WS methods: 11
+[off] new run 1: total=107 Page.bringToFront=3 Target.getTargets=1
+[off] new run 2: total=113 Page.bringToFront=3 Target.getTargets=1
+PASS [off] traces non-empty
+PASS [off] distinct WS method sets equal (base vs new)
+FAIL [off] per-method counts equal, base run 1 vs new run 1
+FAIL [off] per-method counts equal, base run 2 vs new run 2
+[off] noise probe: Input.dispatchMouseEvent base run1 26 run2 28 | new run1 27 run2 33
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 1
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 2
+PASS [off] no screencast method in new
+PASS [off] normalized stdout byte-identical, base vs new (run 1)
+PASS [off] normalized stdout byte-identical, base vs new (run 2)
+PASS [off] normalized stdout byte-identical, base run 1 vs base run 2 (same binary, noise check)
+PASS [off-files] no timeline/poster anywhere under the off homes
+PASS [off-files] recordings dir absent or empty in every off home (counts: 0 0 0 0 )
+== mcp: tests/record_evidence.rs live tests (MCP stdio, headless), one cargo run per test (--exact)
+[mcp] RESULT mcp stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-9888/recordings/ev-20261026T165902Z-6e7f28.webm (bytes 35249, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 112DAEF01BEA9F6B3BCFEC2995FFD2EA]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-9888/recordings/ev-20261026T165902Z-6e7f28.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-9888/recordings/ev-20261026T165902Z-6e7f28.timeline.json (1 action). Marker at 3.7 s
+[mcp] RESULT mcp timeline: {"clock":"seconds from the first video frame","dropped":0,"duration_s":3.8,"entries":[{"action":"click","at_s":1.49,"end_s":2.19,"kind":"action","ok":true,"tool":"act","verdict":"outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking"},{"at_s":3.69,"kind":"marker","note":"x"}],"files":[{"duration_s":3.8,"file":"ev-20261026T165902Z-6e7f28.webm","start_s":0.0}],"version":1,"video":"ev-20261026T165902Z-6e7f28.webm"}
+[mcp] test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 5.87s
+PASS [mcp] mcp_stop_has_poster_timeline_marker
+[mcp] RESULT mcp off record-start: ✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+[mcp] RESULT mcp off record-stop: ✗ error: no active recording; record-start <name> first. Marker not placed: no active recording
+[mcp] test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.23s
+PASS [mcp] mcp_recording_off_has_no_sidecars
+final pgrep of our fixtures/daemons: none
+== total FAIL count: 2
+exit=1
+# evidence_live.sh  started 2026-10-26T16:59:09Z  headless=1  fixtures=http://127.0.0.1:8765  ids=off,mcp
+# new binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))  git: 013eb94
+# baseline binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+== off: recording OFF: CDP method trace, normalized stdout and sidecar absence, base d18dae1 vs HEAD
+[off] base: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+[off] new:  /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (013eb94-dirty))
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 11
+[off] base run 1: total=108 Page.bringToFront=3 Target.getTargets=1
+[off] base run 2: total=107 Page.bringToFront=3 Target.getTargets=1
+[off] new distinct WS methods: 11
+[off] new run 1: total=108 Page.bringToFront=3 Target.getTargets=1
+[off] new run 2: total=111 Page.bringToFront=3 Target.getTargets=1
+PASS [off] traces non-empty
+PASS [off] distinct WS method sets equal (base vs new)
+PASS [off] per-method counts equal, base run 1 vs new run 1
+FAIL [off] per-method counts equal, base run 2 vs new run 2
+[off] noise probe: Input.dispatchMouseEvent base run1 28 run2 27 | new run1 28 run2 31
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 1
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 2
+PASS [off] no screencast method in new
+PASS [off] normalized stdout byte-identical, base vs new (run 1)
+PASS [off] normalized stdout byte-identical, base vs new (run 2)
+PASS [off] normalized stdout byte-identical, base run 1 vs base run 2 (same binary, noise check)
+PASS [off-files] no timeline/poster anywhere under the off homes
+PASS [off-files] recordings dir absent or empty in every off home (counts: 0 0 0 0 )
+== mcp: tests/record_evidence.rs live tests (MCP stdio, headless), one cargo run per test (--exact)
+[mcp] RESULT mcp stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-10558/recordings/ev-20261026T165929Z-380d78.webm (bytes 35954, duration 3.8 s, frames 38, dropped 0, segments [0.0 s tab 4E5BE7297C185CDC791C9769400184A4]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-10558/recordings/ev-20261026T165929Z-380d78.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-10558/recordings/ev-20261026T165929Z-380d78.timeline.json (1 action). Marker at 3.7 s
+[mcp] RESULT mcp timeline: {"clock":"seconds from the first video frame","dropped":0,"duration_s":3.8,"entries":[{"action":"click","at_s":1.47,"end_s":2.16,"kind":"action","ok":true,"tool":"act","verdict":"outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking"},{"at_s":3.66,"kind":"marker","note":"x"}],"files":[{"duration_s":3.8,"file":"ev-20261026T165929Z-380d78.webm","start_s":0.0}],"version":1,"video":"ev-20261026T165929Z-380d78.webm"}
+[mcp] test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 5.80s
+PASS [mcp] mcp_stop_has_poster_timeline_marker
+[mcp] RESULT mcp off record-start: ✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+[mcp] RESULT mcp off record-stop: ✗ error: no active recording; record-start <name> first. Marker not placed: no active recording
+[mcp] test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.16s
+PASS [mcp] mcp_recording_off_has_no_sidecars
+final pgrep of our fixtures/daemons: none
+== total FAIL count: 1
+exit=1

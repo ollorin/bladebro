@@ -10,49 +10,108 @@ use super::eval::handle_eval;
 use super::extract::handle_collect;
 use super::files::{handle_download, handle_pdf};
 use super::resolve::{resolve_selector_target, resolve_text_target};
-use super::run::wait_condition;
+use super::run::resolve_wait_timeout;
 use super::see::handle_see;
 use super::state::handle_state;
+
+/// `act dialog` (G03): arm a bounded ONE-USE expectation that answers the
+/// next matching confirm()/prompt() explicitly, or clear an armed one. The
+/// safe defaults (alert/beforeunload accept; confirm/prompt cancel) apply
+/// whenever nothing is armed or nothing matches.
+fn handle_dialog_expect(args: &Value, page: &Page) -> Result<String> {
+    let expect = args
+        .get("expect")
+        .and_then(|e| e.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    if expect.is_empty() {
+        return Err(BladeError::Usage(
+            "act dialog needs expect=alert|confirm|prompt|beforeunload|any — or clear to disarm"
+                .into(),
+        ));
+    }
+    if matches!(expect.as_str(), "clear" | "off" | "none") {
+        return Ok(match page.take_dialog_expect() {
+            Some(prev) => format!(
+                "dialog expectation cleared (was armed for '{}'; it had not fired)",
+                prev.kind
+            ),
+            None => "no dialog expectation was armed".to_string(),
+        });
+    }
+    if !matches!(
+        expect.as_str(),
+        "alert" | "confirm" | "prompt" | "beforeunload" | "any"
+    ) {
+        return Err(BladeError::Usage(
+            "act dialog: expect must be alert, confirm, prompt, beforeunload, any (or clear)"
+                .into(),
+        ));
+    }
+    let message = args
+        .get("message")
+        .and_then(|m| m.as_str())
+        .filter(|m| !m.is_empty())
+        .map(String::from);
+    if message.as_ref().is_some_and(|m| m.chars().count() > 200) {
+        return Err(BladeError::Usage(
+            "act dialog: message matcher too long (max 200 chars)".into(),
+        ));
+    }
+    let prompt_text = args
+        .get("prompt_text")
+        .and_then(|p| p.as_str())
+        .filter(|p| !p.is_empty())
+        .map(String::from);
+    if prompt_text.is_some() && expect != "prompt" && expect != "any" {
+        return Err(BladeError::Usage(
+            "act dialog: prompt_text only applies to expect=prompt (or any)".into(),
+        ));
+    }
+    let accept = args.get("accept").and_then(|a| a.as_bool()).unwrap_or(true);
+    let timeout = resolve_wait_timeout(args, 30)?;
+    if timeout.as_secs() > 300 {
+        return Err(BladeError::Usage("act dialog: timeout max is 300s".into()));
+    }
+    let origin = crate::page::origin_of(page.model().url());
+    let exp = crate::page::DialogExpect {
+        kind: expect.clone(),
+        message,
+        prompt_text,
+        accept,
+        deadline: std::time::Instant::now() + timeout,
+        origin,
+    };
+    let replaced = page.set_dialog_expect(exp);
+    let mut out = format!(
+        "dialog expectation armed: '{}' -> {}, one use, expires in {}s",
+        expect,
+        if accept { "accept" } else { "cancel" },
+        timeout.as_secs()
+    );
+    if let Some(prev) = replaced {
+        out.push_str(&format!(
+            " - replaced a previous unused '{}' expectation",
+            prev.kind
+        ));
+    }
+    out.push_str(
+        ". Trigger the dialog now; without a match the defaults apply (alert/beforeunload accept; confirm/prompt cancel).",
+    );
+    Ok(out)
+}
 
 /// `fill` — multi-field forms in ONE call (type/select/checkbox-aware, with
 /// a single submit dispatch). Shared by `act`, `act batch` steps, and `run`
 /// steps: the step vocabulary and the act schema had drifted, which is why
 /// `fill` used to be "unknown action" inside run and schema-rejected in batch.
 pub async fn handle_fill(args: &Value, page: &mut Page) -> Result<String> {
+    super::validate::fill(args)?;
     let fields = args
         .get("fields")
         .and_then(|f| f.as_array())
         .ok_or_else(|| BladeError::Other("fill requires 'fields' array".into()))?;
-    // Reject malformed fields before changing any earlier field.
-    for (index, field) in fields.iter().enumerate() {
-        if !field.is_object()
-            || !["ref", "label", "selector"].iter().any(|key| {
-                field
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .is_some_and(|s| !s.is_empty())
-            })
-        {
-            return Err(BladeError::Other(format!(
-                "fill field {} requires ref, label or selector",
-                index + 1
-            )));
-        }
-        for key in ["ref", "label", "selector", "text", "option"] {
-            if field.get(key).is_some_and(|value| !value.is_string()) {
-                return Err(BladeError::Other(format!(
-                    "fill field {}: {key} must be a string",
-                    index + 1
-                )));
-            }
-        }
-        if field.get("check").is_some_and(|value| !value.is_boolean()) {
-            return Err(BladeError::Other(format!(
-                "fill field {}: check must be a boolean",
-                index + 1
-            )));
-        }
-    }
     let submit = args.get("submit").and_then(|s| s.as_str()).unwrap_or("");
     let mut last_verdict = String::new();
     let mut count = 0usize;
@@ -80,48 +139,77 @@ pub async fn handle_fill(args: &Value, page: &mut Page) -> Result<String> {
             continue;
         };
 
+        page.ensure_ref(&resolved).await?;
         // Dispatch the right action based on element type.
         let role = page
             .model()
             .element(&resolved)
             .map(|e| e.raw.role.clone())
             .unwrap_or_default();
+        if matches!(role.as_str(), "checkbox" | "radio" | "switch")
+            && (field.get("text").is_some() || field.get("option").is_some())
+        {
+            return Err(BladeError::Usage(format!(
+                "fill {resolved}: checkbox, radio and switch require check=true/false; omit all values to toggle (text/option cannot set checked state)"
+            )));
+        }
+        if f_check.is_some() && !matches!(role.as_str(), "checkbox" | "radio" | "switch") {
+            return Err(BladeError::Usage(format!(
+                "fill {resolved}: check requires a checkbox, radio or switch"
+            )));
+        }
+        if !matches!(role.as_str(), "checkbox" | "radio" | "switch")
+            && field.get("text").is_none()
+            && field.get("option").is_none()
+        {
+            return Err(BladeError::Usage(format!(
+                "fill {resolved}: text or option is required; use text=\"\" to clear explicitly"
+            )));
+        }
         let action = match role.as_str() {
-            "checkbox" | "radio" => {
+            "checkbox" | "radio" | "switch" => {
                 // For checkboxes/radios: click to toggle.
                 // If 'check' is specified, only click if current
                 // state doesn't match desired state.
                 let should_click = match f_check {
                     Some(want_checked) => {
-                        let is_checked = page
-                            .model()
-                            .element(&resolved)
-                            .and_then(|e| e.raw.checked)
-                            .unwrap_or(false);
+                        let is_checked =
+                            crate::action::read_checked(page.cdp_ref(), page.model(), &resolved)
+                                .await?;
+                        if role == "radio" && is_checked && !want_checked {
+                            return Err(BladeError::Usage(format!("fill {resolved}: a checked radio cannot be unchecked by clicking it; select another option in its group")));
+                        }
                         is_checked != want_checked
                     }
                     None => true, // no 'check' param → just click
                 };
                 if should_click {
-                    Action::Click { ref_id: resolved }
+                    Action::Click {
+                        ref_id: resolved.clone(),
+                    }
                 } else {
                     count += 1;
                     continue; // already in desired state
                 }
             }
             "combobox" => Action::Select {
-                ref_id: resolved,
+                ref_id: resolved.clone(),
                 option: f_text.into(),
             },
             _ => {
                 // Default: type into text-like fields.
                 Action::Type {
-                    ref_id: resolved,
+                    ref_id: resolved.clone(),
                     text: f_text.into(),
                 }
             }
         };
         let (_, verdict) = page.act(action).await?;
+        if let Some(want) = f_check {
+            if crate::action::read_checked(page.cdp_ref(), page.model(), &resolved).await? != want {
+                return Err(BladeError::Other(format!("fill {resolved}: click dispatched once but check={want} was not accepted; verify state before retrying")));
+            }
+        }
         last_verdict = verdict;
         count += 1;
     }
@@ -150,11 +238,16 @@ pub async fn handle_fill(args: &Value, page: &mut Page) -> Result<String> {
     };
     Ok(format!(
         "filled {count} fields\n{last_verdict}\n{}",
-        page.delta_view(&last_delta, 8000)
+        if args.get("slim").and_then(Value::as_bool).unwrap_or(false) {
+            String::new()
+        } else {
+            page.delta_view(&last_delta, 8000)
+        }
     ))
 }
 
 pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
+    super::validate::act(args)?;
     let action_str = args.get("action").and_then(|a| a.as_str()).unwrap_or("");
     let ref_id = args.get("ref").and_then(|r| r.as_str()).unwrap_or("");
     let text = args.get("text").and_then(|t| t.as_str()).unwrap_or("");
@@ -168,6 +261,9 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
     let press = args.get("press").and_then(|p| p.as_str()).unwrap_or("");
     let nth = args.get("nth").and_then(|n| n.as_u64()).map(|n| n as usize);
     let selector = args.get("selector").and_then(|s| s.as_str()).unwrap_or("");
+    // P1: `format:"json"` applies to eval too (it already applied to the
+    // extract alias) — the eval result contract is documented on handle_eval.
+    let eval_json = args.get("format").and_then(|f| f.as_str()) == Some("json");
 
     // Navigate first if url is given for a non-navigate action.
     // Previously url was silently ignored for fill/type/click etc.
@@ -268,13 +364,22 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
             }
         }
         "clear" => {
+            // R3: label addressing works wherever click/type/fill accept it -
+            // the asymmetry (label rejected here) forced an extra see call.
             let resolved = if !ref_id.is_empty() {
                 ref_id.to_string()
             } else if !selector.is_empty() {
                 resolve_selector_target(page, selector, nth).await?
+            } else if !label.is_empty() {
+                let rf = if !role_str.is_empty() {
+                    Some(role_str)
+                } else {
+                    None
+                };
+                resolve_text_target(page, label, rf, nth).await?
             } else {
                 return Err(BladeError::Other(
-                    "clear requires 'ref' or 'selector'".into(),
+                    "clear requires 'ref', 'label', or 'selector'".into(),
                 ));
             };
             Action::Clear { ref_id: resolved }
@@ -309,7 +414,26 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
                 option: opt.into(),
             }
         }
-        "press" => Action::Press { key: key.into() },
+        "press" => {
+            let target = if !ref_id.is_empty() {
+                Some(ref_id.to_string())
+            } else if !selector.is_empty() {
+                Some(resolve_selector_target(page, selector, nth).await?)
+            } else if !label.is_empty() {
+                Some(resolve_text_target(page, label, None, nth).await?)
+            } else {
+                None
+            };
+            if let Some(target) = target {
+                if crate::realbrowser::input_paused() {
+                    return Err(crate::realbrowser::paused_error());
+                }
+                page.ensure_ref(&target).await?;
+                page.activate().await?;
+                crate::action::focus(page.cdp_ref(), page.model(), &target).await?;
+            }
+            Action::Press { key: key.into() }
+        }
         "scroll" => Action::Scroll { dx, dy },
         "reload" => Action::Reload,
         "forward" => Action::Forward,
@@ -326,19 +450,38 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
             } else {
                 String::new()
             };
-            return handle_eval(page, js, &eval_ref).await;
+            return handle_eval(page, js, &eval_ref, eval_json).await;
         }
         "pdf" => {
             // V20: export the current page as a PDF artifact.
             return handle_pdf(page, args).await;
         }
         "download" => {
+            if args.get("body").and_then(Value::as_bool).unwrap_or(false) {
+                return super::files::handle_body_download(args).await;
+            }
             // V19: wait for the most recent download to complete.
             return handle_download(page, args).await;
         }
+        "paginate" => return super::paginate::handle_paginate(args, page).await,
         "collect" => {
             // V22: auto-extract + scroll + dedupe loop. Infinite-scroll collection.
             return handle_collect(page, args).await;
+        }
+        "extract" => {
+            // W1: `extract` is a see read, not an act mutation - accepted
+            // here as an alias because the docs promise every act action
+            // works in run/batch steps, and that is exactly where agents
+            // wrote {"action":"extract"} (it used to die as "unknown
+            // action", silently consuming an optional:true step). url= was
+            // honored by the generic pre-navigation above.
+            let mut see_args = args.clone();
+            if see_args.get("extract").is_none() {
+                if let Some(obj) = see_args.as_object_mut() {
+                    obj.insert("extract".into(), serde_json::json!("auto"));
+                }
+            }
+            return handle_see(&see_args, page).await;
         }
         "hover" => {
             let resolved = if !ref_id.is_empty() {
@@ -386,9 +529,17 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
                 ref_id.to_string()
             } else if !selector.is_empty() {
                 resolve_selector_target(page, selector, nth).await?
+            } else if !label.is_empty() {
+                let rf = if !role_str.is_empty() {
+                    Some(role_str)
+                } else {
+                    None
+                };
+                resolve_text_target(page, label, rf, nth).await?
             } else {
                 return Err(BladeError::Other(
-                    "read requires 'ref' (an element id like e5 from see) or 'selector'".into(),
+                    "read requires 'ref' (an element id like e5 from see), 'label', or 'selector'"
+                        .into(),
                 ));
             };
             // Self-heal: the ref may have died since the agent saw it.
@@ -411,18 +562,15 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
                 text_content
             ));
         }
+        "dialog" => return handle_dialog_expect(args, page),
         "fill" => return handle_fill(args, page).await,
         "wait" => {
-            let timeout_secs = args.get("timeout").and_then(|t| t.as_u64()).unwrap_or(10);
-            let match_text = args.get("text").and_then(|t| t.as_str()).unwrap_or("");
-            let condition = wait_condition(
-                args.get("condition").and_then(|c| c.as_str()).unwrap_or(""),
-                match_text,
-            );
+            let timeout = resolve_wait_timeout(args, 10)?;
+            let (condition, needle) = super::run::condition_from_args(args, "settle")?;
             Action::Wait {
                 condition,
-                text: match_text.into(),
-                timeout: std::time::Duration::from_secs(timeout_secs),
+                text: needle,
+                timeout,
             }
         }
         "back" => Action::Back,
@@ -453,29 +601,87 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
                     .get("action")
                     .and_then(|a| a.as_str())
                     .unwrap_or("unknown");
-                if step_action == "see" {
+                if step_action == "see" || step_action == "extract" {
                     let mut see_args = step.clone();
+                    if step_action == "extract" && see_args.get("extract").is_none() {
+                        if let Some(obj) = see_args.as_object_mut() {
+                            obj.insert("extract".into(), serde_json::json!("auto"));
+                        }
+                    }
                     if see_args.get("budget").is_none() {
                         if let Some(obj) = see_args.as_object_mut() {
                             obj.insert("budget".into(), serde_json::json!(3000));
                         }
                     }
-                    match Box::pin(handle_see(&see_args, page)).await {
+                    // url= navigates first - the documented contract for every
+                    // act action; see/extract steps used to ignore it silently.
+                    let step_url = step
+                        .get("url")
+                        .and_then(|u| u.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let out_res: Result<String> = if step_url.is_empty() {
+                        Box::pin(handle_see(&see_args, page)).await
+                    } else if crate::realbrowser::input_paused() {
+                        Err(crate::realbrowser::paused_error())
+                    } else {
+                        match page.navigate(&step_url).await {
+                            Ok(_) => {
+                                let _ = crate::page::wait_for_settle_with_network(
+                                    page.cdp_ref(),
+                                    std::time::Duration::from_millis(1200),
+                                    Some(page.in_flight_ref()),
+                                )
+                                .await;
+                                Box::pin(handle_see(&see_args, page)).await
+                            }
+                            Err(e) => Err(e),
+                        }
+                    };
+                    match out_res {
                         Ok(out) => {
                             ok_count += 1;
                             let chars = out.chars().count();
-                            reads.push(format!("=== see (step {}) ===\n{out}", i + 1));
-                            verdicts.push(format!("step{}[see]: {} chars", i + 1, chars));
+                            reads.push(format!("=== {step_action} (step {}) ===\n{out}", i + 1));
+                            verdicts.push(format!(
+                                "step{}[{}]: {} chars",
+                                i + 1,
+                                step_action,
+                                chars
+                            ));
                         }
                         Err(e) => {
+                            // optional:true continues past a failed read step
+                            // like it does for every other step.
+                            if step
+                                .get("optional")
+                                .and_then(|o| o.as_bool())
+                                .unwrap_or(false)
+                            {
+                                verdicts.push(format!(
+                                    "step{}[{}]: failed (optional): {}",
+                                    i + 1,
+                                    step_action,
+                                    e
+                                ));
+                                prev_url = page.model().url().to_string();
+                                continue;
+                            }
                             halted = Some(i + 1);
-                            verdicts.push(format!("step{}[see]: HALT: {e}", i + 1));
+                            verdicts.push(format!("step{}[{}]: HALT: {}", i + 1, step_action, e));
                             break;
                         }
                     }
+                    prev_url = page.model().url().to_string();
                     continue;
                 }
-                match Box::pin(handle_act(step, page)).await {
+                let mut nested = step.clone();
+                if args.get("slim").and_then(Value::as_bool).unwrap_or(false)
+                    && nested.get("slim").is_none()
+                {
+                    nested["slim"] = serde_json::json!(true);
+                }
+                match Box::pin(handle_act(&nested, page)).await {
                     Ok(verdict) => {
                         ok_count += 1;
                         let vline = verdict.lines().next().unwrap_or("ok").trim().to_string();
@@ -486,13 +692,18 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
                         if curr_url != prev_url {
                             // Settle-based (typically ~120ms) instead of a
                             // blind 200ms sleep — and content-aware.
-                            let _ = crate::page::wait_for_settle_with_network(
-                                page.cdp_ref(),
-                                std::time::Duration::from_millis(1200),
-                                Some(page.in_flight_ref()),
-                            )
-                            .await;
-                            let _ = page.recapture().await;
+                            // Explicit navigation already ran load, settle,
+                            // network drain, re-quiet and capture. Repeating
+                            // that here adds a quiet window to every page.
+                            if step_action != "navigate" {
+                                let _ = crate::page::wait_for_settle_with_network(
+                                    page.cdp_ref(),
+                                    std::time::Duration::from_millis(1200),
+                                    Some(page.in_flight_ref()),
+                                )
+                                .await;
+                                let _ = page.recapture().await;
+                            }
                             verdicts.push(format!(
                                 "step{}[{}]: {} (→ {})",
                                 i + 1,
@@ -528,7 +739,16 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
             }
             // Cumulative final delta — one render, all the changes.
             let final_delta = page.recapture().await?;
-            let view = page.delta_view(&final_delta, 8000);
+            let view = if args.get("slim").and_then(Value::as_bool).unwrap_or(false)
+                && halted.is_none()
+                || verdicts
+                    .iter()
+                    .any(|v| v.contains("--- current page state ---"))
+            {
+                String::new()
+            } else {
+                page.delta_view(&final_delta, 8000)
+            };
             let summary = if let Some(halt) = halted {
                 format!("batch stopped at step {halt} ({ok_count} ok)")
             } else {
@@ -569,6 +789,9 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
             // The agent gets enough to act AND read — skipping a separate
             // see call for most tasks. For dense pages use see mode=model
             // (more refs) or mode=content (full text).
+            if args.get("slim").and_then(Value::as_bool).unwrap_or(false) {
+                return Ok(verdict);
+            }
             let top = page.view(3000);
             if delta.navigated {
                 let content = page.content(1500).await.unwrap_or_default();
@@ -595,9 +818,9 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
             return handle_state(&state_args, page).await;
         }
         _ => {
-            return Err(crate::error::BladeError::Other(format!(
-                "unknown action: {action_str}"
-            )))
+            return Err(crate::error::BladeError::Other(
+                crate::action::unknown_action_message(action_str),
+            ))
         }
     };
 

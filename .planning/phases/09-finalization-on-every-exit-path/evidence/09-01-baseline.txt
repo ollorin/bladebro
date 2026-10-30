@@ -1,0 +1,10 @@
+09-01 baseline / gates (macOS arm64, 2026-10-23)
+Upstream check (git cat-file -e upstream/main:<path>):
+  src/cli/daemon.rs            upstream  (hooked)
+  src/record/encoder/process.rs fork-owned
+  src/record/hub.rs            fork-owned
+Baseline before this plan (from 09-CONTEXT.md): 720 pass / 0 fail / 12 ignored.
+After this plan (cargo test --release --no-fail-fast, summed over all binaries): 739 pass / 0 fail / 12 ignored.
+First full run: known flake concurrent_cold_starts_have_one_owner FAILED and leaked scratch daemon
+  (BLADE_HOME .../bladebro-daemon-race-93851, pid 93853); stopped via `BLADE_HOME=<dir> bladebro stop`.
+  Rerun: all green. (Baseline numbers were not re-measured on a pre-change tree.)

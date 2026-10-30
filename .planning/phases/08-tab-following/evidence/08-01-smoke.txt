@@ -1,0 +1,539 @@
+# NOTE: every FAIL line above the marker '# --- rerun after the new-tab debounce ---' is superseded: (a) the popup/mcp FAILs are the live finding (a link popup was in front ~0.6 s) that motivated the 1.5 s new-tab debounce; (b) 'cleanup: leftovers' FAILs listed the operator shell itself (its command line contained the word ffmpeg), not a process of ours (pgrep afterwards: clean). The runs below the marker are the final ones.
+# follow_live.sh 08-01  started 2026-10-22T14:08:18Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== daemon: CLI daemon, record-start, open-tab, switch-tab back, record-stop
+[daemon] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.i1hZJG1I4v/recordings/f-20261022T140820Z-527648.webm (tab 9C3C551D3D27E186A46C777DBF2CB2B3); first frame not awaited. record-stop saves it.
+[daemon] A=9C3C551D3D27E186A46C777DBF2CB2B3 B=D420628E8F3CF94AFC59F74629AD1C6A
+[daemon] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.i1hZJG1I4v/recordings/f-20261022T140820Z-527648.webm (bytes 43607, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab 9C3C551D3D27E186A46C777DBF2CB2B3, 2.3 s tab D420628E8F3CF94AFC59F74629AD1C6A, 4.6 s tab 9C3C551D3D27E186A46C777DBF2CB2B3])
+PASS [daemon] stop exits 0 and says recording saved
+PASS [daemon] segments are A, B, A (ids match state tabs)
+PASS [daemon] offsets strictly increasing
+[daemon] offsets: 0.0 2.3 4.6 
+PASS [daemon] one ffmpeg pid across the switch (64702  / 64702 )
+[daemon] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"6.500000"}}
+PASS [daemon] full decode exit=0 stderr_lines=0
+PASS [daemon] codec vp9 1280x720 (constant output size)
+PASS [daemon] decoded frames (65) == reported frames (65)
+[daemon] segment 0 colour at 1.15 s: red
+[daemon] segment 1 colour at 3.45 s: blue
+[daemon] segment 2 colour at 5.55 s: red
+PASS [daemon] colours red, blue, red
+PASS [daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:08:28Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:08:32Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== close: the recorded tab is closed (the agent was on it): rebind with a note, never a failure
+[close] close-tab: ✓ closed tab 9A7EE1684D1A620185B3C9E3E38B345C (was current; switched to DCDE52CBF47535DBE263EEC4CFE2B830)
+[close] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.1cA3MYFBFY/recordings/c-20261022T140833Z-590e48.webm (bytes 45720, duration 5.9 s, frames 59, dropped 0, segments [0.0 s tab DCDE52CBF47535DBE263EEC4CFE2B830, 1.7 s tab 9A7EE1684D1A620185B3C9E3E38B345C, 3.9 s tab DCDE52CBF47535DBE263EEC4CFE2B830]). Note: tab 9A7EE1684D1A620185B3C9E3E38B345C gone at 3.9 s; following tab DCDE52CBF47535DBE263EEC4CFE2B830
+PASS [close] stop exits 0 and says recording saved
+PASS [close] note says the recorded tab was gone
+PASS [close] last segment is the tab the agent landed on (DCDE52CBF47535DBE263EEC4CFE2B830)
+[close] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"5.900000"}}
+PASS [close] full decode exit=0 stderr_lines=0
+PASS [close] codec vp9 1280x720 (constant output size)
+PASS [close] decoded frames (59) == reported frames (59)
+PASS [close] colours blue then red around the close
+PASS [close] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:08:40Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:08:45Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== off: BLADE_RECORD unset: no follower, nothing created, CDP/HTTP trace identical to the pre-phase binary
+PASS [off] daemon nav/open-tab/switch-tab/tabs/close-tab all exit 0 (0 0 0 0 0)
+PASS [off] no recordings dir
+PASS [off] no ffmpeg process
+PASS [off-daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/follow-base/target/release/bladebro (bb9e7dd)
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 13
+[off] base run 1 HTTP /json lines: 10
+[off] base run 2 HTTP /json lines: 10
+[off] new distinct WS methods: 13
+[off] new run 1 HTTP /json lines: 10
+[off] new run 2 HTTP /json lines: 10
+PASS [off] traces are non-empty
+PASS [off] distinct WS method sets identical (base vs new)
+PASS [off] no screencast method in new
+[off] HTTP GET /json* max per run: base=10 new=10
+PASS [off] HTTP /json* count identical (base vs new)
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:10:09Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:10:14Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== popup: link popup is not a segment; a window.open popup is read as the new front tab
+[popup] click link: outcome: new tab opened — C (tab 61349EB0B0E9EA4A7C0571DFEF0AF471)
+[popup] stop 1: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.qjKv05tZFB/recordings/p1-20261022T141016Z-6f9358.webm (bytes 60218, duration 3.1 s, frames 31, dropped 0, segments [0.0 s tab 83FD4ED61E535AA9C04F1FF8F9D9B389, 0.5 s tab 61349EB0B0E9EA4A7C0571DFEF0AF471, 1.1 s tab 83FD4ED61E535AA9C04F1FF8F9D9B389], captured 10)
+FAIL [popup] link popup: exactly one segment, the opener
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"3.100000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (31) == reported frames (31)
+FAIL [popup] opener-only video is yellow
+[popup] click window: outcome: new tab opened — C (tab 6AC15FFC018C7FD00D60517B7B2CEB71)
+[popup] popup tab: 6AC15FFC018C7FD00D60517B7B2CEB71
+[popup] stop 2: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.qjKv05tZFB/recordings/p2-20261022T141019Z-38f001.webm (bytes 40083, duration 4.5 s, frames 45, dropped 0, segments [0.0 s tab 83FD4ED61E535AA9C04F1FF8F9D9B389, 0.5 s tab 6AC15FFC018C7FD00D60517B7B2CEB71])
+PASS [popup] window popup: >= 2 segments (2), first the opener, last the popup
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"4.500000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (45) == reported frames (45)
+PASS [popup] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:10:25Z failures=2
+# follow_live.sh 08-01  started 2026-10-22T14:10:26Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== xorigin: cross-site navigation of the recorded tab (127.0.0.1 -> localhost)
+[xorigin] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.G0BTcZSGrj/recordings/x-20261022T141027Z-2e1830.webm (bytes 35288, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab 5A6A0E77ED7954658AEF632AFE6E79D2])
+[xorigin] clean result; blue frame near the end: 1; segments: 5A6A0E77ED7954658AEF632AFE6E79D2 
+PASS [xorigin] a clean result has blue frames after the navigation
+[xorigin] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"4.900000"}}
+PASS [xorigin] full decode exit=0 stderr_lines=0
+PASS [xorigin] codec vp9 1280x720 (constant output size)
+PASS [xorigin] decoded frames (49) == reported frames (49)
+PASS [xorigin] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:10:33Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:10:34Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== mcp: tests/record_follow.rs live tests (MCP stdio, headless)
+[mcp] running 3 tests
+[mcp] test follow_close_recorded ... RESULT follow close stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fcl-70803/recordings/c-20261022T141036Z-69a420.webm (bytes 46453, duration 5.9 s, frames 59, dropped 0, segments [0.0 s tab C05D5548F7B7A54367AA98AC33C2B076, 1.7 s tab 0042EF015D2D7264F33D4E7CD5BC4484, 3.9 s tab C05D5548F7B7A54367AA98AC33C2B076], captured 58). Note: tab 0042EF015D2D7264F33D4E7CD5BC4484 gone at 3.9 s; following tab C05D5548F7B7A54367AA98AC33C2B076
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_popup ... RESULT popup link stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-70803/recordings/p1-20261022T141043Z-f97038.webm (bytes 57344, duration 3.4 s, frames 34, dropped 0, segments [0.0 s tab 297DE81E31E664ADC0E141065D50FBE6, 0.7 s tab 3B727875562D38AF238E3386EBA9B136, 1.5 s tab 297DE81E31E664ADC0E141065D50FBE6], captured 12)
+[mcp] test follow_switch_open ... RESULT follow stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fsw-70803/recordings/f-20261022T141048Z-5daa20.webm (bytes 44655, duration 6.4 s, frames 64, dropped 0, segments [0.0 s tab 3775437058AA04E9DBBD52C72C01F61D, 2.1 s tab 868F4257D6776006F801009EF15A7131, 4.4 s tab 3775437058AA04E9DBBD52C72C01F61D])
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT follow colors: [Red, Blue, Red]
+[mcp] test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.16s
+FAIL [mcp] three live follow tests pass (exit=101)
+PASS [mcp] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:10:56Z failures=1
+
+# --- rerun after the new-tab debounce ---
+# follow_live.sh 08-01  started 2026-10-22T14:13:36Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== daemon: CLI daemon, record-start, open-tab, switch-tab back, record-stop
+[daemon] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.IZvwa3lzef/recordings/f-20261022T141338Z-08d610.webm (tab F2494B2AC4BBC8B1AE206BC4518B887F); first frame not awaited. record-stop saves it.
+[daemon] A=F2494B2AC4BBC8B1AE206BC4518B887F B=746ABFA65F00993E244FBB1095DF4921
+[daemon] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.IZvwa3lzef/recordings/f-20261022T141338Z-08d610.webm (bytes 30013, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab F2494B2AC4BBC8B1AE206BC4518B887F, 3.9 s tab 746ABFA65F00993E244FBB1095DF4921, 6.2 s tab F2494B2AC4BBC8B1AE206BC4518B887F], captured 63)
+PASS [daemon] stop exits 0 and says recording saved
+PASS [daemon] segments are A, B, A (ids match state tabs)
+PASS [daemon] offsets strictly increasing
+[daemon] offsets: 0.0 3.9 6.2 
+PASS [daemon] one ffmpeg pid across the switch (72365  / 72365 )
+[daemon] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.000000"}}
+PASS [daemon] full decode exit=0 stderr_lines=0
+PASS [daemon] codec vp9 1280x720 (constant output size)
+PASS [daemon] decoded frames (80) == reported frames (80)
+[daemon] segment 0 colour at 1.95 s: red
+[daemon] segment 1 colour at 5.05 s: blue
+[daemon] segment 2 colour at 7.1 s: red
+PASS [daemon] colours red, blue, red
+FAIL [daemon] cleanup: leftovers:
+72294 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792670506033-x97669.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'export PATH="$HOME/.cargo/bin:$PATH" && python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_follow.rs'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    sleep(2.0);'"'"''"'"''"'"','"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"','"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"')
+open(p,'"'"'w'"'"').write(s)
+p='"'"'tools/record_sidecar/scenarios/follow_live.sh'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 2; pid2'"'"''"'"''"'"','"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 3.5; pid2'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 2
+  "$BB" state close-tab'"'"''"'"''"'"','"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5   # a brand-new tab is followed once it stayed in front ~1.5 s
+  "$BB" state close-tab'"'"''"'"''"'"')
+s=s.replace("sleep 1.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 1.2","sleep 2.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 0.6")
+s=s.replace("(open/close b every ~2.4 s)","(open b, close after 2.2 s, every ~2.8 s)")
+open(p,'"'"'w'"'"').write(s)
+EOF
+grep -n "sleep 3.5" tests/record_follow.rs tools/record_sidecar/scenarios/follow_live.sh; cargo fmt; cargo build --release 2>&1 | tail -1; EV=.planning/phases/08-tab-following/evidence/08-01-smoke.txt; python3 - <<'"'"'EOF'"'"'
+# keep the earlier smoke evidence of the pre-debounce build, mark it
+p='"'"'.planning/phases/08-tab-following/evidence/08-01-smoke.txt'"'"'
+s=open(p).read()
+open(p,'"'"'w'"'"').write("# NOTE: runs below up to the line '"'"'# --- rerun after the new-tab debounce ---'"'"' were made BEFORE the 1.5 s new-tab debounce (commit after 471781d); the popup FAIL lines there are the live finding that motivated it.\n"+s+"\n# --- rerun after the new-tab debounce ---\n")
+EOF
+FAIL [final] leftovers:
+72294 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792670506033-x97669.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'export PATH="$HOME/.cargo/bin:$PATH" && python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_follow.rs'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    sleep(2.0);'"'"''"'"''"'"','"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"','"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"')
+open(p,'"'"'w'"'"').write(s)
+p='"'"'tools/record_sidecar/scenarios/follow_live.sh'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 2; pid2'"'"''"'"''"'"','"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 3.5; pid2'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 2
+  "$BB" state close-tab'"'"''"'"''"'"','"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5   # a brand-new tab is followed once it stayed in front ~1.5 s
+  "$BB" state close-tab'"'"''"'"''"'"')
+s=s.replace("sleep 1.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 1.2","sleep 2.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 0.6")
+s=s.replace("(open/close b every ~2.4 s)","(open b, close after 2.2 s, every ~2.8 s)")
+open(p,'"'"'w'"'"').write(s)
+EOF
+grep -n "sleep 3.5" tests/record_follow.rs tools/record_sidecar/scenarios/follow_live.sh; cargo fmt; cargo build --release 2>&1 | tail -1; EV=.planning/phases/08-tab-following/evidence/08-01-smoke.txt; python3 - <<'"'"'EOF'"'"'
+# keep the earlier smoke evidence of the pre-debounce build, mark it
+p='"'"'.planning/phases/08-tab-following/evidence/08-01-smoke.txt'"'"'
+s=open(p).read()
+open(p,'"'"'w'"'"').write("# NOTE: runs below up to the line '"'"'# --- rerun after the new-tab debounce ---'"'"' were made BEFORE the 1.5 s new-tab debounce (commit after 471781d); the popup FAIL lines there are the live finding that motivated it.\n"+s+"\n# --- rerun after the new-tab debounce ---\n")
+EOF
+# finished 2026-10-22T14:13:59Z failures=2
+# follow_live.sh 08-01  started 2026-10-22T14:13:59Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== close: the recorded tab is closed (the agent was on it): rebind with a note, never a failure
+[close] close-tab: ✓ closed tab 3AA126A8ED49E7DC5153A25E2D603696 (was current; switched to B59C7752FE3A713CC132EF0FCA9A07F1)
+[close] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.XbTYdioXOA/recordings/c-20261022T141401Z-e248c8.webm (bytes 27994, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab B59C7752FE3A713CC132EF0FCA9A07F1, 3.3 s tab 3AA126A8ED49E7DC5153A25E2D603696, 5.3 s tab B59C7752FE3A713CC132EF0FCA9A07F1], captured 59). Note: tab 3AA126A8ED49E7DC5153A25E2D603696 gone at 5.3 s; following tab B59C7752FE3A713CC132EF0FCA9A07F1
+PASS [close] stop exits 0 and says recording saved
+PASS [close] note says the recorded tab was gone
+PASS [close] last segment is the tab the agent landed on (B59C7752FE3A713CC132EF0FCA9A07F1)
+[close] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.400000"}}
+PASS [close] full decode exit=0 stderr_lines=0
+PASS [close] codec vp9 1280x720 (constant output size)
+PASS [close] decoded frames (74) == reported frames (74)
+PASS [close] colours blue then red around the close
+FAIL [close] cleanup: leftovers:
+72751 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792670506033-x97669.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'export PATH="$HOME/.cargo/bin:$PATH" && python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_follow.rs'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    sleep(2.0);'"'"''"'"''"'"','"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"','"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"')
+open(p,'"'"'w'"'"').write(s)
+p='"'"'tools/record_sidecar/scenarios/follow_live.sh'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 2; pid2'"'"''"'"''"'"','"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 3.5; pid2'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 2
+  "$BB" state close-tab'"'"''"'"''"'"','"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5   # a brand-new tab is followed once it stayed in front ~1.5 s
+  "$BB" state close-tab'"'"''"'"''"'"')
+s=s.replace("sleep 1.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 1.2","sleep 2.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 0.6")
+s=s.replace("(open/close b every ~2.4 s)","(open b, close after 2.2 s, every ~2.8 s)")
+open(p,'"'"'w'"'"').write(s)
+EOF
+grep -n "sleep 3.5" tests/record_follow.rs tools/record_sidecar/scenarios/follow_live.sh; cargo fmt; cargo build --release 2>&1 | tail -1; EV=.planning/phases/08-tab-following/evidence/08-01-smoke.txt; python3 - <<'"'"'EOF'"'"'
+# keep the earlier smoke evidence of the pre-debounce build, mark it
+p='"'"'.planning/phases/08-tab-following/evidence/08-01-smoke.txt'"'"'
+s=open(p).read()
+open(p,'"'"'w'"'"').write("# NOTE: runs below up to the line '"'"'# --- rerun after the new-tab debounce ---'"'"' were made BEFORE the 1.5 s new-tab debounce (commit after 471781d); the popup FAIL lines there are the live finding that motivated it.\n"+s+"\n# --- rerun after the new-tab debounce ---\n")
+EOF
+FAIL [final] leftovers:
+72751 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792670506033-x97669.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'export PATH="$HOME/.cargo/bin:$PATH" && python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_follow.rs'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    sleep(2.0);'"'"''"'"''"'"','"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"','"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"')
+open(p,'"'"'w'"'"').write(s)
+p='"'"'tools/record_sidecar/scenarios/follow_live.sh'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 2; pid2'"'"''"'"''"'"','"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 3.5; pid2'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 2
+  "$BB" state close-tab'"'"''"'"''"'"','"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5   # a brand-new tab is followed once it stayed in front ~1.5 s
+  "$BB" state close-tab'"'"''"'"''"'"')
+s=s.replace("sleep 1.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 1.2","sleep 2.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 0.6")
+s=s.replace("(open/close b every ~2.4 s)","(open b, close after 2.2 s, every ~2.8 s)")
+open(p,'"'"'w'"'"').write(s)
+EOF
+grep -n "sleep 3.5" tests/record_follow.rs tools/record_sidecar/scenarios/follow_live.sh; cargo fmt; cargo build --release 2>&1 | tail -1; EV=.planning/phases/08-tab-following/evidence/08-01-smoke.txt; python3 - <<'"'"'EOF'"'"'
+# keep the earlier smoke evidence of the pre-debounce build, mark it
+p='"'"'.planning/phases/08-tab-following/evidence/08-01-smoke.txt'"'"'
+s=open(p).read()
+open(p,'"'"'w'"'"').write("# NOTE: runs below up to the line '"'"'# --- rerun after the new-tab debounce ---'"'"' were made BEFORE the 1.5 s new-tab debounce (commit after 471781d); the popup FAIL lines there are the live finding that motivated it.\n"+s+"\n# --- rerun after the new-tab debounce ---\n")
+EOF
+# finished 2026-10-22T14:14:20Z failures=2
+# follow_live.sh 08-01  started 2026-10-22T14:14:21Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== popup: link popup is not a segment; a window.open popup is read as the new front tab
+[popup] click link: outcome: new tab opened — C (tab F34DF2C8113F3230AB97C11EFAC63121)
+[popup] stop 1: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WnwphCHlsi/recordings/p1-20261022T141422Z-b84080.webm (bytes 13968, duration 3.5 s, frames 35, dropped 0, segments [0.0 s tab 621B7895019A7813848DE857799D4CD9], captured 3)
+PASS [popup] link popup: exactly one segment, the opener
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"3.500000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (35) == reported frames (35)
+PASS [popup] opener-only video is yellow
+[popup] click window: outcome: new tab opened — C (tab 0D44BF8900B7846A67EC73BD05E94BDE)
+[popup] popup tab: 0D44BF8900B7846A67EC73BD05E94BDE
+[popup] stop 2: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.WnwphCHlsi/recordings/p2-20261022T141426Z-df6d81.webm (bytes 37569, duration 4.5 s, frames 45, dropped 0, segments [0.0 s tab 621B7895019A7813848DE857799D4CD9, 2.0 s tab 0D44BF8900B7846A67EC73BD05E94BDE], captured 29)
+PASS [popup] window popup: >= 2 segments (2), first the opener, last the popup
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"4.500000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (45) == reported frames (45)
+FAIL [popup] cleanup: leftovers:
+73079 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792670506033-x97669.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'export PATH="$HOME/.cargo/bin:$PATH" && python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_follow.rs'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    sleep(2.0);'"'"''"'"''"'"','"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"','"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"')
+open(p,'"'"'w'"'"').write(s)
+p='"'"'tools/record_sidecar/scenarios/follow_live.sh'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 2; pid2'"'"''"'"''"'"','"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 3.5; pid2'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 2
+  "$BB" state close-tab'"'"''"'"''"'"','"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5   # a brand-new tab is followed once it stayed in front ~1.5 s
+  "$BB" state close-tab'"'"''"'"''"'"')
+s=s.replace("sleep 1.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 1.2","sleep 2.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 0.6")
+s=s.replace("(open/close b every ~2.4 s)","(open b, close after 2.2 s, every ~2.8 s)")
+open(p,'"'"'w'"'"').write(s)
+EOF
+grep -n "sleep 3.5" tests/record_follow.rs tools/record_sidecar/scenarios/follow_live.sh; cargo fmt; cargo build --release 2>&1 | tail -1; EV=.planning/phases/08-tab-following/evidence/08-01-smoke.txt; python3 - <<'"'"'EOF'"'"'
+# keep the earlier smoke evidence of the pre-debounce build, mark it
+p='"'"'.planning/phases/08-tab-following/evidence/08-01-smoke.txt'"'"'
+s=open(p).read()
+open(p,'"'"'w'"'"').write("# NOTE: runs below up to the line '"'"'# --- rerun after the new-tab debounce ---'"'"' were made BEFORE the 1.5 s new-tab debounce (commit after 471781d); the popup FAIL lines there are the live finding that motivated it.\n"+s+"\n# --- rerun after the new-tab debounce ---\n")
+EOF
+FAIL [final] leftovers:
+73079 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792670506033-x97669.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'export PATH="$HOME/.cargo/bin:$PATH" && python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_follow.rs'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    sleep(2.0);'"'"''"'"''"'"','"'"''"'"''"'"'    assert_eq!(current_id(&mut mcp), b);
+    // A brand-new tab is followed once it has stayed in front for ~1.5 s.
+    sleep(3.5);'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(2.0);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"','"'"''"'"''"'"'    let b = opened_id(&t);
+    sleep(3.5);
+    let (e, t) = mcp.state(json!({"op":"close-tab"'"'"''"'"''"'"')
+open(p,'"'"'w'"'"').write(s)
+p='"'"'tools/record_sidecar/scenarios/follow_live.sh'"'"'
+s=open(p).read()
+s=s.replace('"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 2; pid2'"'"''"'"''"'"','"'"''"'"''"'"'  say "[daemon] A=$A B=$B"
+  sleep 3.5; pid2'"'"''"'"''"'"')
+s=s.replace('"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 2
+  "$BB" state close-tab'"'"''"'"''"'"','"'"''"'"''"'"'  o=$("$BB" state open-tab "$FIX/b.html" 2>&1); B=$(opened_id "$o")
+  sleep 3.5   # a brand-new tab is followed once it stayed in front ~1.5 s
+  "$BB" state close-tab'"'"''"'"''"'"')
+s=s.replace("sleep 1.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 1.2","sleep 2.2; \"$BB\" state close-tab \"$id\" >/dev/null 2>&1; sleep 0.6")
+s=s.replace("(open/close b every ~2.4 s)","(open b, close after 2.2 s, every ~2.8 s)")
+open(p,'"'"'w'"'"').write(s)
+EOF
+grep -n "sleep 3.5" tests/record_follow.rs tools/record_sidecar/scenarios/follow_live.sh; cargo fmt; cargo build --release 2>&1 | tail -1; EV=.planning/phases/08-tab-following/evidence/08-01-smoke.txt; python3 - <<'"'"'EOF'"'"'
+# keep the earlier smoke evidence of the pre-debounce build, mark it
+p='"'"'.planning/phases/08-tab-following/evidence/08-01-smoke.txt'"'"'
+s=open(p).read()
+open(p,'"'"'w'"'"').write("# NOTE: runs below up to the line '"'"'# --- rerun after the new-tab debounce ---'"'"' were made BEFORE the 1.5 s new-tab debounce (commit after 471781d); the popup FAIL lines there are the live finding that motivated it.\n"+s+"\n# --- rerun after the new-tab debounce ---\n")
+EOF
+# finished 2026-10-22T14:14:43Z failures=2
+# follow_live.sh 08-01  started 2026-10-22T14:14:55Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== daemon: CLI daemon, record-start, open-tab, switch-tab back, record-stop
+[daemon] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3Brka1Eyvh/recordings/f-20261022T141459Z-2da768.webm (tab EA09FCB1226CCE0882EC826450DD5B26); first frame not awaited. record-stop saves it.
+[daemon] A=EA09FCB1226CCE0882EC826450DD5B26 B=314D50D360944D54DB042AEF74EB303B
+[daemon] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3Brka1Eyvh/recordings/f-20261022T141459Z-2da768.webm (bytes 30073, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab EA09FCB1226CCE0882EC826450DD5B26, 3.9 s tab 314D50D360944D54DB042AEF74EB303B, 6.0 s tab EA09FCB1226CCE0882EC826450DD5B26], captured 64)
+PASS [daemon] stop exits 0 and says recording saved
+PASS [daemon] segments are A, B, A (ids match state tabs)
+PASS [daemon] offsets strictly increasing
+[daemon] offsets: 0.0 3.9 6.0 
+PASS [daemon] one ffmpeg pid across the switch (73553  / 73553 )
+[daemon] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.000000"}}
+PASS [daemon] full decode exit=0 stderr_lines=0
+PASS [daemon] codec vp9 1280x720 (constant output size)
+PASS [daemon] decoded frames (80) == reported frames (80)
+[daemon] segment 0 colour at 1.95 s: red
+[daemon] segment 1 colour at 4.95 s: blue
+[daemon] segment 2 colour at 7.0 s: red
+PASS [daemon] colours red, blue, red
+PASS [daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:15:09Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:15:10Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== close: the recorded tab is closed (the agent was on it): rebind with a note, never a failure
+[close] close-tab: ✓ closed tab 7C4C51BB31043EE73E747642A877F17B (was current; switched to 0955D888380BE345DFDD5081441DC09F)
+[close] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.nkOIWgfbdp/recordings/c-20261022T141511Z-20b780.webm (bytes 28812, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab 0955D888380BE345DFDD5081441DC09F, 3.3 s tab 7C4C51BB31043EE73E747642A877F17B, 5.5 s tab 0955D888380BE345DFDD5081441DC09F], captured 57). Note: tab 7C4C51BB31043EE73E747642A877F17B gone at 5.5 s; following tab 0955D888380BE345DFDD5081441DC09F
+PASS [close] stop exits 0 and says recording saved
+PASS [close] note says the recorded tab was gone
+PASS [close] last segment is the tab the agent landed on (0955D888380BE345DFDD5081441DC09F)
+[close] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.400000"}}
+PASS [close] full decode exit=0 stderr_lines=0
+PASS [close] codec vp9 1280x720 (constant output size)
+PASS [close] decoded frames (74) == reported frames (74)
+PASS [close] colours blue then red around the close
+PASS [close] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:15:20Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:15:20Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== popup: link popup is not a segment; a window.open popup is read as the new front tab
+[popup] click link: outcome: new tab opened — C (tab C00017FB4C0FA6ABF809268686486521)
+[popup] stop 1: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.NWRL0eDYLa/recordings/p1-20261022T141522Z-f83068.webm (bytes 13861, duration 3.1 s, frames 31, dropped 0, segments [0.0 s tab 5E878324F97C9664FA7950F5CB99B132], captured 3)
+PASS [popup] link popup: exactly one segment, the opener
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"3.100000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (31) == reported frames (31)
+PASS [popup] opener-only video is yellow
+[popup] click window: outcome: new tab opened — C (tab 60FA4365CD07E65F90CABBCE719ABCE1)
+[popup] popup tab: 60FA4365CD07E65F90CABBCE719ABCE1
+[popup] stop 2: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.NWRL0eDYLa/recordings/p2-20261022T141525Z-0c4471.webm (bytes 38114, duration 4.5 s, frames 45, dropped 0, segments [0.0 s tab 5E878324F97C9664FA7950F5CB99B132, 2.1 s tab 60FA4365CD07E65F90CABBCE719ABCE1], captured 29)
+PASS [popup] window popup: >= 2 segments (2), first the opener, last the popup
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"4.500000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (45) == reported frames (45)
+PASS [popup] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:15:31Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:15:32Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== off: BLADE_RECORD unset: no follower, nothing created, CDP/HTTP trace identical to the pre-phase binary
+PASS [off] daemon nav/open-tab/switch-tab/tabs/close-tab all exit 0 (0 0 0 0 0)
+PASS [off] no recordings dir
+PASS [off] no ffmpeg process
+PASS [off-daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/follow-base/target/release/bladebro (bb9e7dd)
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 13
+[off] base run 1 HTTP /json lines: 10
+[off] base run 2 HTTP /json lines: 10
+[off] new distinct WS methods: 13
+[off] new run 1 HTTP /json lines: 10
+[off] new run 2 HTTP /json lines: 10
+PASS [off] traces are non-empty
+PASS [off] distinct WS method sets identical (base vs new)
+PASS [off] no screencast method in new
+[off] HTTP GET /json* max per run: base=10 new=10
+PASS [off] HTTP /json* count identical (base vs new)
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:16:23Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:16:24Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== xorigin: cross-site navigation of the recorded tab (127.0.0.1 -> localhost)
+[xorigin] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.Hqof7Obyjc/recordings/x-20261022T141625Z-3f0e90.webm (bytes 35318, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab A84C89F9D3E2E56C3776F443A0F2477C])
+[xorigin] clean result; blue frame near the end: 1; segments: A84C89F9D3E2E56C3776F443A0F2477C 
+PASS [xorigin] a clean result has blue frames after the navigation
+[xorigin] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"4.900000"}}
+PASS [xorigin] full decode exit=0 stderr_lines=0
+PASS [xorigin] codec vp9 1280x720 (constant output size)
+PASS [xorigin] decoded frames (49) == reported frames (49)
+PASS [xorigin] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:16:32Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:16:37Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== mcp: tests/record_follow.rs live tests (MCP stdio, headless)
+[mcp] running 3 tests
+[mcp] test follow_close_recorded ... RESULT follow close stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fcl-76439/recordings/c-20261022T141641Z-e134a0.webm (bytes 28477, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab 153118393496AC8474094605C1A3E76B, 3.3 s tab 9CDDE7D86D885CCF78F3E89B6ED8956A, 5.3 s tab 153118393496AC8474094605C1A3E76B], captured 58). Note: tab 9CDDE7D86D885CCF78F3E89B6ED8956A gone at 5.3 s; following tab 153118393496AC8474094605C1A3E76B
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_popup ... RESULT popup link stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-76439/recordings/p1-20261022T141651Z-0c95a0.webm (bytes 14170, duration 4.1 s, frames 41, dropped 0, segments [0.0 s tab 3FC4FFD84E959FEA43C38FF6449C355D], captured 3)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT popup window stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-76439/recordings/p2-20261022T141655Z-539429.webm (bytes 37801, duration 4.4 s, frames 44, dropped 0, segments [0.0 s tab 3FC4FFD84E959FEA43C38FF6449C355D, 2.1 s tab 22265D08E697119E95EE32E554A34986], captured 28)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_switch_open ... RESULT follow stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fsw-76439/recordings/f-20261022T141701Z-67c258.webm (bytes 29604, duration 7.9 s, frames 79, dropped 0, segments [0.0 s tab E00AF714DE47BA8F022BACC20B8658CA, 3.7 s tab 22FFA5A859EAD93F1041EFF416FF72A5, 6.0 s tab E00AF714DE47BA8F022BACC20B8658CA], captured 62)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT follow colors: [Red, Blue, Red]
+[mcp] test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.80s
+PASS [mcp] three live follow tests pass (exit=0)
+PASS [mcp] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:17:10Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:17:11Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== audit: bladebro audit (bar: 100/100, the Phase 7 macOS baseline)
+[audit]   Bladebro Stealth Vector Suite SCORE: 100/100 pass PASS webdriver: false PASS ua-no-headless: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chr PASS ua-platform-coherent: ua=false platform=MacIntel INFO platform: MacIntel PASS plugins: 5 PASS mimeTypes: 2 PASS chrome-obj: object PASS no-cdc: 0 cdc props PASS outer-inner-width: diff=16 PASS outer-inner-height: diff=87 PASS screen-size: 1920x1080 PASS avail-less-than-screen: avail=1920x1080 INFO dpr: 1 PASS languages: en-US,en PASS hardwareConcurrency: 12 PASS deviceMemory: 16 PASS webgl: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS webgl2: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS webgl-not-swiftshader: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS perm-notifications: query=prompt perm=default PASS native-behavior.query.missing: native timing/shape PASS native-behavior.query.missing.microtask: native timing/shape PASS native-behavior.getUserMedia.missing: native timing/shape PASS native-behavior.getUserMedia.missing.microtask: native timing/shape PASS native-behavior.query.empty: native timing/shape PASS native-behavior.query.empty.microtask: native timing/shape PASS native-behavior.getUserMedia.empty: native timing/shape PASS native-behavior.getUserMedia.empty.microtask: native timing/shape PASS native-behavior.query.null: native timing/shape PASS native-behavior.query.null.microtask: native timing/shape PASS native-behavior.getUserMedia.null: native timing/shape PASS native-behavior.getUserMedia.null.microtask: native timing/shape PASS native-behavior.query.undefined: native timing/shape PASS native-behavior.query.undefined.microtask: native timing/shape PASS native-behavior.getUserMedia.undefined: native timing/shape PASS native-behavior.getUserMedia.undefined.microtask: native timing/shape PASS native-behavior.query.number: native timing/shape PASS native-behavior.query.number.microtask: native timing/shape PASS native-behavior.getUserMedia.number: native timing/shape PASS native-behavior.getUserMedia.number.microtask: native timing/shape PASS native-behavior.query.string: native timing/shape PASS native-behavior.query.string.microtask: native timing/shape PASS native-behavior.getUserMedia.string: native timing/shape PASS native-behavior.getUserMedia.string.microtask: native timing/shape PASS native-behavior.query.receiver: native timing/shape PASS native-behavior.query.receiver.microtask: native timing/shape PASS native-behavior.getUserMedia.receiver: native timing/shape PASS native-behavior.getUserMedia.receiver.microtask: native timing/shape PASS native-behavior.enumerateDevices.receiver: native timing/shape PASS native-behavior.enumerateDevices.receiver.microtask: native timing/shape PASS native-behavior.getSupportedConstraints.receiver: native timing/shape PASS native-behavior.getDisplayMedia.receiver: native timing/shape PASS native-behavior.getDisplayMedia.receiver.microtask: native timing/shape PASS native-behavior.control.querySelector: native timing/shape PASS native-behavior.control.matchMedia: native timing/shape PASS native-behavior.control.sendBeacon: native timing/shape PASS native-behavior.control.geolocation: native timing/shape PASS native-behavior.control.setItem: native timing/shape PASS native-behavior.control.createElement: native timing/shape PASS native-behavior.getter.geolocation: native timing/shape PASS native-behavior.proxy.geolocation: native timing/shape PASS native-behavior.statusOwn.geolocation: native timing/shape PASS native-behavior.getter.notifications: native timing/shape PASS native-behavior.proxy.notifications: native timing/shape PASS native-behavior.statusOwn.notifications: native timing/shape PASS native-behavior.getterThrows: native timing/shape PASS native-behavior.permissionState.receiver: native timing/shape PASS native-behavior.stateShape: native timing/shape PASS tostring-permissions-query: function query() { [native code] } PASS tostring-Worker: function Worker() { [native code] } PASS tostring-toDataURL: function toDataURL() { [native code] } PASS tostring-gl2-getParameter: checked PASS shell-torture: 12 functions native-shaped PASS console-trap: clean PASS mediadevices: 3 devices [audioinput,audiooutput,videoinput] INFO voices: 0 voices PASS storage-quota: 10240 MB quota PASS canvas-stable: 53eb351b vs 53eb351b PASS audio-stable: 195.413978 vs 195.413978 PASS connection-api: 4g rtt=100 downlink=1.6 PASS uad-platform: macOS expected=macOS brands=Chromium/154,Google Chrome/154,Not A(Brand/99 PASS uad-mobile-false: false INFO bg-color: rgba(0, 0, 0, 0) PASS worker-ua: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like INFO worker-gl: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS webrtc-exists: function INFO webrtc-ice: 70880760dbdc.local,165.85.15.241 PASS error-stack-clean: 2 frames clean PASS perm-zero-arg-msg: Failed to execute 'query' on 'Permissions': 1 argument required, but only 0 present. PASS perm-nonobject-msg: Failed to execute 'query' on 'Permissions': parameter 1 is not of type 'object'. PASS perm-receiver: Failed to execute 'query' on 'Permissions': Illegal invocation PASS perm-proto-owned: prototype-owned PASS perm-descriptor: w:true e:true c:true PASS perm-status-shape: own=[] PASS gl-never-null: webgl=true webgl2=true PASS gl-renderer-not-software: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS gl-ext-fresh-array: fresh=true PASS gl-max-combined: 32 INFO gl-mask-checks: generic profile shape (ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecifie) — capture-specific checks skipped PASS gl2-max-samples: 4 PASS worker-gl-renderer-match: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS worker-tostring-mask: true PASS iframe-gl-renderer-match: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version) PASS outerwidth-plausible: diff=16 PASS inner-within-screen: 1880x923 in 1920x1080 PASS uad-full-version-coherent: ua=154 hv=154 PASS webgpu-api-shape: gpu=true
+[audit] 
+[audit]   Self-check:
+[audit]     navigator.webdriver: OK (false)
+[audit]     window.cdc_:         OK (undefined)
+[audit]     navigator.plugins:   OK (5 plugins)
+[audit]     toString integrity:  OK (native)
+[audit] 
+[audit]   Consistency (vs previous audit run):
+[audit]     first run — baseline recorded
+[audit] ====================================================
+[audit]   VERDICT: PASS
+[audit] exit=0
+PASS [audit] 100/100 vectors
+PASS [audit] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-22T14:17:26Z failures=0
+# follow_live.sh 08-01  started 2026-10-22T14:17:26Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (471781d-dirty))  chrome: bladebro 4.6.5
+# git: 471781d
+== perf (informational): lane_matrix daemon 3 rounds while nothing records; daemon CPU single-tab vs following
+[perf:lane_matrix] bladebro under test: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro
+[perf:lane_matrix] == daemon lane
+[perf:lane_matrix]   #1: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [0.9s]
+[perf:lane_matrix]   #2: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.1s]
+[perf:lane_matrix]   #3: gl-hw(ANGLE (Apple, ANGLE Metal ) workarea decorations webdriver [1.2s]
+[perf] lane_matrix daemon exit=0 (informational)
+PASS [perf-lane] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[perf] single-tab recording: daemon CPU mean over 10 s = 0.8 %
+[perf] following recording (open b, close after 2.2 s, every ~2.8 s): daemon CPU mean over 10 s = 0.6 %

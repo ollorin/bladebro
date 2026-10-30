@@ -1,0 +1,78 @@
+# opus verifier cargo run 2026-10-23T01:18:31Z git c641e43 (machine load avg ~75-137 during run)
+## cargo fmt --check / clippy / cargo test --release --no-fail-fast
+== fmt
+fmt exit 0
+== clippy
+clippy exit 
+== test
+     Running unittests src/lib.rs (target/release/deps/bladebro-7851312bc6366929)
+test record::encoder::lifecycle_tests::early_exit_reports_stopped_reading_or_failure ... ok
+test record::encoder::lifecycle_tests::non_zero_exit_reports_stderr ... ok
+test record::encoder::matrix_tests::d_exits_without_reading ... ok
+test record::ffmpeg::probe::tests::unix::nonzero_exit_is_reported ... ok
+test record::hub::machine_tests::i_encoder_exit_failure_is_reported ... ok
+test updater::download::tests::binary_probe_checks_exit_identity_output_bound_and_offline_mode ... ok
+test result: ok. 675 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.70s
+     Running unittests src/main.rs (target/release/deps/bladebro-4b5a29afc56ced1c)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/cdp_mock.rs (target/release/deps/cdp_mock-719f5d15e759d57f)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+     Running tests/cli_endpoint.rs (target/release/deps/cli_endpoint-433cbf15ab06e016)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/daemon_lifecycle.rs (target/release/deps/daemon_lifecycle-9aa10e8226779224)
+test concurrent_cold_starts_have_one_owner ... FAILED
+thread 'concurrent_cold_starts_have_one_owner' (16397109) panicked at tests/daemon_lifecycle.rs:204:10:
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+     Running tests/hermes_cli.rs (target/release/deps/hermes_cli-7c1fcd002213a497)
+PASS ["on"] exit status; stderr=
+PASS ["on"] exit status; stderr=
+PASS ["status"] exit status; stderr=
+PASS ["off"] exit status; stderr=
+PASS ["off"] exit status; stderr=
+PASS ["on"] exit status; stderr=
+PASS ["off"] exit status; stderr=
+PASS ["on"] exit status; stderr=bladebro: Hermes recovery state exceeds 256 KiB; no settings changed — reduce the existing Bladebro server environment before switching
+PASS ["on"] exit status; stderr=bladebro: Hermes could not connect to Bladebro; built-in browser suppression was not changed. Run `hermes mcp test bladebro`, then retry `bladebro hermes on` or restore with `bladebro hermes off`
+PASS ["on"] exit status; stderr=
+PASS ["off"] exit status; stderr=
+PASS ["on"] exit status; stderr=bladebro: Hermes did not persist agent.disabled_toolsets; recovery state retained — retry `bladebro hermes off`
+PASS ["off"] exit status; stderr=
+PASS ["on"] exit status; stderr=
+PASS ["off"] exit status; stderr=bladebro: mcp_servers.bladebro changed after setup; refusing to overwrite it. Review .bladebro-browser/state.json and restore the saved entry before retrying
+PASS ["off"] exit status; stderr=
+PASS ["on"] exit status; stderr=bladebro: Hermes reported a diagnostic; run `hermes config check` and resolve it before switching browsers
+PASS ["on", "--profile", "work"] exit status; stderr=
+PASS ["off", "--profile", "work"] exit status; stderr=
+PASS ["--bogus"] exit status; stderr=bladebro: usage: bladebro hermes on|off|status [--profile <name>] [--hermes <path>] [--json]
+     Running tests/page_unit.rs (target/release/deps/page_unit-785b4f2c233c06a2)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/rb_discovery.rs (target/release/deps/rb_discovery-040adb89c5517e82)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/record_follow.rs (target/release/deps/record_follow-70dae31e0b312764)
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/record_hub.rs (target/release/deps/record_hub-426be7cf9a5277e6)
+test result: ok. 2 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.20s
+     Running tests/record_live.rs (target/release/deps/record_live-4d817e4914e12c4d)
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/security_audit.rs (target/release/deps/security_audit-98d72fb908e753c7)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/stealth_behavior.rs (target/release/deps/stealth_behavior-afc0c9a6ef96be65)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/xdg_home.rs (target/release/deps/xdg_home-780c36e5fbc04515)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test exit 101
+## hermes_cli PASS lines: 81, FAIL lines: 0
+## leaked daemon from the flake: pid 49170 BLADE_HOME=.../bladebro-daemon-race-49163 (killed by name check)
+## rerun once: cargo test --release --test daemon_lifecycle
+test ghost_teardown_leaves_a_foreign_socket_alone ... ok
+test second_daemon_does_not_steal_a_live_socket ... ok
+test partial_request_cannot_delay_termination ... ok
+test concurrent_cold_starts_have_one_owner ... ok
+test stop_json_is_one_object_and_lane_restart_emits_no_stray_stdout ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+## clippy --release --all-targets -D warnings (explicit)
+    Finished `release` profile [optimized] target(s) in 0.43s
+clippy exit 0
+## size_change_tests with --nocapture (real ffmpeg, not skipped)
+size-change mp4 1280x720 read_frames=40 frames_written=40; size-change webm 1280x720 read_frames=40 frames_written=40; 2 passed

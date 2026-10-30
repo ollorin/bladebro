@@ -1,8 +1,8 @@
 //! Launch paths — the agent-lane launch ladder (WS), the real-lane launch,
 //! the lane dispatcher and the font audit.
 
-use super::discover::{find_chrome, free_port};
-#[cfg(target_os = "linux")]
+use super::discover::{endpoint_owned_by_pid, find_chrome, free_port};
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use super::display::{apply_xvfb_env, VirtualDisplay};
 use super::flags::{
     classify_gl, gl_stages, launch_args, launch_args_real, stage_label, LaunchCfg, RealLaunchCfg,
@@ -22,6 +22,8 @@ impl Browser {
     /// `--no-sandbox` — availability preserved, sandbox used whenever the
     /// environment allows it.
     pub async fn launch(port: u16) -> Result<Self> {
+        #[cfg(windows)]
+        platform::guard_browser_process_tree()?;
         let auto = port == 0;
         let mut last_err = None;
         // Attempt sequence: sandboxed first; then --no-sandbox (sandbox
@@ -31,7 +33,13 @@ impl Browser {
         // policy as before; avoids tripling a 20s wait).
         let attempts: [(u8, bool); 3] = [(0, false), (1, true), (2, true)];
         for (attempt, no_sandbox) in attempts {
-            let p = if auto { free_port() } else { port };
+            let p = if auto { free_port() } else { Some(port) };
+            let Some(p) = p else {
+                last_err = Some(BladeError::Other(
+                    "cannot allocate a loopback debug port (ephemeral range exhausted)".into(),
+                ));
+                break;
+            };
             match Self::launch_inner(p, no_sandbox).await {
                 Ok(b) => return Ok(b),
                 Err(e) => {
@@ -56,7 +64,7 @@ impl Browser {
     /// Launch with the GL ladder: walk `gl_stages()`, keep the first stage
     /// that yields a live WebGL context, and record the result for the
     /// stealth layer. A stage that comes up without GL is shut down and the
-    /// next stage is tried (bounded — the ladder has two stages) so a
+    /// next stage is tried (bounded — the ladder has four stages) so a
     /// GL-less browser is never what pages see.
     async fn launch_inner(port: u16, no_sandbox: bool) -> Result<Self> {
         let stages = gl_stages();
@@ -124,6 +132,7 @@ impl Browser {
         let timing = std::env::var("NAV_TIMING").is_ok();
         let t0 = std::time::Instant::now();
         let chrome_path = find_chrome()?;
+        let extra = super::compat::agent_extra_flags()?;
         let profile = crate::session_profile::SessionProfile::create()?;
         if timing {
             eprintln!("[launch-timing] profile: {:?}", t0.elapsed());
@@ -131,40 +140,61 @@ impl Browser {
         let user_data_dir = profile.dir().to_path_buf();
         font_audit();
 
-        #[cfg(target_os = "linux")]
-        let xvfb = VirtualDisplay::start().ok();
-        #[cfg(target_os = "linux")]
-        if xvfb.is_none() {
+        // Fork hook (.planning/HOOKS.md): BLADE_HEADLESS / launch-mode layers (HEAD-01).
+        let mode = crate::launch_mode::effective().map_err(BladeError::Other)?;
+        let plan = crate::launch_mode::plan_display(
+            mode.headless,
+            cfg!(any(target_os = "linux", target_os = "android")),
+        );
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let xvfb = if plan.try_xvfb {
+            VirtualDisplay::start().ok()
+        } else {
+            None
+        };
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if plan.try_xvfb && xvfb.is_none() {
             // Stealth downgrade: headless=new carries real detection
             // surface. Never fail silently — the operator should know.
             eprintln!(
                 "[bladebro] WARNING: Xvfb unavailable — falling back to headless mode (reduced stealth). Install xvfb for headful-on-virtual-display."
             );
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         if timing {
             eprintln!("[launch-timing] display: {:?}", t0.elapsed());
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         let headful = xvfb.is_some();
 
-        #[cfg(not(target_os = "linux"))]
-        let headful = true; // macOS/Windows have native window servers
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let headful = plan.native_headful;
 
         // After both bindings: the recording must compile on every target.
         set_launched_headless(!headful);
+        crate::launch_mode::note_launch(&mode, headful);
+        set_launched_no_sandbox(no_sandbox);
 
-        // M18: Proxy support via BLADE_PROXY env var.
-        let proxy = std::env::var("BLADE_PROXY").ok().filter(|p| !p.is_empty());
-        if let Some(p) = &proxy {
-            eprintln!("[bladebro] using proxy: {p}");
+        // M18: Proxy support via BLADE_PROXY env var. Validated here even
+        // when nothing logs: a malformed value fails the launch with a
+        // redacted reason instead of silently producing a broken-proxy
+        // browser. The raw value may embed credentials — only the redacted
+        // display form ever reaches stderr.
+        let proxy = match crate::browser::proxy::env_blade_proxy() {
+            Ok(p) => p,
+            Err(reason) => {
+                return Err(BladeError::Other(format!(
+                    "invalid BLADE_PROXY value: {reason} (value redacted)"
+                )));
+            }
+        };
+        if let Some(spec) = &proxy {
+            eprintln!("[bladebro] using proxy: {}", spec.display);
         }
         // Power-user escape hatch: append raw Chrome flags. Useful for
         // diagnosing GL/WebGL backend issues on odd displays and for
         // users who need a specific Chromium switch. Whitespace-split.
-        let extra: Vec<String> = std::env::var("BLADE_CHROME_FLAGS")
-            .map(|s| s.split_whitespace().map(String::from).collect())
-            .unwrap_or_default();
         let args = launch_args(&LaunchCfg {
             stage,
             headful,
@@ -172,22 +202,34 @@ impl Browser {
             transport: Transport::Ws,
             port,
             user_data_dir: &user_data_dir,
-            proxy: proxy.as_deref(),
+            proxy: proxy.as_ref().map(|s| s.server.as_str()),
             extra: &extra,
         });
 
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         let mode_str = if headful {
             "headful (Xvfb)"
         } else {
             "headless"
         };
-        #[cfg(not(target_os = "linux"))]
-        let mode_str = "headful";
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let mode_str = if headful { "headful" } else { "headless" };
         eprintln!("[bladebro] launching Chrome from {chrome_path} on port {port} ({mode_str})");
 
         let mut cmd = Command::new(&chrome_path);
-        cmd.args(&args).stdout(Stdio::null()).stderr(Stdio::null());
+        browser_temp_env(&mut cmd);
+        // G11: bounded startup-stderr capture — a failed launch must be
+        // diagnosable instead of guessed at (the runner investigation lost
+        // Chrome's stderr to /dev/null).
+        cmd.args(&args).stdout(Stdio::null());
+        match chrome_stderr_sink() {
+            Some(f) => {
+                cmd.stderr(Stdio::from(f));
+            }
+            None => {
+                cmd.stderr(Stdio::null());
+            }
+        }
 
         // Set DISPLAY env var for headful mode (Linux only).
         // CRITICAL on Wayland sessions: Chrome 110+ defaults to the
@@ -195,7 +237,7 @@ impl Browser {
         // from the user's session — it opens on the USER'S real
         // screen, ignoring the Xvfb DISPLAY. Strip Wayland env and
         // force X11 so Chrome stays invisible on the virtual display.
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         if let Some(ref xvfb) = xvfb {
             apply_xvfb_env(&mut cmd, xvfb);
         }
@@ -215,12 +257,44 @@ impl Browser {
         loop {
             match crate::cdp::version(&base).await {
                 Ok(v) => {
+                    // SECURITY: a parseable-JSON responder is not proof the
+                    // endpoint belongs to the Chrome we spawned —
+                    // free_port's bind-release window can be won by a local
+                    // impostor. On Linux require our child to hold the
+                    // listening socket; keep polling otherwise (the window
+                    // resolves once Chrome finishes binding). Elsewhere the
+                    // check is skipped.
+                    if !endpoint_owned_by_pid(port, child.id()) {
+                        if Instant::now() >= deadline {
+                            let _ = child.kill();
+                            return Err(BladeError::Other(
+                                "the debug endpoint on this port is not served by the browser process — refusing it (possible local port hijack)".into(),
+                            ));
+                        }
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        continue;
+                    }
                     eprintln!(
                         "[bladebro] Chrome ready: {} (protocol {})",
                         v.browser, v.protocol_version
                     );
                     if timing {
                         eprintln!("[launch-timing] chrome-ready: {:?}", t0.elapsed());
+                    }
+                    if super::compat::launched_incognito() {
+                        let prepared = async {
+                            let ws = v.web_socket_debugger_url.as_deref().ok_or_else(|| {
+                                BladeError::Other("Chrome returned no browser WebSocket URL".into())
+                            })?;
+                            let client = crate::cdp::CdpClient::connect(ws).await?;
+                            super::compat::prepare_incognito(&client).await
+                        }
+                        .await;
+                        if let Err(error) = prepared {
+                            platform::shutdown_child(&mut child);
+                            profile.cleanup();
+                            return Err(error);
+                        }
                     }
                     let probe = probe_gl_ws(&base).await;
                     if timing {
@@ -229,7 +303,7 @@ impl Browser {
                     return Ok((
                         Self {
                             child,
-                            #[cfg(target_os = "linux")]
+                            #[cfg(any(target_os = "linux", target_os = "android"))]
                             xvfb,
                             port,
                             profile,
@@ -241,7 +315,8 @@ impl Browser {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             return Err(BladeError::Other(format!(
-                                "Chrome exited during startup: {status}"
+                                "Chrome exited during startup: {status}{}",
+                                chrome_stderr_tail()
                             )));
                         }
                         Ok(None) => {}
@@ -253,9 +328,10 @@ impl Browser {
                     }
                     if Instant::now() >= deadline {
                         let _ = child.kill();
-                        return Err(BladeError::Other(
-                            "Chrome debug endpoint not responding after 20s".into(),
-                        ));
+                        return Err(BladeError::Other(format!(
+                            "Chrome debug endpoint not responding after 20s{}",
+                            chrome_stderr_tail()
+                        )));
                     }
                     // Adaptive poll: Chrome answers well under a second in the
                     // normal case, so a flat 300ms interval quantized the
@@ -280,6 +356,9 @@ impl Browser {
         visible: bool,
         profile_directory: Option<&str>,
     ) -> Result<Self> {
+        super::compat::clear_incognito();
+        #[cfg(windows)]
+        platform::guard_browser_process_tree()?;
         let user_data_dir = profile.dir().to_path_buf();
 
         // Visible needs a display on Linux. No display → an honest
@@ -291,7 +370,7 @@ impl Browser {
         let mut headless = !visible;
         #[allow(unused_mut)]
         let mut ozone_x11 = false;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             let has_wayland = std::env::var_os("WAYLAND_DISPLAY")
                 .map(|v| !v.is_empty())
@@ -318,7 +397,17 @@ impl Browser {
         set_launched_headless(headless);
         set_launched_pipe(false);
 
-        let proxy = std::env::var("BLADE_PROXY").ok().filter(|p| !p.is_empty());
+        // Real-lane proxy: validated the same way as the managed lane (a
+        // malformed value fails loudly, redacted); the real lane does not
+        // log the endpoint, so nothing here can leak credentials.
+        let proxy = match crate::browser::proxy::env_blade_proxy() {
+            Ok(p) => p,
+            Err(reason) => {
+                return Err(BladeError::Other(format!(
+                    "invalid BLADE_PROXY value: {reason} (value redacted)"
+                )));
+            }
+        };
         let extra: Vec<String> = std::env::var("BLADE_CHROME_FLAGS")
             .map(|s| s.split_whitespace().map(String::from).collect())
             .unwrap_or_default();
@@ -334,7 +423,13 @@ impl Browser {
         for (attempt, no_sandbox) in [(0u8, false), (1u8, true)] {
             let mut startup_exit = false;
             let spawned_at = Instant::now();
-            let port = free_port();
+            let Some(port) = free_port() else {
+                last_err = Some(BladeError::Other(
+                    "cannot allocate a loopback debug port (ephemeral range exhausted)".into(),
+                ));
+                break;
+            };
+            set_launched_no_sandbox(no_sandbox);
             let args = launch_args_real(&RealLaunchCfg {
                 headless,
                 no_sandbox,
@@ -342,7 +437,7 @@ impl Browser {
                 port,
                 user_data_dir: &user_data_dir,
                 profile_directory,
-                proxy: proxy.as_deref(),
+                proxy: proxy.as_ref().map(|s| s.server.as_str()),
                 extra: &extra,
             });
             eprintln!(
@@ -352,6 +447,7 @@ impl Browser {
             );
 
             let mut cmd = Command::new(binary);
+            browser_temp_env(&mut cmd);
             // BLADE_RB_DEBUG=1 surfaces the browser's own stderr — the only
             // way to see WHY a real-lane launch died (X11/Wayland/GL errors
             // are otherwise discarded into /dev/null).
@@ -364,7 +460,7 @@ impl Browser {
                 Stdio::null()
             };
             cmd.args(&args).stdout(Stdio::null()).stderr(child_stderr);
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "android"))]
             if ozone_x11 {
                 // Belt and braces with --ozone-platform=x11: drop a possibly
                 // stale session-type claim from the child env.
@@ -379,13 +475,27 @@ impl Browser {
             loop {
                 match crate::cdp::version(&base).await {
                     Ok(v) => {
+                        // SECURITY: same ownership requirement as the agent
+                        // lane — the endpoint must be held by the browser
+                        // process we spawned.
+                        if !endpoint_owned_by_pid(port, child.id()) {
+                            if Instant::now() >= deadline {
+                                let _ = child.kill();
+                                last_err = Some(BladeError::Other(
+                                    "the debug endpoint on this port is not served by the browser process — refusing it (possible local port hijack)".into(),
+                                ));
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                            continue;
+                        }
                         eprintln!(
                             "[realbrowser] browser ready: {} (protocol {})",
                             v.browser, v.protocol_version
                         );
                         return Ok(Self {
                             child,
-                            #[cfg(target_os = "linux")]
+                            #[cfg(any(target_os = "linux", target_os = "android"))]
                             xvfb: None,
                             port,
                             profile,
@@ -485,6 +595,20 @@ pub async fn launch_lane() -> Result<(Option<Browser>, String)> {
                     profile.path.display()
                 ))
             })?;
+            // SECURITY: the DevToolsActivePort file survives unclean exits
+            // (SIGKILL/OOM) and the port it names can be squatted — verify a
+            // live browser of this user actually holds the endpoint before
+            // driving it (Linux; elsewhere the file's existence is the best
+            // available signal).
+            if !crate::browser::endpoint_owned_by_own_browser(port) {
+                return Err(BladeError::Other(format!(
+                    "the debug endpoint on port {port} (from {}'s DevToolsActivePort) is not \
+                     served by any live browser of this user — the file is stale or something \
+                     else took the port. Start the browser with `--remote-debugging-port=0`, \
+                     or use `rb mode clone`.",
+                    profile.root.display()
+                )));
+            }
             eprintln!(
                 "[realbrowser] attaching to {} (`{}`) on port {port} — the browser stays yours \
                  (no launch, no shutdown)",
@@ -556,7 +680,7 @@ pub async fn launch_lane() -> Result<(Option<Browser>, String)> {
 /// hidden canvases and hash the pixels; a missing emoji font produces a hash
 /// no real browser generates. Linux-only (fc-list). Best-effort, never fatal.
 pub(super) fn font_audit() {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         static ONCE: std::sync::Once = std::sync::Once::new();
         ONCE.call_once(|| {
@@ -586,4 +710,119 @@ pub(super) fn font_audit() {
         });
     }
     // macOS/Windows: system fonts are always present, no audit needed.
+}
+
+/// G11: bounded startup-stderr capture. The runner investigation could not
+/// diagnose a startup timeout because Chrome's stderr went to /dev/null;
+/// keep the LAST launch's stderr on disk (truncated per launch) and read
+/// back only a 4 KiB tail on startup failure. The file lives under the
+/// blade home's logs dir (created 0700, file 0600 on Unix).
+pub(super) fn chrome_stderr_sink() -> Option<std::fs::File> {
+    let dir = crate::platform::blade_dir().join("logs");
+    crate::platform::secure_create_dir_all(&dir).ok()?;
+    open_chrome_stderr(&dir.join("chrome-last-launch.log"))
+}
+
+fn open_chrome_stderr(path: &std::path::Path) -> Option<std::fs::File> {
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return None;
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).write(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let file = opts.open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.uid() != unsafe { libc::geteuid() } {
+            return None;
+        }
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .ok()?;
+    }
+    // Validate the opened object before truncating: a planted symlink must
+    // never erase an unrelated file, and a FIFO must never wedge startup.
+    file.set_len(0).ok()?;
+    Some(file)
+}
+
+/// Tail of the last launch's Chrome stderr ("" when nothing was captured).
+pub(super) fn chrome_stderr_tail() -> String {
+    let path = crate::platform::blade_dir()
+        .join("logs")
+        .join("chrome-last-launch.log");
+    read_chrome_stderr_tail(&path).unwrap_or_default()
+}
+
+fn read_chrome_stderr_tail(path: &std::path::Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return None;
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let mut file = opts.open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    file.seek(SeekFrom::Start(metadata.len().saturating_sub(4096)))
+        .ok()?;
+    let mut data = Vec::new();
+    file.take(4096).read_to_end(&mut data).ok()?;
+    if data.is_empty() {
+        return Some(String::new());
+    }
+    let tail = String::from_utf8_lossy(&data);
+    Some(format!(
+        "\n--- chrome stderr (tail of last launch) ---\n{tail}"
+    ))
+}
+
+#[cfg(test)]
+mod stderr_tests {
+    use super::*;
+
+    #[test]
+    fn stderr_tail_is_bounded_and_sink_is_private() {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("blade-stderr-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("launch.log");
+        let mut file = open_chrome_stderr(&path).unwrap();
+        file.write_all(&vec![b'x'; 8192]).unwrap();
+        file.write_all(b"LAST-LINE").unwrap();
+        drop(file);
+        let tail = read_chrome_stderr_tail(&path).unwrap();
+        assert!(tail.ends_with("LAST-LINE"));
+        assert!(tail.len() < 4200);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            let link = root.join("link.log");
+            std::os::unix::fs::symlink(&path, &link).unwrap();
+            assert!(open_chrome_stderr(&link).is_none());
+            assert!(read_chrome_stderr_tail(&link).is_none());
+            assert_eq!(std::fs::metadata(&path).unwrap().len(), 8201);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

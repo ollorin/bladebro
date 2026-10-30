@@ -13,13 +13,52 @@
 
 use std::time::Duration;
 
-use bladebro::cdp::CdpClient;
+use bladebro::cdp::{CdpClient, CdpSession};
 use bladebro::BladeError;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
+
+#[tokio::test]
+async fn event_between_wait_creation_and_command_response_is_not_lost() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_async(stream).await.unwrap();
+        let request = ws.next().await.unwrap().unwrap();
+        let request: Value = serde_json::from_str(request.to_text().unwrap()).unwrap();
+        for message in [
+            json!({"method":"Page.frameNavigated","params":{"frame":{"url":"http://fixture/"}}}),
+            json!({"id":request["id"],"result":{"loaderId":"loaded"}}),
+        ] {
+            ws.send(Message::Text(message.to_string().into()))
+                .await
+                .unwrap();
+        }
+        while ws.next().await.is_some() {}
+    });
+    let client = CdpClient::connect(&format!("ws://{addr}")).await.unwrap();
+    let session = CdpSession::child(client.clone(), "page-session");
+    let root = CdpSession::root(client.clone());
+    let navigation = client.wait_for("Page.frameNavigated", Duration::from_millis(100));
+    let root_navigation = root.wait_for("Page.frameNavigated", Duration::from_millis(100));
+    let unrelated = session.wait_for("Page.frameNavigated", Duration::from_millis(100));
+    client.send("Page.navigate", None).await.unwrap();
+    let event = navigation
+        .await
+        .expect("an event preceding the command response must survive");
+    assert_eq!(event.params["frame"]["url"], "http://fixture/");
+    assert!(root_navigation.await.is_ok());
+    assert!(
+        matches!(unrelated.await, Err(BladeError::Timeout(_))),
+        "session filters must still reject root events"
+    );
+    drop(client);
+    server.abort();
+}
 
 #[tokio::test]
 async fn roundtrip_command_and_event() {
@@ -181,4 +220,62 @@ async fn protocol_error_is_typed() {
         }
         other => panic!("expected Cdp, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn rejected_scroll_stops_at_first_dispatch_without_claiming_success() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let dispatched = Arc::new(AtomicUsize::new(0));
+    let observed = dispatched.clone();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_async(stream).await.unwrap();
+        while let Some(Ok(message)) = ws.next().await {
+            let Ok(text) = message.to_text() else {
+                continue;
+            };
+            let Ok(request) = serde_json::from_str::<Value>(text) else {
+                continue;
+            };
+            let response = if request["method"] == "Input.dispatchMouseEvent" {
+                observed.fetch_add(1, Ordering::SeqCst);
+                json!({"id":request["id"],"error":{"code":-32000,"message":"owned scroll refusal"}})
+            } else {
+                json!({"id":request["id"],"result":{"result":{"value":{}}}})
+            };
+            if ws
+                .send(Message::Text(response.to_string().into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+    let client = CdpClient::connect(&format!("ws://{address}"))
+        .await
+        .unwrap();
+    let cdp = CdpSession::root(client);
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        bladebro::action::perform(
+            &cdp,
+            &mut bladebro::page::LivePageModel::new(),
+            &bladebro::action::Action::Scroll { dx: 0, dy: 500 },
+            &Arc::new(Mutex::new(None)),
+        ),
+    )
+    .await
+    .unwrap();
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("owned scroll refusal"));
+    assert_eq!(dispatched.load(Ordering::SeqCst), 1);
+    server.abort();
 }

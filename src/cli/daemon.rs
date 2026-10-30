@@ -9,7 +9,10 @@
 use crate::error::{BladeError, Result};
 
 #[cfg(unix)]
-use super::{daemon_running, dispatch, ignore_sighup, socket_path, warm_profile};
+use super::{
+    daemon_running, dispatch, ignore_sighup, peer_uid_matches_self, socket_dir_trusted,
+    socket_path, warm_profile,
+};
 #[cfg(unix)]
 use crate::page::Page;
 #[cfg(unix)]
@@ -65,6 +68,18 @@ pub async fn run_daemon() -> Result<()> {
     // alone races two cold starts and can unlink the winner's live socket.
     if let Some(parent) = path.parent() {
         crate::platform::secure_create_dir_all(parent)?;
+    }
+    // Trust boundary: never serve from a state dir that is not an
+    // owner-only directory owned by this user — the connect-check alone
+    // would bless any co-user listener planted through a loose tree as
+    // "the daemon", capturing every request and authoring every response.
+    if !socket_dir_trusted() {
+        return Err(BladeError::Other(format!(
+            "refusing to run the daemon: state dir {} is not an owner-only directory owned by the current user — check BLADE_HOME/XDG_STATE_HOME and its permissions",
+            path.parent()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
+        )));
     }
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::OpenOptionsExt;
@@ -124,8 +139,6 @@ pub async fn run_daemon() -> Result<()> {
     // latch (see the per-command drift check below).
     let mut launched = 0u64;
     let mut stale_warned = false;
-    // One-shot latch: has the GL-less advisory been delivered?
-    let mut gl_warned = false;
     let mut last_activity = std::time::Instant::now();
     let idle_secs: u64 = std::env::var("BLADE_IDLE_TIMEOUT")
         .ok()
@@ -156,6 +169,15 @@ pub async fn run_daemon() -> Result<()> {
                         continue;
                     }
                 };
+                // Only this user's processes may drive the daemon — the
+                // 0600 socket already enforces it; this rejects a foreign
+                // peer even if the mode was loosened underneath us.
+                {
+                    use std::os::fd::AsRawFd;
+                    if !peer_uid_matches_self(stream.as_raw_fd()) {
+                        continue;
+                    }
+                }
 
                 let mut reader = BufReader::new(stream);
                 let mut input = Vec::new();
@@ -223,6 +245,14 @@ pub async fn run_daemon() -> Result<()> {
                     crate::realbrowser::launch_fingerprint(),
                     launched,
                 );
+                // Fork hook (.planning/HOOKS.md): never keep the old mode silently (HEAD-03).
+                if let Some(error) = crate::launch_mode::daemon_mismatch(&req) {
+                    let resp = json!({ "ok": false, "error": error });
+                    let resp_str = serde_json::to_string(&resp).unwrap_or_default();
+                    let _ = reader.get_mut().write_all(resp_str.as_bytes()).await;
+                    let _ = reader.get_mut().write_all(b"\n").await;
+                    continue;
+                }
                 let need_launch = drifted
                     || page.is_none()
                     || page.as_ref().map(|p| p.is_closed()).unwrap_or(true);
@@ -234,6 +264,7 @@ pub async fn run_daemon() -> Result<()> {
                             if drifted { "lane/settings changed" } else { "connection lost" }
                         );
                         if let Some(b) = browser.take() {
+                            crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
                             let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -283,6 +314,14 @@ pub async fn run_daemon() -> Result<()> {
                     dispatch(tool, &args, p).await
                 };
 
+                // GL cadence revalidation (see `Page::gl_health_refresh`):
+                // demote a stale GL verdict before the advisories below so a
+                // mid-session loss surfaces on this response instead of the
+                // lane silently serving a broken GL profile.
+                if let Some(p) = page.as_mut() {
+                    p.gl_health_refresh().await;
+                }
+
                 // One-line advisories for the human: a mid-session lane switch
                 // actually landed, or this daemon runs a binary that was
                 // replaced on disk (a restart is one `bladebro stop` away).
@@ -301,14 +340,7 @@ pub async fn run_daemon() -> Result<()> {
                         "note: this daemon runs a binary that was replaced on disk — `bladebro stop` to pick up the new build".into(),
                     );
                 }
-                if !gl_warned {
-                    if let Some(crate::browser::GpuState::Missing) = crate::browser::gpu_state() {
-                        gl_warned = true;
-                        advisories.push(
-                            "note: this browser has no WebGL (getContext('webgl') returns null — stock-equivalent on this host); no GL mask is applied".into(),
-                        );
-                    }
-                }
+                advisories.extend(crate::browser::pending_notes());
                 let with_notes = |text: String| -> String {
                     if advisories.is_empty() {
                         text
@@ -328,6 +360,7 @@ pub async fn run_daemon() -> Result<()> {
                         // Self-heal: relaunch and retry.
                         eprintln!("[bladebro] browser closed during tool call, reconnecting...");
                         if let Some(b) = browser.take() {
+                            crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
                             let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
                         }
                         page = None;
@@ -378,6 +411,7 @@ pub async fn run_daemon() -> Result<()> {
                                 if let Err(e) = crate::logins::snapshot(p.cdp_ref()).await { eprintln!("[bladebro] login snapshot failed: {e}"); }
                             }
                         }
+                        crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
                         let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
                     }
                     page = None;
@@ -411,6 +445,7 @@ pub async fn run_daemon() -> Result<()> {
 
     // Cleanup: persist live logins, then kill Chrome gracefully.
     // (Never on the real lane — not our cookie store.)
+    crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
     if let Some(ref p) = page {
         if !crate::realbrowser::real_lane() {
             if let Err(e) = crate::logins::snapshot(p.cdp_ref()).await {
@@ -506,12 +541,12 @@ fn process_alive(pid: i32) -> bool {
 /// ps executable identity; an unreadable identity never authorizes a kill.
 #[cfg(unix)]
 fn looks_like_bladebro(pid: i32) -> bool {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         std::fs::read_to_string(format!("/proc/{pid}/comm"))
             .is_ok_and(|comm| comm.trim() == "bladebro")
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
         std::process::Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "comm="])

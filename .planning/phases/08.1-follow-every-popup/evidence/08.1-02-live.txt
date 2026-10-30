@@ -1,0 +1,417 @@
+# 08.1-02 Task 3 live summary (headless, scratch homes, 127.0.0.1 fixtures; Chrome of this machine, macOS arm64)
+# follow delay = seconds from the moment `act click` returned ("new tab opened") until `state tabs` marks the popup as the
+#   video tab (R), polled every ~50 ms; the click call itself already waits for the popup to appear. Before (Phase 8): window-feature
+#   popup 3.7 s and only after an agent switch-tab; link popup never a segment.
+# Result of the last full run (popup_live.sh, then follow_live.sh --only popup/daemon/close/per-tab/mcp): FAIL lines 0.
+# Findings recorded honestly:
+#  - window.open WITH window features opens a separate window: the opener stays visible there, so `act press Tab` on the opener does
+#    NOT re-front it; the video stays on the popup until it closes (or switch-tab). Other kinds return to the opener on the next input.
+#  - bladebro's Chrome runs --disable-popup-blocking: a gesture-less window.open is a real tab and is followed (no "blocked" live case).
+#  - burst of 3 clicks: popups that were in front for a moment become short segments; one that never was is named in the note
+#    (seen live: "1 popup(s) not recorded (never in front)"). Timing decides which.
+#  - closing the popup when it is the last tab: Chrome exits; stop reports "no tab left" and the file is kept and decodes.
+# Harness failures met on the way (fixed in the scripts/tests, not product bugs): fixture blue is #0040ff (g=64) and the tone() blue
+#   threshold g<60 missed it (now g<100); click_text captured its own log line in $(...); an MCP test sampled `state tabs` after the 2.5 s
+#   selfclose popup had already closed (flaky; now samples right after the follow); a cleanup sweep matched my own tooling shell by the
+#   word "ffmpeg" once (rerun clean).
+# popup_live.sh  started 2026-10-26T11:06:52Z  headless=1  fixtures=http://127.0.0.1:8765
+# git: 44cd685 (+worktree)
+== kinds: 4 popup kinds x 3 runs, no switch-tab; follow delay = seconds after the click returns until state tabs marks the popup R
+[kinds:blank] click: outcome: new tab opened — B (tab 2A30FFA8422B09004CB1B30C629E355B)
+[kinds:blank] run 1 popup=2A30FFA8422B09004CB1B30C629E355B follow delay 0.06
+[kinds:blank] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kblank1-20261026T110653Z-368ac0.webm (bytes 61818, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 2.0 s tab 2A30FFA8422B09004CB1B30C629E355B, 5.6 s tab D66264EC14715600465B6DDE424746EA], captured 69)
+PASS [kinds:blank] run 1: popup is a segment without switch-tab, first segment opener
+PASS [kinds:blank] run 1: video back on the opener after act press Tab
+[kinds:blank] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.400000"}}
+PASS [kinds:blank] full decode exit=0 stderr_lines=0
+PASS [kinds:blank] codec vp9 1280x720 (constant output size)
+PASS [kinds:blank] decoded frames (74) == reported frames (74)
+PASS [kinds:blank] popup segment colour is blue
+[kinds:blank] click: outcome: new tab opened — B (tab 7DC1E45F7E15F84D74ADD52BC2398424)
+[kinds:blank] run 2 popup=7DC1E45F7E15F84D74ADD52BC2398424 follow delay 0.05
+[kinds:blank] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kblank2-20261026T110701Z-99f5c1.webm (bytes 69800, duration 7.1 s, frames 71, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 7DC1E45F7E15F84D74ADD52BC2398424, 5.3 s tab D66264EC14715600465B6DDE424746EA], captured 66)
+PASS [kinds:blank] run 2: popup is a segment without switch-tab, first segment opener
+PASS [kinds:blank] run 2: video back on the opener after act press Tab
+[kinds:blank] click: outcome: new tab opened — B (tab 790E353AA836F6EDC1939C208B001802)
+[kinds:blank] run 3 popup=790E353AA836F6EDC1939C208B001802 follow delay 0.06
+[kinds:blank] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kblank3-20261026T110709Z-9ffde2.webm (bytes 68947, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 790E353AA836F6EDC1939C208B001802, 4.7 s tab D66264EC14715600465B6DDE424746EA], captured 61)
+PASS [kinds:blank] run 3: popup is a segment without switch-tab, first segment opener
+PASS [kinds:blank] run 3: video back on the opener after act press Tab
+follow delay blank: min 0.05 median 0.06 max 0.06 (s, 3 runs)
+[kinds:js] click: outcome: new tab opened — B (tab A1AC094D8C91530E80069512599F9576)
+[kinds:js] run 1 popup=A1AC094D8C91530E80069512599F9576 follow delay 0.06
+[kinds:js] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kjs1-20261026T110716Z-00dadb.webm (bytes 68644, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 2.2 s tab A1AC094D8C91530E80069512599F9576, 5.7 s tab D66264EC14715600465B6DDE424746EA], captured 67)
+PASS [kinds:js] run 1: popup is a segment without switch-tab, first segment opener
+PASS [kinds:js] run 1: video back on the opener after act press Tab
+[kinds:js] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.400000"}}
+PASS [kinds:js] full decode exit=0 stderr_lines=0
+PASS [kinds:js] codec vp9 1280x720 (constant output size)
+PASS [kinds:js] decoded frames (74) == reported frames (74)
+PASS [kinds:js] popup segment colour is blue
+[kinds:js] click: outcome: new tab opened — B (tab 167A15A90A58ACE8ABE331970C3AD568)
+[kinds:js] run 2 popup=167A15A90A58ACE8ABE331970C3AD568 follow delay 0.06
+[kinds:js] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kjs2-20261026T110724Z-b180f4.webm (bytes 62626, duration 7.1 s, frames 71, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 167A15A90A58ACE8ABE331970C3AD568, 5.4 s tab D66264EC14715600465B6DDE424746EA], captured 66)
+PASS [kinds:js] run 2: popup is a segment without switch-tab, first segment opener
+PASS [kinds:js] run 2: video back on the opener after act press Tab
+[kinds:js] click: outcome: new tab opened — B (tab 5EC1E81174128CF8501D6D3B70DB332F)
+[kinds:js] run 3 popup=5EC1E81174128CF8501D6D3B70DB332F follow delay 0.06
+[kinds:js] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kjs3-20261026T110732Z-763f4d.webm (bytes 61162, duration 6.4 s, frames 64, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 5EC1E81174128CF8501D6D3B70DB332F, 4.7 s tab D66264EC14715600465B6DDE424746EA], captured 59)
+PASS [kinds:js] run 3: popup is a segment without switch-tab, first segment opener
+PASS [kinds:js] run 3: video back on the opener after act press Tab
+follow delay js: min 0.06 median 0.06 max 0.06 (s, 3 runs)
+[kinds:window] click: outcome: new tab opened — B (tab DFD68D2AE73ED6522936FDD0C3F0EABC)
+[kinds:window] run 1 popup=DFD68D2AE73ED6522936FDD0C3F0EABC follow delay 0.2
+[kinds:window] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kwindow1-20261026T110739Z-e2ea76.webm (bytes 50937, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab DFD68D2AE73ED6522936FDD0C3F0EABC], captured 67). Note: agent was on tab D66264EC14715600465B6DDE424746EA at stop; video followed tab DFD68D2AE73ED6522936FDD0C3F0EABC
+PASS [kinds:window] run 1: popup is a segment without switch-tab, first segment opener
+PASS [kinds:window] run 1: window popup (own window) keeps the video until it closes (opener input does not re-front it)
+[kinds:window] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"6.500000"}}
+PASS [kinds:window] full decode exit=0 stderr_lines=0
+PASS [kinds:window] codec vp9 1280x720 (constant output size)
+PASS [kinds:window] decoded frames (65) == reported frames (65)
+PASS [kinds:window] popup segment colour is blue
+[kinds:window] click: outcome: new tab opened — B (tab 983DC91A76850C3E4E51E243727EB8FA)
+[kinds:window] run 2 popup=983DC91A76850C3E4E51E243727EB8FA follow delay 0.2
+[kinds:window] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kwindow2-20261026T110746Z-8493ff.webm (bytes 56630, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 983DC91A76850C3E4E51E243727EB8FA], captured 67). Note: agent was on tab D66264EC14715600465B6DDE424746EA at stop; video followed tab 983DC91A76850C3E4E51E243727EB8FA
+PASS [kinds:window] run 2: popup is a segment without switch-tab, first segment opener
+PASS [kinds:window] run 2: window popup (own window) keeps the video until it closes (opener input does not re-front it)
+[kinds:window] click: outcome: new tab opened — B (tab 5CD8F83A8BB390F10C60DFBE2215EDD3)
+[kinds:window] run 3 popup=5CD8F83A8BB390F10C60DFBE2215EDD3 follow delay 0.21
+[kinds:window] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kwindow3-20261026T110753Z-a6d398.webm (bytes 56352, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 5CD8F83A8BB390F10C60DFBE2215EDD3], captured 67). Note: agent was on tab D66264EC14715600465B6DDE424746EA at stop; video followed tab 5CD8F83A8BB390F10C60DFBE2215EDD3
+PASS [kinds:window] run 3: popup is a segment without switch-tab, first segment opener
+PASS [kinds:window] run 3: window popup (own window) keeps the video until it closes (opener input does not re-front it)
+follow delay window: min 0.20 median 0.20 max 0.21 (s, 3 runs)
+[kinds:xorigin] click: outcome: new tab opened — C (tab 7EDABCA7A85AF9B57197B6B0952C4A6F)
+[kinds:xorigin] run 1 popup=7EDABCA7A85AF9B57197B6B0952C4A6F follow delay 0.21
+[kinds:xorigin] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kxorigin1-20261026T110801Z-376a69.webm (bytes 63034, duration 6.9 s, frames 69, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 2.2 s tab 7EDABCA7A85AF9B57197B6B0952C4A6F, 5.2 s tab D66264EC14715600465B6DDE424746EA], captured 64)
+PASS [kinds:xorigin] run 1: popup is a segment without switch-tab, first segment opener
+PASS [kinds:xorigin] run 1: video back on the opener after act press Tab
+[kinds:xorigin] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"6.900000"}}
+PASS [kinds:xorigin] full decode exit=0 stderr_lines=0
+PASS [kinds:xorigin] codec vp9 1280x720 (constant output size)
+PASS [kinds:xorigin] decoded frames (69) == reported frames (69)
+PASS [kinds:xorigin] popup segment colour is green
+[kinds:xorigin] click: outcome: new tab opened — C (tab 74EC6F5198031A5CAAA216B5FE53B0EB)
+[kinds:xorigin] run 2 popup=74EC6F5198031A5CAAA216B5FE53B0EB follow delay 0.05
+[kinds:xorigin] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kxorigin2-20261026T110808Z-d0d9ea.webm (bytes 66188, duration 7.0 s, frames 70, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 74EC6F5198031A5CAAA216B5FE53B0EB, 5.1 s tab D66264EC14715600465B6DDE424746EA], captured 65)
+PASS [kinds:xorigin] run 2: popup is a segment without switch-tab, first segment opener
+PASS [kinds:xorigin] run 2: video back on the opener after act press Tab
+[kinds:xorigin] click: outcome: new tab opened — C (tab 28079C235EC2AA168A9C84ED22D3F6A0)
+[kinds:xorigin] run 3 popup=28079C235EC2AA168A9C84ED22D3F6A0 follow delay 0.21
+[kinds:xorigin] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.YGp6XipcZo/recordings/kxorigin3-20261026T110816Z-ac4d03.webm (bytes 66113, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab D66264EC14715600465B6DDE424746EA, 1.8 s tab 28079C235EC2AA168A9C84ED22D3F6A0, 4.7 s tab D66264EC14715600465B6DDE424746EA], captured 62)
+PASS [kinds:xorigin] run 3: popup is a segment without switch-tab, first segment opener
+PASS [kinds:xorigin] run 3: video back on the opener after act press Tab
+follow delay xorigin: min 0.05 median 0.21 max 0.21 (s, 3 runs)
+PASS [kinds] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== close: popup closed with state close-tab while recorded -> back on the opener
+[close] click: outcome: new tab opened — B (tab 2EE5110E1EDB362EB3650B6A2AADFF38)
+[close] close-tab: ✓ closed tab 2EE5110E1EDB362EB3650B6A2AADFF38
+[close] tabs: *R 92E216788497E452EDA513884D8F0A66  Popper — http://127.0.0.1:8765/popper.html|(* = current tab; switch-tab <target_id> to change)|
+[close] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.dOqU0rfaZu/recordings/pc-20261026T110824Z-e00f30.webm (bytes 62248, duration 7.2 s, frames 72, dropped 0, segments [0.0 s tab 92E216788497E452EDA513884D8F0A66, 1.8 s tab 2EE5110E1EDB362EB3650B6A2AADFF38, 4.7 s tab 92E216788497E452EDA513884D8F0A66], captured 70). Note: popup 2EE5110E1EDB362EB3650B6A2AADFF38 closed at 4.7 s; back on opener 92E216788497E452EDA513884D8F0A66
+PASS [close] segments O, P, O
+PASS [close] note: popup closed, back on opener
+[close] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.200000"}}
+PASS [close] full decode exit=0 stderr_lines=0
+PASS [close] codec vp9 1280x720 (constant output size)
+PASS [close] decoded frames (72) == reported frames (72)
+PASS [close] colours red blue red
+PASS [close] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== close-opener: the opener is closed while the popup is recorded
+[close-opener] click: outcome: new tab opened — B (tab 5106F0B17A7C0A33CC6E058DFEA69414)
+[close-opener] close-tab opener: ✓ closed tab 1CADF647D9AF99301629BE460C645C4C (was current; switched to 5106F0B17A7C0A33CC6E058DFEA69414)
+PASS [close-opener] video stays on the popup after the opener closed
+[close-opener] tabs: *R 5106F0B17A7C0A33CC6E058DFEA69414  B — http://127.0.0.1:8765/b.html|(* = current tab; switch-tab <target_id> to change)|
+[close-opener] close-tab popup: ✓ closed tab 5106F0B17A7C0A33CC6E058DFEA69414 (was the last tab — Chrome exited; the next command relaunches it with a fresh page)
+[close-opener] stop: ✗ error: previous recording ended with the browser: recording not clean: no tab left at 7.3 s; /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.pcRQdLAoPI/recordings/co-20261026T110834Z-5bfc00.webm (bytes 51499, duration 9.8 s, frames 98, dropped 0, segments [0.0 s tab 1CADF647D9AF99301629BE460C645C4C, 1.8 s tab 5106F0B17A7C0A33CC6E058DFEA69414], captured 71)
+PASS [close-opener] last tab closed: stop reports 'no tab left' and keeps the file (not a failure of the file)
+[close-opener] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"9.800000"}}
+PASS [close-opener] full decode exit=0 stderr_lines=0
+PASS [close-opener] codec vp9 1280x720 (constant output size)
+PASS [close-opener] decoded frames (98) == reported frames (98)
+PASS [close-opener] popup segment is blue
+PASS [close-opener] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== chain: popup of a popup (O -> P -> Q), Q closed -> back on P
+[chain] click: outcome: new tab opened — Chain (tab AE16F8C6EBAF73F12E83C83D5286333E)
+[chain] click: outcome: new tab opened — C (tab 7FC7965B09F300DED1D23125A9FE536D)
+[chain] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.po6BdMx6CE/recordings/ch-20261026T110847Z-4055a8.webm (bytes 65168, duration 10.7 s, frames 107, dropped 0, segments [0.0 s tab EF34532D054A6E752560F49CFA15E07D, 1.8 s tab AE16F8C6EBAF73F12E83C83D5286333E, 5.3 s tab 7FC7965B09F300DED1D23125A9FE536D, 8.1 s tab AE16F8C6EBAF73F12E83C83D5286333E], captured 101). Note: popup 7FC7965B09F300DED1D23125A9FE536D closed at 8.1 s; back on opener AE16F8C6EBAF73F12E83C83D5286333E
+PASS [chain] segments O, P, Q, P
+[chain] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"10.700000"}}
+PASS [chain] full decode exit=0 stderr_lines=0
+PASS [chain] codec vp9 1280x720 (constant output size)
+PASS [chain] decoded frames (107) == reported frames (107)
+PASS [chain] colours red blue green blue
+PASS [chain] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== burst: three popups in a row
+[burst] click: outcome: new tab opened — B (tab BB36F7F145589FF431A168D0C506F0D7)
+[burst] click: outcome: new tab opened — B (tab FE2F3C0F027D9CF52C570ADFBCFEFAC3)
+[burst] click: outcome: new tab opened — B (tab 6683A39782575FB320EED3FB1AB83C6D)
+[burst] popups BB36F7F145589FF431A168D0C506F0D7 FE2F3C0F027D9CF52C570ADFBCFEFAC3 6683A39782575FB320EED3FB1AB83C6D; tabs:  R 6683A39782575FB320EED3FB1AB83C6D  B — http://127.0.0.1:8765/b.html|*  97648FA1E69350F2F29072750884A589  Popper — http://127.0.0.1:8765/popper.html|   BB36F7F145589FF431A168D0C506F0D7  B — http://127.0.0.1:8765/b.html|   FE2F3C0F027D9CF52C570ADFBCFEFAC3  B — http://127.0.0.1:8765/b.html|(* agent, R video: differ; switch-tab to move the agent)|
+[burst] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.nVbbxMNwJJ/recordings/bu-20261026T110900Z-808738.webm (bytes 101976, duration 7.6 s, frames 76, dropped 0, segments [0.0 s tab 97648FA1E69350F2F29072750884A589, 1.8 s tab BB36F7F145589FF431A168D0C506F0D7, 2.7 s tab 97648FA1E69350F2F29072750884A589, 3.3 s tab FE2F3C0F027D9CF52C570ADFBCFEFAC3, 3.6 s tab 97648FA1E69350F2F29072750884A589, 4.4 s tab 6683A39782575FB320EED3FB1AB83C6D], captured 65). Note: agent was on tab 97648FA1E69350F2F29072750884A589 at stop; video followed tab 6683A39782575FB320EED3FB1AB83C6D
+PASS [burst] every popup is a segment or named in the not-recorded note
+[burst] segments: 6; not-recorded note present: 0
+PASS [burst] file saved, first segment the opener
+[burst] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.600000"}}
+PASS [burst] full decode exit=0 stderr_lines=0
+PASS [burst] codec vp9 1280x720 (constant output size)
+PASS [burst] decoded frames (76) == reported frames (76)
+PASS [burst] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== blocked: bladebro's Chrome runs with --disable-popup-blocking, so a gesture-less window.open IS a real tab and is followed; rel=noopener link informational
+[blocked] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.1GW3kmdHom/recordings/bl-20261026T110910Z-ee2fe0.webm (bytes 46306, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab C72DEA1738B1DD9E3877133D88EB33BD, 1.4 s tab 1B2C87DF12A6D128099FD27DB9EEBEA4], captured 35). Note: agent was on tab C72DEA1738B1DD9E3877133D88EB33BD at stop; video followed tab 1B2C87DF12A6D128099FD27DB9EEBEA4
+PASS [blocked] popup opened without a gesture is followed (second segment present, first is the recorded tab)
+[blocked] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"3.900000"}}
+PASS [blocked] full decode exit=0 stderr_lines=0
+PASS [blocked] codec vp9 1280x720 (constant output size)
+PASS [blocked] decoded frames (39) == reported frames (39)
+[blocked] click: outcome: new tab opened — B (tab 121038A5472A0B33F23AF9D9324CD318)
+[blocked-noopener] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.1GW3kmdHom/recordings/nop-20261026T110915Z-21a649.webm (bytes 45231, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab C72DEA1738B1DD9E3877133D88EB33BD, 2.0 s tab 121038A5472A0B33F23AF9D9324CD318], captured 45). Note: agent was on tab C72DEA1738B1DD9E3877133D88EB33BD at stop; video followed tab 121038A5472A0B33F23AF9D9324CD318
+[blocked-noopener] segments: 2 (informational: opener unknown for rel=noopener popups)
+[blocked-noopener] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"4.900000"}}
+PASS [blocked-noopener] full decode exit=0 stderr_lines=0
+PASS [blocked-noopener] codec vp9 1280x720 (constant output size)
+PASS [blocked-noopener] decoded frames (49) == reported frames (49)
+PASS [blocked] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== tabs: markers and footer while recording
+[tabs] click: outcome: new tab opened — B (tab 0A7E4EC89F27E36602E2E0EFA1C8A67C)
+[tabs] during the popup:
+*  9EF994B7920F85D5622C8DCB717B70D9  Popper — http://127.0.0.1:8765/popper.html
+ R 0A7E4EC89F27E36602E2E0EFA1C8A67C  B — http://127.0.0.1:8765/b.html
+(* agent, R video: differ; switch-tab to move the agent)
+(* = current tab; switch-tab <target_id> to change)
+PASS [tabs] agent row is '* ' on the opener, video row ' R' on the popup, differ footer
+[tabs] after act press Tab:
+*R 9EF994B7920F85D5622C8DCB717B70D9  Popper — http://127.0.0.1:8765/popper.html
+   0A7E4EC89F27E36602E2E0EFA1C8A67C  B — http://127.0.0.1:8765/b.html
+(* = current tab; switch-tab <target_id> to change)
+PASS [tabs] after the press: '*R' on the opener, no differ footer
+[tabs] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.z5KSQPOdiY/recordings/tb-20261026T110922Z-e9e790.webm (bytes 61844, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab 9EF994B7920F85D5622C8DCB717B70D9, 1.8 s tab 0A7E4EC89F27E36602E2E0EFA1C8A67C, 3.1 s tab 9EF994B7920F85D5622C8DCB717B70D9], captured 46)
+PASS [tabs] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== per-tab: followed popup gets its own file (BLADE_RECORD_TABS=per-tab), closed popup finalized, opener file continues
+[per-tab] click: outcome: new tab opened — Selfclose (tab F7DF83DBDD8FD1C2C24D8A9E34942CFB)
+[per-tab] stop: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.U8MMlWJbdr/recordings/pt-tab1-20261026T110929Z-38d5e0.webm (bytes 30401, duration 7.5 s, frames 75, dropped 0, segments [0.0 s tab 29FDCE67CEA8FE9D548C74474EF215B4, 4.1 s tab 29FDCE67CEA8FE9D548C74474EF215B4], captured 49); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.U8MMlWJbdr/recordings/pt-tab2-20261026T110931Z-4ac8f1.webm (bytes 13183, duration 2.4 s, frames 24, dropped 0, segments [0.0 s tab F7DF83DBDD8FD1C2C24D8A9E34942CFB], captured 22). Note: popup F7DF83DBDD8FD1C2C24D8A9E34942CFB closed at 4.1 s; back on opener 29FDCE67CEA8FE9D548C74474EF215B4; tab F7DF83DBDD8FD1C2C24D8A9E34942CFB closed at 4.3 s
+PASS [per-tab] header: per-tab, 2 files
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.500000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (75) == reported frames (75)
+[per-tab] file 1 segment colours: red red
+PASS [per-tab] file 1 shows only red
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"2.400000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (24) == reported frames (24)
+[per-tab] file 2 segment colours: blue
+PASS [per-tab] file 2 shows only blue
+PASS [per-tab] two files
+PASS [per-tab] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== exit: popup segment active, then MCP stdin EOF / MCP SIGTERM / daemon stop / daemon SIGTERM
+== popup exit: mcp_eof
+[popup_mcp_eof] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitto292ly0/recordings/x-20261026T110939Z-fbd138.webm (tab E84276E5FD8ED67B2E1E74
+PASS [popup_mcp_eof] record-start succeeded
+[popup_mcp_eof] click: outcome: new tab opened — Chain (tab CE464C118E9399179FBB70C1AE3E5B40)
+[popup_mcp_eof] video on the popup 0.00 s after the click returned
+PASS [popup_mcp_eof] video followed the popup
+PASS [popup_mcp_eof] MCP process exited after stdin EOF (took 759 ms)
+[popup_mcp_eof] ffprobe size=48635: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "6.000000" } }
+PASS [popup_mcp_eof] duration > 0 (6.00 s) and full decode exit=0 stderr_lines=0
+[popup_mcp_eof] first frame red, last frame blue
+PASS [popup_mcp_eof] popup segment survived the exit: first frame red (opener), last frame blue (popup)
+PASS [popup_mcp_eof] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 30 ms)
+== popup exit: mcp_sigterm
+[popup_mcp_sigterm] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitgss3gu1j/recordings/x-20261026T110946Z-b48960.webm (tab E84D8A6692C660CC539962
+PASS [popup_mcp_sigterm] record-start succeeded
+[popup_mcp_sigterm] click: outcome: new tab opened — Chain (tab 6A7C6BFA4A8588138FA7EBB6144E3634)
+[popup_mcp_sigterm] video on the popup 0.11 s after the click returned
+PASS [popup_mcp_sigterm] video followed the popup
+PASS [popup_mcp_sigterm] bladebro pid 19242 exited after SIGTERM (took 757 ms)
+[popup_mcp_sigterm] ffprobe size=47337: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "5.500000" } }
+PASS [popup_mcp_sigterm] duration > 0 (5.50 s) and full decode exit=0 stderr_lines=0
+[popup_mcp_sigterm] first frame red, last frame blue
+PASS [popup_mcp_sigterm] popup segment survived the exit: first frame red (opener), last frame blue (popup)
+PASS [popup_mcp_sigterm] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 29 ms)
+== popup exit: daemon_stop
+[popup_daemon_stop] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitd6vmzvti/recordings/x-20261026T110953Z-2a6538.webm (tab 10DF4F3BCB0117FD909553
+PASS [popup_daemon_stop] record-start succeeded
+[popup_daemon_stop] click: outcome: new tab opened — Chain (tab F0DC89E8FAD01AE9598D339D5FA74798)
+[popup_daemon_stop] video on the popup 0.01 s after the click returned
+PASS [popup_daemon_stop] video followed the popup
+[popup_daemon_stop] bladebro stop: daemon stopped
+PASS [popup_daemon_stop] daemon process gone
+[popup_daemon_stop] ffprobe size=49187: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "6.300000" } }
+PASS [popup_daemon_stop] duration > 0 (6.30 s) and full decode exit=0 stderr_lines=0
+[popup_daemon_stop] first frame red, last frame blue
+PASS [popup_daemon_stop] popup segment survived the exit: first frame red (opener), last frame blue (popup)
+PASS [popup_daemon_stop] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 30 ms)
+== popup exit: daemon_sigterm
+[popup_daemon_sigterm] record-start err=False: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbexitaqy9wpnh/recordings/x-20261026T111001Z-059fa8.webm (tab D0332D15986D08F92F81C6
+PASS [popup_daemon_sigterm] record-start succeeded
+[popup_daemon_sigterm] click: outcome: new tab opened — Chain (tab 9F78FC5EB70FCCFD2CE2323178BFDE5D)
+[popup_daemon_sigterm] video on the popup 0.01 s after the click returned
+PASS [popup_daemon_sigterm] video followed the popup
+PASS [popup_daemon_sigterm] bladebro pid 19435 exited after SIGTERM (took 764 ms)
+[popup_daemon_sigterm] ffprobe size=48736: { "programs": [ ], "stream_groups": [ ], "streams": [ { "codec_name": "vp9", "width": 1280, "height": 720 } ], "format": { "duration": "6.200000" } }
+PASS [popup_daemon_sigterm] duration > 0 (6.20 s) and full decode exit=0 stderr_lines=0
+[popup_daemon_sigterm] first frame red, last frame blue
+PASS [popup_daemon_sigterm] popup segment survived the exit: first frame red (opener), last frame blue (popup)
+PASS [popup_daemon_sigterm] leftovers == 0 within 10 s (ffmpeg/bladebro/Chrome under the scratch home; took 29 ms)
+# popup_exit finished failures=0
+== off: recording OFF: CDP method trace of nav, popup click, tabs, switch-tab, close-tab equals the a92ad77 binary
+[off] base binary: /private/tmp/claude-501/-Users-sokolov-st-brainrocket-com-claude-bladebro/692c5087-55f4-4f58-b674-e2a3d7ce3526/scratchpad/base-target/release/bladebro (a92ad77)
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 13
+[off] base run 1: Page.bringToFront=3 Target.getTargets=1 total=100
+[off] base run 2: Page.bringToFront=3 Target.getTargets=1 total=94
+[off] new distinct WS methods: 13
+[off] new run 1: Page.bringToFront=3 Target.getTargets=1 total=95
+[off] new run 2: Page.bringToFront=3 Target.getTargets=1 total=96
+PASS [off] traces non-empty
+PASS [off] distinct WS method sets equal (base vs new)
+PASS [off] Page.bringToFront count per run equal (base vs new): 3 3 vs 3 3 
+PASS [off] Target.getTargets count per run equal (base vs new): 1 1 vs 1 1 
+PASS [off] no screencast method in new
+== mcp: tests/record_popup.rs live tests (MCP stdio, headless)
+[mcp] test popup_chain ... RESULT popup chain stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppc-19972/recordings/ch-20261026T111039Z-2b6fa0.webm (bytes 64178, duration 10.3 s, frames 103, dropped 0, segments [0.0 s tab 561D2732C4C64781877C43ED0AE22238, 1.8 s tab B7BD5985CD011D55030D2DD69063A708, 5.3 s tab 25BAB7A1BEEE61D07FBD9B15942EEFF7, 8.4 s tab B7BD5985CD011D5
+[mcp] test popup_kinds_delay ... RESULT follow delay blank 0.00
+[mcp] RESULT popup blank stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppk-19972/recordings/kblank-20261026T111051Z-576b20.webm (bytes 61870, duration 7.0 s, frames 70, dropped 0, segments [0.0 s tab 06A27181550A6B59CB45FD1C6A72E426, 2.0 s tab B784A2ED7C402158FF05863242CE5A4B, 5.4 s tab 06A27181550A6B59CB45FD1C6A72E426], captured 64)
+[mcp] RESULT follow delay js 0.06
+[mcp] RESULT popup js stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppk-19972/recordings/kjs-20261026T111059Z-13d949.webm (bytes 70596, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab 06A27181550A6B59CB45FD1C6A72E426, 2.1 s tab F3A30FF8EE5E6C969A5F3DCB0ED51A63, 4.8 s tab 06A27181550A6B59CB45FD1C6A72E426], captured 61)
+[mcp] RESULT follow delay window 0.17
+[mcp] RESULT popup window stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppk-19972/recordings/kwindow-20261026T111106Z-d3b59a.webm (bytes 52480, duration 6.3 s, frames 63, dropped 0, segments [0.0 s tab 06A27181550A6B59CB45FD1C6A72E426, 1.9 s tab 6A9EB6445C65AA374187BF67D482EDC5], captured 65). Note: agent was on tab 06A27181550A6B59CB45FD1C6A72E426 at stop; video 
+[mcp] RESULT follow delay xorigin 0.00
+[mcp] RESULT popup xorigin stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppk-19972/recordings/kxorigin-20261026T111112Z-91f9c3.webm (bytes 61744, duration 6.5 s, frames 65, dropped 0, segments [0.0 s tab 06A27181550A6B59CB45FD1C6A72E426, 2.0 s tab 1A9EC07BD904504040ABF9D969F9AAFE, 4.8 s tab 06A27181550A6B59CB45FD1C6A72E426], captured 61)
+[mcp] test popup_link_follow_and_return ... RESULT popup tabs during:
+[mcp] RESULT popup link stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppl-19972/recordings/pl-20261026T111121Z-ed2490.webm (bytes 74049, duration 5.4 s, frames 54, dropped 0, segments [0.0 s tab 4A829F0DED2A9219D200A514ED6113D8, 1.8 s tab DDE6BB4C6BB14B7628E0BE430F21960E, 4.1 s tab 4A829F0DED2A9219D200A514ED6113D8], captured 52). Note: popup DDE6BB4C6BB14B7628E0BE
+[mcp] RESULT popup colors: [Red, Blue, Red]
+[mcp] test popup_per_tab ... RESULT popup per-tab stop: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ppt-19972/recordings/pt-tab1-20261026T111128Z-916cc0.webm (bytes 32546, duration 8.2 s, frames 82, dropped 0, segments [0.0 s tab 0AE84B2777AFE14A89B2F16BEAA9509B, 4.1 s tab 0AE84B2777AFE14A89B2F16BEAA9509B], captured 58); /private/var/folders/yd/45h1
+[mcp] test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 59.63s
+PASS [mcp] the four live popup tests pass (exit=0)
+PASS [mcp] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+FAILS=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T11:11:38Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (44cd685-dirty))  chrome: bladebro 4.6.5
+# git: 44cd685
+== popup: (08.1) a link popup and a window.open popup are both segments, no switch-tab
+[popup] click link: outcome: new tab opened — C (tab C5DEAF0A87975F9160D92DFD742B4934)
+[popup] stop 1: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.Kcv4Gb4xy5/recordings/p1-20261026T111139Z-4fa5f0.webm (bytes 38619, duration 5.3 s, frames 53, dropped 0, segments [0.0 s tab 133B02243DA1441138B102AEB9F4B931, 1.8 s tab C5DEAF0A87975F9160D92DFD742B4934], captured 37). Note: agent was on tab 133B02243DA1441138B102AEB9F4B931 at stop; video followed tab C5DEAF0A87975F9160D92DFD742B4934
+PASS [popup] link popup: two segments, the opener then the popup
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"5.300000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (53) == reported frames (53)
+PASS [popup] opener yellow, popup green
+[popup] click window: outcome: new tab opened — C (tab 7DD735F99AFB27954FB1A29979A6413B)
+[popup] popup tab: 7DD735F99AFB27954FB1A29979A6413B
+[popup] stop 2: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.Kcv4Gb4xy5/recordings/p2-20261026T111145Z-2afa71.webm (bytes 39395, duration 5.0 s, frames 50, dropped 0, segments [0.0 s tab 133B02243DA1441138B102AEB9F4B931, 2.0 s tab 7DD735F99AFB27954FB1A29979A6413B], captured 33). Note: agent was on tab 133B02243DA1441138B102AEB9F4B931 at stop; video followed tab 7DD735F99AFB27954FB1A29979A6413B
+PASS [popup] window popup without switch-tab: >= 2 segments (2), first the opener, last the popup
+[popup] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"5.000000"}}
+PASS [popup] full decode exit=0 stderr_lines=0
+PASS [popup] codec vp9 1280x720 (constant output size)
+PASS [popup] decoded frames (50) == reported frames (50)
+PASS [popup] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T11:11:52Z failures=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T11:11:53Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (44cd685-dirty))  chrome: bladebro 4.6.5
+# git: 44cd685
+== daemon: CLI daemon, record-start, open-tab, switch-tab back, record-stop
+[daemon] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.5HUgsXIFoR/recordings/f-20261026T111154Z-b30088.webm (tab 8A6F0669806505F44A478AE7F0AAFFCB); first frame not awaited. record-stop saves it.
+[daemon] A=8A6F0669806505F44A478AE7F0AAFFCB B=291E272E651AB35003BA0D6415D527F2
+[daemon] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.5HUgsXIFoR/recordings/f-20261026T111154Z-b30088.webm (bytes 46465, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab 8A6F0669806505F44A478AE7F0AAFFCB, 2.3 s tab 291E272E651AB35003BA0D6415D527F2, 6.0 s tab 8A6F0669806505F44A478AE7F0AAFFCB], captured 81)
+PASS [daemon] stop exits 0 and says recording saved
+PASS [daemon] segments are A, B, A (ids match state tabs)
+PASS [daemon] offsets strictly increasing
+[daemon] offsets: 0.0 2.3 6.0 
+PASS [daemon] one ffmpeg pid across the switch (21246  / 21246 )
+[daemon] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.000000"}}
+PASS [daemon] full decode exit=0 stderr_lines=0
+PASS [daemon] codec vp9 1280x720 (constant output size)
+PASS [daemon] decoded frames (80) == reported frames (80)
+[daemon] segment 0 colour at 1.15 s: red
+[daemon] segment 1 colour at 4.15 s: blue
+[daemon] segment 2 colour at 7.0 s: red
+PASS [daemon] colours red, blue, red
+PASS [daemon] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T11:12:04Z failures=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T11:12:05Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (44cd685-dirty))  chrome: bladebro 4.6.5
+# git: 44cd685
+== close: the recorded tab is closed (the agent was on it): rebind with a note, never a failure
+[close] close-tab: ✓ closed tab 095C9E6E9402A58A49D18C8F64AB9E79 (was current; switched to CF8210015091026E60706A0DB8EB4C82)
+[close] record-stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.lWUxfZcs1V/recordings/c-20261026T111206Z-6c4670.webm (bytes 46194, duration 7.5 s, frames 75, dropped 0, segments [0.0 s tab CF8210015091026E60706A0DB8EB4C82, 1.7 s tab 095C9E6E9402A58A49D18C8F64AB9E79, 5.3 s tab CF8210015091026E60706A0DB8EB4C82]). Note: tab 095C9E6E9402A58A49D18C8F64AB9E79 gone at 5.3 s; following tab CF8210015091026E60706A0DB8EB4C82
+PASS [close] stop exits 0 and says recording saved
+PASS [close] note says the recorded tab was gone
+PASS [close] last segment is the tab the agent landed on (CF8210015091026E60706A0DB8EB4C82)
+[close] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"7.500000"}}
+PASS [close] full decode exit=0 stderr_lines=0
+PASS [close] codec vp9 1280x720 (constant output size)
+PASS [close] decoded frames (75) == reported frames (75)
+PASS [close] colours blue then red around the close
+PASS [close] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T11:12:15Z failures=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T11:12:16Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (44cd685-dirty))  chrome: bladebro 4.6.5
+# git: 44cd685
+== per-tab: record.tabs=per-tab from a project .bladebro.json -> one file per tab; BLADE_RECORD_TABS=follow overrides it
+[per-tab] record-start: recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.A3rvvRXwEU/recordings/pt-tab1-20261026T111217Z-9aacb8.webm (tab 6349EEC0B30DB769BE2B9A50534F567E); first frame not awaited. record-stop saves every tab's file.
+PASS [per-tab] start text says per-tab files (project layer enabled recording)
+[per-tab] ffmpeg pids while recording: 21999 22052 22077 
+PASS [per-tab] three ffmpeg processes while three files are open
+[per-tab] record-stop rc=0: recording saved (per-tab, 3 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.A3rvvRXwEU/recordings/pt-tab1-20261026T111217Z-9aacb8.webm (bytes 18860, duration 10.6 s, frames 106, dropped 0, segments [0.0 s tab 6349EEC0B30DB769BE2B9A50534F567E, 8.5 s tab 6349EEC0B30DB769BE2B9A50534F567E], captured 44); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.A3rvvRXwEU/recordings/pt-tab2-20261026T111219Z-4a5661.webm (bytes 16069, duration 8.2 s, frames 82, dropped 0, segments [0.0 s tab D1CE8068D18F855755E227DC9437899B], captured 32); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.A3rvvRXwEU/recordings/pt-tab3-20261026T111222Z-fd9ba2.webm (bytes 13999, duration 5.1 s, frames 51, dropped 0, segments [0.0 s tab DD335AB563B1E615C224A5E95E7CEA68], captured 31)
+PASS [per-tab] stop exits 0 with the per-tab header (3 files)
+PASS [per-tab] file 1 name has -tab1-
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"10.600000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (106) == reported frames (106)
+[per-tab] file 1 segments: 0.0 s tab 6349EEC0B30DB769BE2B9A50534F567E, 8.5 s tab 6349EEC0B30DB769BE2B9A50534F567E
+PASS [per-tab] file 1 is red at its first segment
+PASS [per-tab] file 2 name has -tab2-
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"8.200000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (82) == reported frames (82)
+[per-tab] file 2 segments: 0.0 s tab D1CE8068D18F855755E227DC9437899B
+PASS [per-tab] file 2 is blue at its first segment
+PASS [per-tab] file 3 name has -tab3-
+[per-tab] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"duration":"5.100000"}}
+PASS [per-tab] full decode exit=0 stderr_lines=0
+PASS [per-tab] codec vp9 1280x720 (constant output size)
+PASS [per-tab] decoded frames (51) == reported frames (51)
+[per-tab] file 3 segments: 0.0 s tab DD335AB563B1E615C224A5E95E7CEA68
+PASS [per-tab] file 3 is green at its first segment
+PASS [per-tab] three files listed (3)
+PASS [per-tab] tab ids in segments are A, B, C
+[per-tab] record-start (env follow): recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.A3rvvRXwEU/recordings/pf-20261026T111232Z-c5bb08.webm (tab 6848767B6A8DE4C4D4DFBD6385E27AE3); first frame not awaited. record-stop saves it.
+[per-tab] record-stop (env follow) rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.A3rvvRXwEU/recordings/pf-20261026T111232Z-c5bb08.webm (bytes 38359, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab 6848767B6A8DE4C4D4DFBD6385E27AE3, 1.7 s tab D1B8D63F8E71A411889ECCEBD144AA0A])
+PASS [per-tab] BLADE_RECORD_TABS=follow beats the project file: one file, follow header
+PASS [per-tab] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T11:12:38Z failures=0
+# follow_live.sh 08-01/08-02  started 2026-10-26T11:12:39Z  headless=1  fixtures=http://127.0.0.1:8765
+# binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (44cd685-dirty))  chrome: bladebro 4.6.5
+# git: 44cd685
+== mcp: tests/record_follow.rs live tests (MCP stdio, headless)
+[mcp] running 5 tests
+[mcp] test follow_close_recorded ... RESULT follow close stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fcl-22693/recordings/c-20261026T111244Z-4f91e0.webm (bytes 45978, duration 7.4 s, frames 74, dropped 0, segments [0.0 s tab 2C603DDB11D4C2E0109E4660130E84CE, 1.7 s tab BE9281138484318809420E7CCC78FE6E, 5.3 s tab 2C603DDB11D4C2E0109E4660130E84CE]). Note: tab BE9281138484318809420E7CCC78FE6E gone at 5.3 s; following tab 2C603DDB11D4C2E0109E4660130E84CE
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_popup ... RESULT popup link stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-22693/recordings/p1-20261026T111253Z-a77548.webm (bytes 38624, duration 5.3 s, frames 53, dropped 0, segments [0.0 s tab 1E69B15413C11749594F0EC4C71FF3E8, 1.8 s tab 8502BB10DFB5389BCFD55F48A260BD7B], captured 36). Note: agent was on tab 1E69B15413C11749594F0EC4C71FF3E8 at stop; video followed tab 8502BB10DFB5389BCFD55F48A260BD7B
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT popup window stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fpop-22693/recordings/p2-20261026T111259Z-2c46a1.webm (bytes 38833, duration 4.9 s, frames 49, dropped 0, segments [0.0 s tab 1E69B15413C11749594F0EC4C71FF3E8, 2.0 s tab 49BE788FBABB059CC36CD39B8E418CA9], captured 33). Note: agent was on tab 1E69B15413C11749594F0EC4C71FF3E8 at stop; video followed tab 49BE788FBABB059CC36CD39B8E418CA9
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test follow_switch_open ... RESULT follow stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-fsw-22693/recordings/f-20261026T111306Z-a3aaa0.webm (bytes 47509, duration 7.9 s, frames 79, dropped 0, segments [0.0 s tab 7144E2CA3F9B95282B80FF2D3B9757AD, 2.1 s tab 5A6E73C670102946C830A511BE363441, 6.0 s tab 7144E2CA3F9B95282B80FF2D3B9757AD], captured 78)
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT follow colors: [Red, Blue, Red]
+[mcp] test per_tab_cap ... RESULT per-tab cap stop: recording saved (per-tab, 8 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab1-20261026T111316Z-76b7f0.webm (bytes 26870, duration 19.8 s, frames 198, dropped 0, segments [0.0 s tab 912A9B70B162F77C74F7F60E4395C40E], captured 16); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab2-20261026T111317Z-36a3b9.webm (bytes 26938, duration 18.1 s, frames 181, dropped 0, segments [0.0 s tab FDA5863D0E1D0AE7A3101C9EAB9BF837], captured 24); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab3-20261026T111320Z-1544ca.webm (bytes 24794, duration 15.5 s, frames 155, dropped 0, segments [0.0 s tab FE9C9546A5AE186320CA5BF55DFF1448], captured 22); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab4-20261026T111322Z-44581b.webm (bytes 24472, duration 13.2 s, frames 132, dropped 0, segments [0.0 s tab 7A72783C35D0134268265B0D33C0666C], captured 22); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab5-20261026T111324Z-db9844.webm (bytes 15335, duration 11.1 s, frames 111, dropped 0, segments [0.0 s tab F65CFA89064562E373AEE90D35DF8C97], captured 23); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab6-20261026T111326Z-385105.webm (bytes 15329, duration 8.8 s, frames 88, dropped 0, segments [0.0 s tab 257DED70976DBEB7BF71F2457FBE0A22], captured 23); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab7-20261026T111329Z-171166.webm (bytes 13755, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab 4F7A9B320230F256A5403ABEEA4919BB], captured 22); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptcap-22693/recordings/cap-tab8-20261026T111331Z-baa0c7.webm (bytes 12719, duration 4.3 s, frames 43, dropped 0, segments [0.0 s tab 0F3A15D7CF5D6C02A047421474032C8E], captured 22). Note: tab 4594C3A360750281953ED19FC9032223 not recorded from 17.7 s: per-tab cap of 8 open files reached (close a tab to free one); agent was on tab 4594C3A360750281953ED19FC9032223 at stop; video followed tab 0F3A15D7CF5D6C02A047421474032C8E
+[mcp] test per_tab_three_files ... RESULT per-tab stop: recording saved (per-tab, 3 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-22693/recordings/pt-tab1-20261026T111337Z-59f138.webm (bytes 19624, duration 12.3 s, frames 123, dropped 0, segments [0.0 s tab 1BA574A4B2F76F31624897C2E73F2F2E, 7.5 s tab 1BA574A4B2F76F31624897C2E73F2F2E], captured 41); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-22693/recordings/pt-tab2-20261026T111339Z-555ef9.webm (bytes 18258, duration 10.4 s, frames 104, dropped 0, segments [0.0 s tab 489B5F3CF61D4423716C3E9009485732, 8.9 s tab 489B5F3CF61D4423716C3E9009485732], captured 43); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-ptt-22693/recordings/pt-tab3-20261026T111342Z-88b302.webm (bytes 15077, duration 6.1 s, frames 61, dropped 0, segments [0.0 s tab BA6EDADF9A1D6EF4E43BB2F652796D1F, 4.6 s tab BA6EDADF9A1D6EF4E43BB2F652796D1F], captured 38). Note: tab BA6EDADF9A1D6EF4E43BB2F652796D1F gone at 11.0 s; following tab 489B5F3CF61D4423716C3E9009485732; tab BA6EDADF9A1D6EF4E43BB2F652796D1F closed at 11.2 s
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] RESULT ffprobe: vp9 1280x720
+[mcp] test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 67.06s
+PASS [mcp] the live follow and per-tab tests pass (exit=0)
+PASS [mcp] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [final] no bladebro daemon/mcp, ffmpeg or cdp_tap process left
+# finished 2026-10-26T11:13:50Z failures=0
+ALLDONE

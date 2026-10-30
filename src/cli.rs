@@ -38,6 +38,7 @@ use crate::page::Page;
 mod args;
 mod daemon;
 mod help;
+mod hermes;
 mod rb;
 
 use self::args::{
@@ -52,6 +53,73 @@ use self::rb::run_rb;
 #[cfg(unix)]
 fn socket_path() -> std::path::PathBuf {
     crate::platform::blade_dir().join("cli.sock")
+}
+
+/// Trust boundary for the daemon channel. A connect-success test proves
+/// only that *something* is listening at `cli.sock`; the channel carries
+/// every tool request and authors every response the CLI prints, yet would
+/// otherwise be authenticated solely by the state dir's permissions — a
+/// local co-user with write access to a relocated/insecure state dir can
+/// bind a listener at the path, lock the real daemon out ("already
+/// running"), capture every `{"tool","args"}` request, and author every
+/// response. Trust the socket only when its parent directory is a real
+/// directory (no symlink), owned by this user, with no group/world write
+/// bits.
+#[cfg(unix)]
+fn socket_dir_trusted() -> bool {
+    socket_dir_trusted_at(&socket_path())
+}
+
+#[cfg(unix)]
+fn socket_dir_trusted_at(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let dir = match path.parent() {
+        Some(p) => p,
+        None => return false,
+    };
+    match std::fs::symlink_metadata(dir) {
+        Ok(md) => md.is_dir() && md.uid() == unsafe { libc::geteuid() } && (md.mode() & 0o022) == 0,
+        Err(_) => false,
+    }
+}
+
+/// True when the connected daemon socket's peer runs as this user
+/// (SO_PEERCRED on Linux, getpeereid on macOS). The dir-trust check is the
+/// primary gate; this rejects a same-name impostor even if that check was
+/// passed on a loosened tree.
+#[cfg(unix)]
+fn peer_uid_matches_self(fd: std::os::fd::RawFd) -> bool {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let mut creds = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let rc = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                &mut creds as *mut libc::ucred as *mut libc::c_void,
+                &mut len,
+            )
+        };
+        rc == 0 && creds.uid == unsafe { libc::geteuid() }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut uid: libc::uid_t = 0;
+        let mut gid: libc::gid_t = 0;
+        let rc = unsafe { libc::getpeereid(fd, &mut uid, &mut gid) };
+        rc == 0 && uid == unsafe { libc::geteuid() }
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "android")))]
+    {
+        let _ = fd;
+        true
+    }
 }
 
 /// Result of a tool dispatch — shared between CLI and daemon.
@@ -111,6 +179,8 @@ pub async fn dispatch(
         });
     }
 
+    // fork hook (record): see .planning/HOOKS.md
+    let tl = crate::record::timeline::begin(tool, args);
     let result = match tool {
         "act" => server::handle_act(args, page).await,
         "see" => server::handle_see(args, page).await,
@@ -118,20 +188,32 @@ pub async fn dispatch(
         "run" => server::handle_run(args, page).await,
         _ => return Err(BladeError::Other(format!("unknown tool: {tool}"))),
     };
+    crate::record::timeline::end(tl, &result);
 
     match result {
         Ok(mut text) => {
             // Drain dialogs and ambient events (same as MCP handle_tools_call).
             let dialogs = page.drain_dialogs();
             if !dialogs.is_empty() {
-                text.push_str("\n\u{26a0} dialogs auto-dismissed:\n");
+                text.push_str("\n\u{26a0} dialogs handled:\n");
                 for d in &dialogs {
                     let action = if d.accepted { "accepted" } else { "cancelled" };
+                    let how = if d.via == "expectation" {
+                        " (via armed expectation)"
+                    } else {
+                        ""
+                    };
                     text.push_str(&format!(
-                        "  {} \"{}\" \u{2014} {}\n",
-                        d.kind, d.message, action
+                        "  {} \"{}\" \u{2014} {}{}\n",
+                        d.kind, d.message, action, how
                     ));
+                    if let Some(n) = &d.note {
+                        text.push_str(&format!("    ({n})\n"));
+                    }
                 }
+            }
+            if let Some(note) = page.drain_dialog_expect_note() {
+                text.push_str(&format!("\n\u{26a0} {note}\n"));
             }
             let ambient = page.drain_ambient();
             for a in &ambient {
@@ -148,14 +230,25 @@ pub async fn dispatch(
             let mut text = format!("\u{2717} error: {e}");
             let dialogs = page.drain_dialogs();
             if !dialogs.is_empty() {
-                text.push_str("\n\n\u{26a0} dialogs auto-dismissed:\n");
+                text.push_str("\n\n\u{26a0} dialogs handled:\n");
                 for d in &dialogs {
                     let action = if d.accepted { "accepted" } else { "cancelled" };
+                    let how = if d.via == "expectation" {
+                        " (via armed expectation)"
+                    } else {
+                        ""
+                    };
                     text.push_str(&format!(
-                        "  {} \"{}\" \u{2014} {}\n",
-                        d.kind, d.message, action
+                        "  {} \"{}\" \u{2014} {}{}\n",
+                        d.kind, d.message, action, how
                     ));
+                    if let Some(n) = &d.note {
+                        text.push_str(&format!("    ({n})\n"));
+                    }
                 }
+            }
+            if let Some(note) = page.drain_dialog_expect_note() {
+                text.push_str(&format!("\n\u{26a0} {note}\n"));
             }
             Ok(ToolResult {
                 text,
@@ -210,6 +303,13 @@ fn ignore_sighup() {
 /// Check if the daemon is running by trying to connect to the socket.
 #[cfg(unix)]
 fn daemon_running() -> bool {
+    // Trust boundary: connect-success alone proves only that SOMETHING
+    // listens — a co-user listener placed through a loose state dir would
+    // otherwise be believed, locking the genuine daemon out and authoring
+    // every response the CLI prints.
+    if !socket_dir_trusted() {
+        return false;
+    }
     let path = socket_path();
     if !path.exists() {
         return false;
@@ -244,8 +344,18 @@ fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
 
     let mut stream = UnixStream::connect(socket_path())
         .map_err(|e| BladeError::Other(format!("daemon not running: {e}")))?;
+    {
+        use std::os::fd::AsRawFd;
+        if !peer_uid_matches_self(stream.as_raw_fd()) {
+            return Err(BladeError::Other(
+                "refusing the daemon channel: the socket peer is not this user".into(),
+            ));
+        }
+    }
 
-    let req = serde_json::to_string(&json!({ "tool": tool, "args": args }))?;
+    // Fork hook (.planning/HOOKS.md): the daemon refuses a launch-mode mismatch (HEAD-03).
+    let launch = crate::launch_mode::request_tag().map_err(BladeError::Other)?;
+    let req = serde_json::to_string(&json!({ "tool": tool, "args": args, "launch": launch }))?;
     writeln!(stream, "{req}")?;
     stream.flush()?;
 
@@ -363,6 +473,9 @@ async fn run_cli_inner(
 
     match cmd {
         "rb" | "realbrowser" => run_rb(rest, json_mode).await,
+        "hermes" => hermes::run(rest, json_mode).await,
+        // Fork hook (.planning/HOOKS.md): headless on|off|status.
+        "headless" => crate::launch_mode::run_cli(rest, json_mode),
         "daemon" => run_daemon().await,
         "stop" => {
             let text = stop_daemon().await?;
@@ -457,6 +570,10 @@ async fn run_tool(
     if !no_daemon {
         #[cfg(unix)]
         {
+            // Fork hook (.planning/HOOKS.md): refuse an invalid launch setting BEFORE any
+            // daemon starts; a daemon inherits the env and would stay poisoned.
+            crate::launch_mode::request_tag().map_err(BladeError::Other)?;
+
             // Try the running daemon first.
             if daemon_running() {
                 match send_to_daemon(tool, args) {
@@ -498,6 +615,11 @@ async fn run_tool(
             }
 
             if daemon_running() {
+                // Fork hook (.planning/HOOKS.md): the daemon's stderr is /dev/null, so this
+                // client (which just started it) prints the launch note, once, to stderr.
+                if let Some(note) = crate::launch_mode::daemon_start_note() {
+                    eprintln!("{note}");
+                }
                 match send_to_daemon(tool, args) {
                     Ok(result) => {
                         let code = print_result(&result, json_mode);
@@ -550,6 +672,7 @@ async fn run_tool(
 /// Chrome down. `external=false` owns the browser, so it restores logins,
 /// warms on first run, and the caller owns shutdown.
 async fn run_connected(tool: &str, args: &Value, base: &str, external: bool) -> Result<ToolResult> {
+    crate::record::hub::set_ephemeral(); // fork hook (record): see .planning/HOOKS.md
     let target = crate::cdp::first_page_target(base).await?;
     let client = crate::cdp::CdpClient::connect(target.ws_url()?).await?;
     let mut page = Page::attach(crate::cdp::CdpSession::root(client), base, None).await?;

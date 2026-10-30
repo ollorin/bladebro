@@ -1,0 +1,169 @@
+# trial_merge  2026-10-27T09:59:12Z  branch gsd/browser-recording e4648a9  upstream upstream/main 6b524d2
+## additive diff: merge-base 6b524d2 .. HEAD e4648a9 (upstream/main = 6b524d2)
+TOUCHED M README.md listed
+TOUCHED M src/browser/alerts.rs listed
+TOUCHED M src/browser/flags.rs listed
+TOUCHED M src/browser/launch.rs listed
+TOUCHED M src/browser/pipe.rs listed
+TOUCHED M src/cdp/client.rs listed
+TOUCHED M src/cli.rs listed
+TOUCHED M src/cli/args/state.rs listed
+TOUCHED M src/cli/daemon.rs listed
+TOUCHED M src/cli/help.rs listed
+TOUCHED M src/lib.rs listed
+TOUCHED M src/main.rs listed
+TOUCHED M src/mcp/server/boot.rs listed
+TOUCHED M src/mcp/server/proto.rs listed
+TOUCHED M src/mcp/server/serve.rs listed
+TOUCHED M src/mcp/server/state.rs listed
+TOUCHED M src/mcp/tools.rs listed
+TOUCHED M src/page/attach.rs listed
+TOUCHED M src/page/mod.rs listed
+TOUCHED M src/session_profile/reap.rs listed
+TOUCHED M src/state.rs listed
+TOUCHED M src/updater/doctor.rs listed
+NEW files by folder:
+  236 .planning/phases
+  90 src/record
+  79 tools/record_sidecar
+  12 src/launch_mode
+  7 .planning/codebase
+  5 .planning/research
+  1 tests/record_support
+  1 tests/record_popup.rs
+  1 tests/record_live.rs
+  1 tests/record_hub.rs
+  1 tests/record_follow.rs
+  1 tests/record_evidence.rs
+  1 src/record.rs
+  1 src/launch_mode.rs
+  1 docs/upstream-merge-procedure.md
+  1 docs/recording-and-launch-config.md
+  1 .planning/config.json
+  1 .planning/STATE.md
+  1 .planning/ROADMAP.md
+  1 .planning/REQUIREMENTS.md
+  1 .planning/PROJECT.md
+  1 .planning/HOOKS.md
+# additive: new=445 touched=22 unlisted_touched=0
+## trial merge of upstream/main into trial-merge/20261027105930-59671 (worktree under /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T//bbmerge.OKZhWH)
+Already up to date.
+# invariants ok: gsd/browser-recording still at e4648a9, tracked files unchanged, trial branch and worktree removed
+RESULT clean
+trial_exit=0
+# trial_merge  2026-10-27T10:01:05Z  branch gsd/browser-recording e4648a9  upstream upstream/main 6b524d2
+## additive diff: merge-base 6b524d2 .. HEAD e4648a9 (upstream/main = 6b524d2)
+TOUCHED M README.md listed
+TOUCHED M src/browser/alerts.rs listed
+TOUCHED M src/browser/flags.rs listed
+TOUCHED M src/browser/launch.rs listed
+TOUCHED M src/browser/pipe.rs listed
+TOUCHED M src/cdp/client.rs listed
+TOUCHED M src/cli.rs listed
+TOUCHED M src/cli/args/state.rs listed
+TOUCHED M src/cli/daemon.rs listed
+TOUCHED M src/cli/help.rs listed
+TOUCHED M src/lib.rs listed
+TOUCHED M src/main.rs listed
+TOUCHED M src/mcp/server/boot.rs listed
+TOUCHED M src/mcp/server/proto.rs listed
+TOUCHED M src/mcp/server/serve.rs listed
+TOUCHED M src/mcp/server/state.rs listed
+TOUCHED M src/mcp/tools.rs listed
+TOUCHED M src/page/attach.rs listed
+TOUCHED M src/page/mod.rs listed
+TOUCHED M src/session_profile/reap.rs listed
+TOUCHED M src/state.rs listed
+TOUCHED M src/updater/doctor.rs listed
+NEW files by folder:
+  236 .planning/phases
+  90 src/record
+  79 tools/record_sidecar
+  12 src/launch_mode
+  7 .planning/codebase
+  5 .planning/research
+  1 tests/record_support
+  1 tests/record_popup.rs
+  1 tests/record_live.rs
+  1 tests/record_hub.rs
+  1 tests/record_follow.rs
+  1 tests/record_evidence.rs
+  1 src/record.rs
+  1 src/launch_mode.rs
+  1 docs/upstream-merge-procedure.md
+  1 docs/recording-and-launch-config.md
+  1 .planning/config.json
+  1 .planning/STATE.md
+  1 .planning/ROADMAP.md
+  1 .planning/REQUIREMENTS.md
+  1 .planning/PROJECT.md
+  1 .planning/HOOKS.md
+# additive: new=445 touched=22 unlisted_touched=0
+## trial merge of upstream/main into trial-merge/20261027110122-67331 (worktree under /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T//bbmerge.qFocW1)
+Already up to date.
+## gate in the merged worktree: fmt,clippy
+gate fmt exit=0
+  clippy: Checking reqwest v0.12.28
+  clippy: Finished `release` profile [optimized] target(s) in 22.69s
+gate clippy exit=0
+# invariants ok: gsd/browser-recording still at e4648a9, tracked files unchanged, trial branch and worktree removed
+RESULT clean
+gate1_exit=0
+# trial_merge  2026-10-27T10:01:49Z  branch gsd/browser-recording e4648a9  upstream upstream/main 6b524d2
+## additive diff: merge-base 6b524d2 .. HEAD e4648a9 (upstream/main = 6b524d2)
+TOUCHED M README.md listed
+TOUCHED M src/browser/alerts.rs listed
+TOUCHED M src/browser/flags.rs listed
+TOUCHED M src/browser/launch.rs listed
+TOUCHED M src/browser/pipe.rs listed
+TOUCHED M src/cdp/client.rs listed
+TOUCHED M src/cli.rs listed
+TOUCHED M src/cli/args/state.rs listed
+TOUCHED M src/cli/daemon.rs listed
+TOUCHED M src/cli/help.rs listed
+TOUCHED M src/lib.rs listed
+TOUCHED M src/main.rs listed
+TOUCHED M src/mcp/server/boot.rs listed
+TOUCHED M src/mcp/server/proto.rs listed
+TOUCHED M src/mcp/server/serve.rs listed
+TOUCHED M src/mcp/server/state.rs listed
+TOUCHED M src/mcp/tools.rs listed
+TOUCHED M src/page/attach.rs listed
+TOUCHED M src/page/mod.rs listed
+TOUCHED M src/session_profile/reap.rs listed
+TOUCHED M src/state.rs listed
+TOUCHED M src/updater/doctor.rs listed
+NEW files by folder:
+  236 .planning/phases
+  90 src/record
+  79 tools/record_sidecar
+  12 src/launch_mode
+  7 .planning/codebase
+  5 .planning/research
+  1 tests/record_support
+  1 tests/record_popup.rs
+  1 tests/record_live.rs
+  1 tests/record_hub.rs
+  1 tests/record_follow.rs
+  1 tests/record_evidence.rs
+  1 src/record.rs
+  1 src/launch_mode.rs
+  1 docs/upstream-merge-procedure.md
+  1 docs/recording-and-launch-config.md
+  1 .planning/config.json
+  1 .planning/STATE.md
+  1 .planning/ROADMAP.md
+  1 .planning/REQUIREMENTS.md
+  1 .planning/PROJECT.md
+  1 .planning/HOOKS.md
+# additive: new=445 touched=22 unlisted_touched=0
+## trial merge of upstream/main into trial-merge/20261027110207-69897 (worktree under /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T//bbmerge.lh2yYK)
+Already up to date.
+## gate in the merged worktree: test,audit
+  test: passed=903 failed=0 ignored=18
+gate test exit=0
+  audit: SCORE: 100/100 VERDICT: PASS
+gate audit exit=0
+# invariants ok: gsd/browser-recording still at e4648a9, tracked files unchanged, trial branch and worktree removed
+RESULT clean
+gate2_exit=0

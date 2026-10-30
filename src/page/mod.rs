@@ -21,6 +21,7 @@ pub mod logs;
 pub mod navigate;
 pub mod tabs;
 
+mod gl;
 mod route;
 
 pub use self::logs::{NetEntry, XhrEntry};
@@ -55,8 +56,88 @@ pub struct DialogInfo {
     /// Default prompt value (for `prompt()` dialogs only).
     pub default_prompt: Option<String>,
     /// Whether the dialog was accepted (true) or cancelled (false).
-    /// alert=accepted, confirm/prompt/beforeunload=cancelled.
+    /// alert=accepted, confirm/prompt/beforeunload=cancelled unless an armed
+    /// expectation answered differently.
     pub accepted: bool,
+    /// How it was answered: "default" (no matching instruction) or
+    /// "expectation" (an armed one-use `act dialog` expectation matched).
+    pub via: String,
+    /// Extra context for the agent (mismatch reason, expiry note). None for
+    /// plain default handling.
+    pub note: Option<String>,
+}
+
+/// An armed one-use dialog expectation (G03): set with `act dialog` BEFORE
+/// the action that opens the dialog. The dialog task consumes it only on a
+/// real match; without one, the safe defaults (alert/beforeunload accept,
+/// confirm/prompt cancel) are untouched.
+#[derive(Debug, Clone)]
+pub struct DialogExpect {
+    /// "alert" | "confirm" | "prompt" | "beforeunload" | "any".
+    pub kind: String,
+    /// When set, only dialogs whose message CONTAINS this (case-insensitive)
+    /// may match.
+    pub message: Option<String>,
+    /// Text to type into a matching prompt() when accepting.
+    pub prompt_text: Option<String>,
+    /// Answer for the matching dialog: accept (true) or cancel (false).
+    pub accept: bool,
+    /// Expiry — after this the expectation is reported unused and dropped.
+    pub deadline: std::time::Instant,
+    /// Page origin when armed; a main-frame navigation to a different origin
+    /// makes the expectation stop matching (it must not answer a foreign
+    /// origin's dialog).
+    pub origin: Option<String>,
+}
+
+/// Origin (scheme://authority) of an http(s) URL; None for other schemes
+/// (about:, file:, data:) or malformed input.
+pub fn origin_of(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    if !matches!(scheme, "http" | "https") {
+        return None;
+    }
+    let authority = rest.split(['/', '?', '#']).next()?;
+    if authority.is_empty() {
+        return None;
+    }
+    Some(format!("{scheme}://{authority}"))
+}
+
+/// Decide whether an opening dialog matches an armed expectation (G03).
+/// Pure so the matrix is unit-tested. `Ok((accept, prompt_text))` = consume
+/// the expectation and answer with these; `Err(reason)` = keep it armed for
+/// a later dialog, apply default handling to this one.
+pub fn match_dialog_expect(
+    exp: &DialogExpect,
+    kind: &str,
+    message: &str,
+    url_now: Option<&str>,
+) -> std::result::Result<(bool, Option<String>), String> {
+    if exp.kind != "any" && exp.kind != kind {
+        return Err(format!(
+            "kind is '{kind}', expectation armed for '{}'",
+            exp.kind
+        ));
+    }
+    if let Some(needle) = &exp.message {
+        if !message.to_lowercase().contains(&needle.to_lowercase()) {
+            return Err("message does not contain the armed text".to_string());
+        }
+    }
+    if let (Some(armed), Some(now_url)) = (exp.origin.as_deref(), url_now) {
+        if let (Some(a), Some(b)) = (origin_of(armed), origin_of(now_url)) {
+            if a != b {
+                return Err(format!("origin changed ({b}; armed on {a})"));
+            }
+        }
+    }
+    let prompt = if exp.accept {
+        exp.prompt_text.clone()
+    } else {
+        None
+    };
+    Ok((exp.accept, prompt))
 }
 
 /// A tracked download (V19). Updated by the download-watch task as
@@ -89,9 +170,12 @@ pub struct Page {
     /// mode this is `None` and tabs are listed over the HTTP debug endpoint.
     browser_client: Option<CdpClient>,
     lpm: LivePageModel,
-    /// Queue of auto-dismissed dialogs, drained by the MCP server after each
-    /// tool call and appended to the agent-facing result.
+    /// Queue of dialogs handled by the dialog task (default handling or an
+    /// armed expectation), drained by the MCP server after each tool call
+    /// and appended to the agent-facing result.
     dialogs: Arc<Mutex<Vec<DialogInfo>>>,
+    /// Armed one-use dialog expectation (G03), shared with the dialog task.
+    dialog_expect: Arc<Mutex<Option<DialogExpect>>>,
     /// Handle to the dialog-handler background task. Aborted on Drop so the
     /// task's CdpClient clone is released, allowing the connection to close.
     dialog_task: Option<tokio::task::JoinHandle<()>>,
@@ -304,6 +388,13 @@ impl Page {
         }
     }
 
+    /// Requests actually refused by this attachment, not estimated savings.
+    pub fn blocked_requests(&self) -> u64 {
+        self.intercept
+            .blocked_requests
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Current block-class bitmask (for `state op=block get`).
     pub fn block_rules(&self) -> u32 {
         self.intercept.rules()
@@ -428,6 +519,11 @@ impl Page {
         } else {
             None
         };
+        // Chrome can foreground a popup while our model still belongs to the
+        // opener. Activate before input; never replay an input after timeout.
+        if action.injects_input() {
+            self.activate().await?;
+        }
         // S5: pacing governor — realistic inter-action gaps.
         self.pace(&action).await;
         self.is_busy
@@ -487,7 +583,7 @@ impl Page {
                 return Err(e);
             }
         };
-        let verdict = match heal_note {
+        let mut verdict = match heal_note {
             Some(note) => format!("{verdict} [{note}]"),
             None => verdict,
         };
@@ -504,18 +600,22 @@ impl Page {
                 let tab_info: Vec<String> = new_tabs
                     .iter()
                     .map(|t| {
-                        if t.title.is_empty() {
-                            t.url.clone()
-                        } else {
-                            t.title.clone()
-                        }
+                        format!(
+                            "{} (tab {})",
+                            if t.title.is_empty() { &t.url } else { &t.title },
+                            t.id
+                        )
                     })
                     .collect();
                 let new_verdict = format!("outcome: new tab opened — {}", tab_info.join(", "));
-                if let Ok(mut a) = self.ambient.lock() {
-                    a.push(new_verdict.clone());
+                verdict = new_verdict;
+                // Keep the opener usable and report the popup once. Finish
+                // normal busy/timing cleanup below, even when a tab opened.
+                if let Err(e) = crate::record::hub::activate_opener(self).await {
+                    verdict.push_str(&format!(
+                        "; opener activation failed: {e}; use state switch-tab"
+                    ));
                 }
-                return Ok((delta, new_verdict));
             }
         }
         // S4+S5: mark action complete — hum resumes, next action paces.
@@ -559,6 +659,12 @@ impl Page {
     /// Borrow the CDP client (for MCP server navigate).
     pub fn cdp_ref(&self) -> &CdpSession {
         &self.cdp
+    }
+
+    /// Debugging endpoint this page attached through (`host:port` or `pipe`).
+    // fork hook (record): see .planning/HOOKS.md
+    pub fn base(&self) -> &str {
+        &self.base
     }
 
     /// Has the browser connection been closed (Chrome died)?
@@ -621,5 +727,81 @@ mod tests {
         assert_eq!(with_scheme("about:blank"), "about:blank");
         assert_eq!(with_scheme("data:text/html,hi"), "data:text/html,hi");
         assert_eq!(with_scheme("blob:https://x/abcd"), "blob:https://x/abcd");
+    }
+
+    use super::{match_dialog_expect, origin_of, DialogExpect};
+
+    fn exp(kind: &str) -> DialogExpect {
+        DialogExpect {
+            kind: kind.into(),
+            message: None,
+            prompt_text: None,
+            accept: true,
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(30),
+            origin: Some("https://shop.example".into()),
+        }
+    }
+
+    #[test]
+    fn dialog_expect_matching_matrix() {
+        // Kind gate: wrong kind keeps the expectation armed (Err), right
+        // kind passes; "any" matches everything.
+        assert!(match_dialog_expect(
+            &exp("confirm"),
+            "confirm",
+            "Delete?",
+            Some("https://shop.example/cart")
+        )
+        .is_ok());
+        assert!(match_dialog_expect(&exp("confirm"), "prompt", "x", None).is_err());
+        assert!(match_dialog_expect(&exp("any"), "prompt", "x", None).is_ok());
+        // Message matcher: case-insensitive substring; a miss is a mismatch.
+        let mut e = exp("confirm");
+        e.message = Some("delete".into());
+        assert!(match_dialog_expect(&e, "confirm", "Really DELETE this?", None).is_ok());
+        assert!(match_dialog_expect(&e, "confirm", "Save changes?", None).is_err());
+        // Origin gate: same origin ok, foreign origin refuses, unknown url ok.
+        assert!(match_dialog_expect(
+            &exp("confirm"),
+            "confirm",
+            "x",
+            Some("https://shop.example/cart")
+        )
+        .is_ok());
+        assert!(match_dialog_expect(
+            &exp("confirm"),
+            "confirm",
+            "x",
+            Some("https://evil.example/")
+        )
+        .is_err());
+        assert!(match_dialog_expect(&exp("confirm"), "confirm", "x", None).is_ok());
+        // prompt_text passes only when accepting.
+        let mut p = exp("prompt");
+        p.prompt_text = Some("answer".into());
+        assert_eq!(
+            match_dialog_expect(&p, "prompt", "?", None).unwrap(),
+            (true, Some("answer".to_string()))
+        );
+        p.accept = false;
+        assert_eq!(
+            match_dialog_expect(&p, "prompt", "?", None).unwrap(),
+            (false, None)
+        );
+    }
+
+    #[test]
+    fn origin_of_parses_http_authorities_only() {
+        assert_eq!(
+            origin_of("https://a.b:8443/path?q=1"),
+            Some("https://a.b:8443".into())
+        );
+        assert_eq!(
+            origin_of("http://localhost:3000/x"),
+            Some("http://localhost:3000".into())
+        );
+        assert_eq!(origin_of("about:blank"), None);
+        assert_eq!(origin_of("file:///tmp/x.html"), None);
+        assert_eq!(origin_of("https://"), None);
     }
 }

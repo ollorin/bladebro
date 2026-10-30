@@ -1,0 +1,3 @@
+# Deferred items (Phase 9)
+
+- [DEFERRED] After `kill -9` of an MCP server (`bladebro mcp`) its scratch Chrome (parent pid 1) is still alive after the next MCP launch on the same BLADE_HOME and after that session's shutdown (8 Chrome processes left, reproduced with NO recording: same count with only `nav`). The daemon lane's reaper does remove it (daemon_kill9: 0 left). Upstream reaper/MCP behavior, unrelated to recording and outside Phase 9's hook budget (src/session_profile, src/mcp). exit_live.sh reports it as an INFO line for mcp_kill9 and kills those scratch pids itself; ffmpeg and bladebro leftovers must still be 0 there. Found during exit_live.sh mcp_kill9 (task 2).

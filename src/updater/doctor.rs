@@ -53,8 +53,10 @@ pub async fn run() -> Result<()> {
         checks.push(check_chrome_version().await);
     }
 
+    checks.push(check_browser_mode());
+
     // 4. Xvfb (Linux only)
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     checks.push(check_xvfb());
 
     // 5. Profile directory
@@ -77,6 +79,10 @@ pub async fn run() -> Result<()> {
 
     // 11. Disk space
     checks.push(check_disk_space());
+    // Fork hook (.planning/HOOKS.md): ffmpeg for opt-in recording; never Fail.
+    checks.push(check_ffmpeg());
+    // Fork hook (.planning/HOOKS.md): browser launch mode and its source (HEAD-04).
+    checks.push(check_launch_mode());
 
     // 12. Version vs latest
     checks.push(check_version().await);
@@ -131,6 +137,11 @@ pub async fn run() -> Result<()> {
         ui::hint("Fix the failures above, then run bladebro doctor again.");
     }
 
+    if fails > 0 {
+        return Err(crate::error::BladeError::Other(format!(
+            "doctor: {fails} failed check(s)"
+        )));
+    }
     Ok(())
 }
 
@@ -199,18 +210,41 @@ fn check_data_dir() -> Check {
     }
 }
 
+fn check_browser_mode() -> Check {
+    match crate::browser::incognito_policy() {
+        Ok(true) => Check {
+            name: "Agent browser mode",
+            status: Status::Warn,
+            detail: "incognito compatibility (cookies/named sessions supported; history/cache and automatic localStorage persistence unavailable)".into(),
+            fix: Some("BLADE_INCOGNITO=0 disables automatic Raspberry Pi OS trixie compatibility; restart the client/daemon".into()),
+        },
+        Ok(false) => Check {
+            name: "Agent browser mode",
+            status: Status::Pass,
+            detail: "persistent profile".into(),
+            fix: None,
+        },
+        Err(error) => Check {
+            name: "Agent browser mode",
+            status: Status::Fail,
+            detail: error.to_string(),
+            fix: Some("Set BLADE_INCOGNITO to auto, 0 or 1".into()),
+        },
+    }
+}
+
 fn check_chrome() -> Check {
-    match find_chrome_path() {
-        Some(path) => Check {
+    match crate::browser::find_chrome() {
+        Ok(path) => Check {
             name: "Chrome/Chromium",
             status: Status::Pass,
             detail: path,
             fix: None,
         },
-        None => Check {
+        Err(error) => Check {
             name: "Chrome/Chromium",
             status: Status::Fail,
-            detail: "not found".into(),
+            detail: error.to_string(),
             fix: Some(chrome_install_hint()),
         },
     }
@@ -229,10 +263,17 @@ async fn check_chrome_version() -> Check {
         }
     };
 
-    let output = std::process::Command::new(&path).arg("--version").output();
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(&path)
+            .arg("--version")
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await;
 
     match output {
-        Ok(o) => {
+        Ok(Ok(o)) if o.status.success() => {
             let version_str = String::from_utf8_lossy(&o.stdout).trim().to_string();
             // Extract the first token that looks like a version (contains digits and dots).
             // "Chromium 150.0.7871.186 Arch Linux" → "150.0.7871.186"
@@ -274,16 +315,16 @@ async fn check_chrome_version() -> Check {
                 }
             }
         }
-        Err(e) => Check {
+        _ => Check {
             name: "Chrome version",
-            status: Status::Warn,
-            detail: format!("could not check: {e}"),
-            fix: None,
+            status: Status::Fail,
+            detail: "--version failed or did not answer within 5s".into(),
+            fix: Some("Check CHROME_PATH and run the browser --version directly".into()),
         },
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn check_xvfb() -> Check {
     let candidates = [
         "/usr/bin/Xvfb",
@@ -331,9 +372,22 @@ fn check_profile_dir() -> Check {
             fix: None,
         };
     }
-    // Check writability.
-    let test_file = dir.join(".bladebro-write-test");
-    match std::fs::write(&test_file, b"test") {
+    // Check writability. Unpredictable name + O_EXCL: a fixed name let a
+    // local attacker pre-place a symlink and turn this probe into an
+    // arbitrary-file write (the same class the updater's check fixed).
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let test_file = dir.join(format!(
+        ".bladebro-write-test-{}-{nanos}",
+        std::process::id()
+    ));
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&test_file)
+    {
         Ok(_) => {
             let _ = std::fs::remove_file(&test_file);
             Check {
@@ -496,7 +550,7 @@ fn check_stale_locks() -> Check {
                     name: "Profile locks",
                     status: Status::Warn,
                     detail: format!("lock held by PID {p} (another bladebro may be running)"),
-                    fix: Some("Close other bladebro instances, or use BLADE_PROFILE_DIR for a separate profile".into()),
+                    fix: Some("Close other bladebro instances, or use BLADE_PROFILE_DIR pointing at an empty directory only you can write".into()),
                 }
             } else {
                 Check {
@@ -639,9 +693,34 @@ fn check_disk_space() -> Check {
 
     Check {
         name: "Disk space",
-        status: Status::Pass,
-        detail: "sufficient".into(),
+        status: Status::Warn,
+        detail: "could not measure available space".into(),
         fix: None,
+    }
+}
+
+/// Fork hook: report logic lives in record::ffmpeg (unit-tested there).
+fn check_ffmpeg() -> Check {
+    let line = crate::record::ffmpeg::doctor_check();
+    Check {
+        name: crate::record::ffmpeg::CHECK_NAME,
+        status: match line.level {
+            crate::record::ffmpeg::Level::Ok => Status::Pass,
+            crate::record::ffmpeg::Level::Warn => Status::Warn,
+        },
+        detail: line.detail,
+        fix: line.fix,
+    }
+}
+
+/// Fork hook: wording/decision live in launch_mode::cli (unit-tested there).
+fn check_launch_mode() -> Check {
+    let c = crate::launch_mode::doctor_check();
+    Check {
+        name: crate::launch_mode::CHECK_NAME,
+        status: if c.ok { Status::Pass } else { Status::Fail },
+        detail: c.detail,
+        fix: c.fix,
     }
 }
 
@@ -679,67 +758,7 @@ async fn check_version() -> Check {
 
 /// Find Chrome path for the doctor (doesn't launch anything).
 fn find_chrome_path() -> Option<String> {
-    if let Ok(path) = std::env::var("CHROME_PATH") {
-        if std::path::Path::new(&path).exists() {
-            return Some(path);
-        }
-    }
-
-    let names: &[&str] = if cfg!(target_os = "macos") {
-        &["google-chrome", "chromium"]
-    } else if cfg!(target_os = "windows") {
-        &["chrome", "chromium"]
-    } else {
-        &[
-            "chromium",
-            "google-chrome",
-            "google-chrome-stable",
-            "chromium-browser",
-        ]
-    };
-
-    for name in names {
-        // Try PATH first.
-        if let Ok(output) = std::process::Command::new("which").arg(name).output() {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(path);
-                }
-            }
-        }
-    }
-
-    // Try common absolute paths.
-    let paths: Vec<&str> = if cfg!(target_os = "linux") {
-        vec![
-            "/usr/bin/chromium",
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable",
-            "/snap/bin/chromium",
-            "/run/current-system/sw/bin/chromium",
-        ]
-    } else if cfg!(target_os = "macos") {
-        vec![
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        ]
-    } else if cfg!(windows) {
-        vec![
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        ]
-    } else {
-        vec![]
-    };
-
-    for path in paths {
-        if std::path::Path::new(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-
-    None
+    crate::browser::find_chrome().ok()
 }
 
 fn chrome_install_hint() -> String {

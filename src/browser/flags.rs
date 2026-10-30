@@ -29,24 +29,45 @@ const STEALTH_FLAGS: &[&str] = &[
     // S17: force WebRTC to only use proxied UDP — prevents ICE candidate
     // leaks of the real IP when a proxy is active. No effect without proxy.
     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-    // Issue #9: macOS shows a system dialog "Chrome Helper needs to download
-    // the font 'Osaka'/'STHeiti'" when on-demand CJK fonts are requested by
-    // page CSS but not installed. --disable-remote-fonts prevents Chrome from
-    // requesting non-local fonts, using fallbacks instead. Also applies to
-    // worker contexts per Chromium docs.
-    "--disable-remote-fonts",
+    // (v4.6.1) --disable-remote-fonts REMOVED. Measured 2026-10-14 (stock
+    // Chromium 154, local HTTP font): with the flag a page's @font-face fetch
+    // never happens (0 requests, NetworkError, fallback text metrics);
+    // without it the font loads everywhere. No real Chrome refuses webfonts —
+    // that divergence is readable by any page that loads its own fonts, on
+    // every platform. The macOS on-demand-font dialog (issue #9) is handled
+    // by the CSS alias block in stealth_core.js (macOS-gated), not by
+    // blocking the fetch layer.
 ];
 
-/// Additional flags for headless mode only.
-const HEADLESS_FLAGS: &[&str] = &["--headless=new", "--disable-gpu"];
+/// Additional flags for headless mode only. No `--disable-gpu` (v4.6.1):
+/// with it Chrome never brings up the real GPU in headless and every WebGL
+/// context is software. Without it the ladder's ANGLE stages reach the real
+/// device even headless — measured 2026-10-14: `--headless=new
+/// --use-angle=gl-egl` (and `=gl`) report the machine's own GPU with no X
+/// display at all — and GPU-less hosts still land on SwiftShader through
+/// the ladder (or Chrome's own software fallback with
+/// --enable-unsafe-swiftshader).
+const HEADLESS_FLAGS: &[&str] = &["--headless=new"];
 
 /// GL backend ladder stage. The launch healthcheck walks these in order and
 /// keeps the first stage that yields a live WebGL context; a stage that comes
 /// up without one is shut down and the next is tried (bounded).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GlStage {
-    /// Native-GL ANGLE backend. Under Xvfb this lands on Mesa (llvmpipe —
-    /// software, but a live context) which the stealth GL mask normalizes.
+    /// Native-GL ANGLE backend through EGL. The classic `gl` path under Xvfb
+    /// lands on Mesa's llvmpipe (no DRI3 on Xvfb, so the GLX/EGL default is
+    /// the software rasterizer); EGL reaches the real device directly —
+    /// measured 2026-10-14, `--use-angle=gl-egl` under Xvfb reports
+    /// `ANGLE (Intel, Mesa Intel(R) Graphics (ADL GT2), OpenGL ES 3.2)`,
+    /// the exact string the machine's real session reports, so the GL mask
+    /// never installs and the lane renders on hardware — headless included
+    /// (no X display needed at all).
+    NativeGlEgl,
+    /// Platform fallback backend, explicit: Linux/Android classic native-GL
+    /// ANGLE (`--use-angle=gl`; under Xvfb it can land on Mesa llvmpipe —
+    /// software, but a live context the GL mask normalizes), macOS Metal,
+    /// Windows D3D11. A genuinely different driver path from the silent
+    /// default, tried only after the default stage failed.
     NativeGl,
     /// SwiftShader ANGLE backend — last resort for stacks where the
     /// native-GL backend cannot initialize (observed live: SwANGLE
@@ -66,7 +87,7 @@ pub enum Transport {
 /// Launch-time GL healthcheck result. Consumed by `stealth::apply`: the
 /// WebGL spoof registers only when the real backend is software (D14 —
 /// coherence over noise; a real GPU is reported honestly, nothing to mask).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GpuState {
     Hardware(String),
     Software(String),
@@ -77,10 +98,37 @@ pub enum GpuState {
 /// Launch-time GL state, read by `stealth::apply` at attach time.
 static GPU_STATE: std::sync::RwLock<Option<GpuState>> = std::sync::RwLock::new(None);
 
-/// Record the GL healthcheck result (called by the launch paths).
+/// Mid-session loss marker: the recorded verdict claimed GL and a
+/// confirmed-absent context demoted it. `set_gpu_state` clears it, so the
+/// demotion order is always set-then-mark (see `stealth::inject` and
+/// `Page::gl_health_refresh`).
+static GL_MID_SESSION_LOSS: AtomicBool = AtomicBool::new(false);
+
+/// Mark a confirmed mid-session GL loss (the one-shot advisory reads it).
+pub fn mark_gl_mid_session_loss() {
+    GL_MID_SESSION_LOSS.store(true, Ordering::Relaxed);
+}
+
+/// Was the last GL demotion a mid-session loss (vs a GL-less launch)?
+pub fn gl_mid_session_loss() -> bool {
+    GL_MID_SESSION_LOSS.load(Ordering::Relaxed)
+}
+
+/// Record the GL verdict (called by the launch paths and the attach-time
+/// reconciler). A new verdict supersedes the old loss record; a healthy
+/// verdict also re-arms the one-shot GL advisory — a fresh browser
+/// generation gets a fresh advisement cycle.
 pub fn set_gpu_state(state: Option<GpuState>) {
+    let healthy = matches!(
+        &state,
+        Some(GpuState::Hardware(_)) | Some(GpuState::Software(_))
+    );
     if let Ok(mut g) = GPU_STATE.write() {
         *g = state;
+    }
+    GL_MID_SESSION_LOSS.store(false, Ordering::Relaxed);
+    if healthy {
+        crate::browser::alerts::reset_gl_alert();
     }
 }
 
@@ -119,6 +167,10 @@ pub fn launched_headless() -> bool {
 /// stealth layer masks it there — see `WEBDRIVER_PATCH`.
 static LAUNCH_PIPE: AtomicBool = AtomicBool::new(false);
 
+/// Launch-mode flag: true when the browser needed `--no-sandbox` (the
+/// sandboxed startup failed — root or restricted container).
+static LAUNCHED_NO_SANDBOX: AtomicBool = AtomicBool::new(false);
+
 /// Record whether the launch used the pipe transport.
 pub fn set_launched_pipe(pipe: bool) {
     LAUNCH_PIPE.store(pipe, Ordering::Relaxed);
@@ -129,15 +181,31 @@ pub fn launched_pipe() -> bool {
     LAUNCH_PIPE.load(Ordering::Relaxed)
 }
 
+/// Record whether the launch fell back to `--no-sandbox`.
+pub fn set_launched_no_sandbox(no_sandbox: bool) {
+    LAUNCHED_NO_SANDBOX.store(no_sandbox, Ordering::Relaxed);
+}
+
+/// True when the last launch needed `--no-sandbox` (sandboxed startup
+/// failed: root or restricted container). The renderer sandbox being OFF is
+/// a security posture the agent must learn once.
+pub fn launched_no_sandbox() -> bool {
+    LAUNCHED_NO_SANDBOX.load(Ordering::Relaxed)
+}
+
 /// True for software/headless renderer artifacts (llvmpipe, SwiftShader,
-/// softpipe). Single definition shared with `stealth::inject` so the launch
-/// healthcheck and the spoof decision can never disagree.
+/// softpipe, D3D11 WARP / Microsoft Basic Render). Single definition shared
+/// with `stealth::inject` so the launch healthcheck and the spoof decision
+/// can never disagree.
 pub fn is_software_renderer(renderer: &str) -> bool {
     let r = renderer.to_lowercase();
     r.contains("swiftshader")
         || r.contains("llvmpipe")
         || r.contains("softpipe")
         || r.contains("software")
+        // Windows software paths: D3D11 WARP and the no-driver fallbacks.
+        || r.contains("warp")
+        || r.contains("basic render")
 }
 
 /// Classify a live renderer string into the launch-time [`GpuState`].
@@ -149,21 +217,74 @@ pub(super) fn classify_gl(renderer: &str) -> GpuState {
     }
 }
 
+/// Outcome of reconciling the launch-time GL verdict with a live probe.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GlReconcile {
+    /// A live context exists: the spoof follows the renderer's class and the
+    /// recorded state updates when it changed.
+    Live {
+        spoof: bool,
+        state: GpuState,
+        changed: bool,
+    },
+    /// A confirmed-absent context: the recorded state becomes `Missing`.
+    Dead {
+        spoof: bool,
+        state: GpuState,
+        changed: bool,
+    },
+}
+
+/// Reconcile the launch-time verdict with the live page (D14 trust with a
+/// live override): when a context exists, its renderer decides the spoof and
+/// the recorded state; a confirmed-absent context against a GL-bearing
+/// verdict demotes the state to `Missing` (`changed`) so the loss is loud,
+/// never silent. `live = None` must only be passed for a *confirmed*
+/// absence — an inconclusive probe keeps the recorded state untouched.
+pub fn reconcile_gl(state: Option<&GpuState>, live: Option<&str>) -> GlReconcile {
+    match live {
+        Some(r) => {
+            let st = classify_gl(r);
+            let changed = state != Some(&st);
+            GlReconcile::Live {
+                spoof: matches!(st, GpuState::Software(_)),
+                state: st,
+                changed,
+            }
+        }
+        None => GlReconcile::Dead {
+            spoof: true,
+            state: GpuState::Missing,
+            changed: !matches!(state, Some(GpuState::Missing)),
+        },
+    }
+}
+
 /// Human label for a ladder stage (logs).
 pub(super) fn stage_label(stage: GlStage) -> &'static str {
     match stage {
+        GlStage::NativeGlEgl => "native-gl-egl",
         GlStage::NativeGl => "native-gl",
         GlStage::SwiftShader => "swiftshader",
     }
 }
 
 /// The GL ladder, in attempt order. Both transports walk the same list.
-/// NativeGl is retried once: a first-launch GL miss is usually a transient
-/// init race under load (observed live), while the SwiftShader stage is a
-/// dead end on boxes whose Vulkan init is broken — retrying the real backend
-/// beats escalating straight into a known-broken one.
+/// NativeGlEgl first (hardware through EGL — the mask never installs there)
+/// and retried once: a first-launch GL miss is usually a transient init race
+/// under load (observed live on the classic stage), and the retry keeps the
+/// lane on hardware instead of silently dropping it to the software
+/// fallback. Then NativeGl — the platform's explicit fallback backend
+/// (Linux/Android classic GL, macOS Metal, Windows D3D11; a live software
+/// context is mask-normalized). SwiftShader last (a dead end on boxes whose
+/// Vulkan init is broken, so it stays the final option).
 pub(super) fn gl_stages() -> &'static [GlStage] {
-    &[GlStage::NativeGl, GlStage::NativeGl, GlStage::SwiftShader]
+    &[
+        GlStage::NativeGlEgl,
+        GlStage::NativeGlEgl,
+        GlStage::NativeGl,
+        GlStage::SwiftShader,
+    ]
 }
 
 /// Everything a Chrome command line depends on. Both transports build from
@@ -201,7 +322,7 @@ pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
     // and contexts are null. The override turns a dead GL stack into a
     // working, mask-normalized one. BOTH transports must carry it.
     args.push("--ignore-gpu-blocklist".into());
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     if cfg.headful {
         // Pin the window to the Xvfb display (the caller strips Wayland env
         // first). Explicit so Chrome can never drift onto the user's real
@@ -209,12 +330,21 @@ pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
         args.push("--ozone-platform=x11".into());
     }
     match cfg.stage {
-        GlStage::NativeGl =>
-        {
-            #[cfg(target_os = "linux")]
-            if cfg.headful {
-                args.push("--use-angle=gl".into());
-            }
+        GlStage::NativeGlEgl => {
+            // Linux/Android: hardware through ANGLE's EGL backend — measured
+            // to reach the real device headful AND headless (no X display).
+            // macOS/Windows: no flag — the platform default already picks the
+            // real GPU (Metal / D3D11).
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            args.push("--use-angle=gl-egl".into());
+        }
+        GlStage::NativeGl => {
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            args.push("--use-angle=gl".into());
+            #[cfg(target_os = "macos")]
+            args.push("--use-angle=metal".into());
+            #[cfg(target_os = "windows")]
+            args.push("--use-angle=d3d11".into());
         }
         GlStage::SwiftShader => {
             args.push("--use-angle=swiftshader".into());
@@ -228,8 +358,20 @@ pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
     if let Some(proxy) = cfg.proxy {
         args.push(format!("--proxy-server={proxy}"));
     }
+    // The virtual display is OURS (Xvfb 1920x1080): pin the window so the
+    // geometry is deterministic. On macOS/Windows the window opens on the
+    // user's real desktop — the forced 1920x1080 produced an inner size wider
+    // than a 1024x768 CI screen (inner-within-screen FAIL, caught by the
+    // Windows audit); the native default window is the honest one there.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     if cfg.headful {
         args.push("--window-size=1920,1080".into());
+    }
+    // (4.1) Headless has no display to inherit a screen from: without a pin
+    // Chrome reports its 800x600 default screen (incoherent with the window).
+    if crate::launch_mode::display::pin_headless_window(cfg.headful) {
+        args.push(crate::launch_mode::display::HEADLESS_WINDOW_SIZE.into());
+        args.push(crate::launch_mode::display::HEADLESS_SCREEN_INFO.into());
     }
     args.extend(cfg.extra.iter().cloned());
     args
@@ -362,9 +504,13 @@ mod launch_flag_tests {
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     #[test]
     fn linux_headful_pins_x11_and_the_stage_backend() {
+        let egl = launch_args(&cfg(GlStage::NativeGlEgl, true, Transport::Pipe));
+        assert!(egl.iter().any(|f| f == "--ozone-platform=x11"));
+        assert!(egl.iter().any(|f| f == "--use-angle=gl-egl"));
+        assert!(!egl.iter().any(|f| f == "--use-angle=gl"));
         let native = launch_args(&cfg(GlStage::NativeGl, true, Transport::Pipe));
         assert!(native.iter().any(|f| f == "--ozone-platform=x11"));
         assert!(native.iter().any(|f| f == "--use-angle=gl"));
@@ -374,22 +520,52 @@ mod launch_flag_tests {
         assert!(!sw.iter().any(|f| f == "--use-angle=gl"));
     }
 
-    #[cfg(target_os = "linux")]
+    /// The NativeGl stage must mean "the platform's explicit fallback
+    /// backend": classic GL on Linux/Android, Metal on macOS, D3D11 on
+    /// Windows. The EGL stage carries no flag off Linux/Android (the default
+    /// backend is already the real GPU there). CI runs this on all three OSes.
     #[test]
-    fn headless_never_pins_a_display_or_native_angle() {
-        let a = launch_args(&cfg(GlStage::NativeGl, false, Transport::Ws));
-        assert!(!a.iter().any(|f| f == "--ozone-platform=x11"));
-        assert!(!a.iter().any(|f| f == "--use-angle=gl"));
-        assert!(a.iter().any(|f| f == "--headless=new"));
+    fn stage_backend_flags_are_platform_pinned() {
+        let egl = launch_args(&cfg(GlStage::NativeGlEgl, true, Transport::Pipe));
+        let native = launch_args(&cfg(GlStage::NativeGl, true, Transport::Pipe));
+        if cfg!(any(target_os = "linux", target_os = "android")) {
+            assert!(egl.iter().any(|f| f == "--use-angle=gl-egl"));
+            assert!(native.iter().any(|f| f == "--use-angle=gl"));
+        } else if cfg!(target_os = "macos") {
+            assert!(!egl.iter().any(|f| f.starts_with("--use-angle")));
+            assert!(native.iter().any(|f| f == "--use-angle=metal"));
+        } else if cfg!(target_os = "windows") {
+            assert!(!egl.iter().any(|f| f.starts_with("--use-angle")));
+            assert!(native.iter().any(|f| f == "--use-angle=d3d11"));
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[test]
+    fn headless_pins_no_display_but_keeps_the_stage_backend() {
+        // The ANGLE stage flag reaches the real GPU in headless too (measured
+        // 2026-10-14) — it must be present with and without a display; the
+        // display pin stays headful-only.
+        for (stage, flag) in [
+            (GlStage::NativeGlEgl, "--use-angle=gl-egl"),
+            (GlStage::NativeGl, "--use-angle=gl"),
+        ] {
+            let a = launch_args(&cfg(stage, false, Transport::Ws));
+            assert!(!a.iter().any(|f| f == "--ozone-platform=x11"));
+            assert!(a.iter().any(|f| f == flag));
+            assert!(a.iter().any(|f| f == "--headless=new"));
+        }
     }
 
     #[test]
     fn ladder_order_is_native_first() {
-        assert_eq!(gl_stages()[0], GlStage::NativeGl);
-        // NativeGl is retried once before the SwiftShader escalation.
-        assert_eq!(gl_stages()[1], GlStage::NativeGl);
+        // Hardware-through-EGL first and retried once (transient init races),
+        // classic GL as the fallback, SwiftShader last.
+        assert_eq!(gl_stages()[0], GlStage::NativeGlEgl);
+        assert_eq!(gl_stages()[1], GlStage::NativeGlEgl);
+        assert_eq!(gl_stages()[2], GlStage::NativeGl);
         assert_eq!(*gl_stages().last().unwrap(), GlStage::SwiftShader);
-        assert!(gl_stages().len() >= 3);
+        assert!(gl_stages().len() >= 4);
     }
 
     #[test]
@@ -399,6 +575,9 @@ mod launch_flag_tests {
         ));
         assert!(is_software_renderer(
             "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)"
+        ));
+        assert!(is_software_renderer(
+            "ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)"
         ));
         assert!(!is_software_renderer(
             "ANGLE (Intel, Mesa Intel(R) Graphics (ADL GT2), OpenGL ES 3.2)"
@@ -414,11 +593,152 @@ mod launch_flag_tests {
     }
 
     #[test]
-    fn window_size_and_user_data_are_shared() {
+    fn window_size_is_pinned_only_where_the_display_is_ours() {
         let a = launch_args(&cfg(GlStage::NativeGl, true, Transport::Ws));
-        assert!(a.iter().any(|f| f == "--window-size=1920,1080"));
+        if cfg!(any(target_os = "linux", target_os = "android")) {
+            assert!(a.iter().any(|f| f == "--window-size=1920,1080"));
+        } else {
+            // macOS/Windows: the native default window on the real desktop —
+            // a forced size can exceed a small screen and read as incoherent.
+            assert!(!a.iter().any(|f| f.starts_with("--window-size")));
+        }
         assert!(a.iter().any(|f| f.starts_with("--user-data-dir=")));
         let h = launch_args(&cfg(GlStage::NativeGl, false, Transport::Ws));
-        assert!(!h.iter().any(|f| f == "--window-size=1920,1080"));
+        // Headless: pinned off Linux (4.1, measured 800x600 default), unchanged on Linux.
+        assert_eq!(
+            h.iter()
+                .any(|f| f == crate::launch_mode::display::HEADLESS_WINDOW_SIZE),
+            crate::launch_mode::display::pin_headless_window(false)
+        );
+    }
+}
+
+#[cfg(test)]
+mod gl_reconcile_tests {
+    use super::*;
+
+    const SW: &str = "ANGLE (Mesa, llvmpipe (LLVM 21.1.7 256 bits), OpenGL 4.6)";
+    const HW: &str = "ANGLE (Intel, Mesa Intel(R) Graphics (ADL GT2), OpenGL ES 3.2)";
+
+    fn sw() -> GpuState {
+        GpuState::Software(SW.into())
+    }
+    fn hw() -> GpuState {
+        GpuState::Hardware(HW.into())
+    }
+
+    #[test]
+    fn live_truth_sets_spoof_and_state() {
+        assert_eq!(
+            reconcile_gl(None, Some(SW)),
+            GlReconcile::Live {
+                spoof: true,
+                state: sw(),
+                changed: true
+            }
+        );
+        assert_eq!(
+            reconcile_gl(None, Some(HW)),
+            GlReconcile::Live {
+                spoof: false,
+                state: hw(),
+                changed: true
+            }
+        );
+    }
+
+    #[test]
+    fn steady_states_are_unchanged() {
+        assert!(matches!(
+            reconcile_gl(Some(&sw()), Some(SW)),
+            GlReconcile::Live {
+                spoof: true,
+                changed: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            reconcile_gl(Some(&hw()), Some(HW)),
+            GlReconcile::Live {
+                spoof: false,
+                changed: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn confirmed_death_demotes_a_gl_bearing_state() {
+        for prior in [sw(), hw()] {
+            assert_eq!(
+                reconcile_gl(Some(&prior), None),
+                GlReconcile::Dead {
+                    spoof: true,
+                    state: GpuState::Missing,
+                    changed: true
+                }
+            );
+        }
+        // Already known GL-less: no repeat change (no repeat warning).
+        assert_eq!(
+            reconcile_gl(Some(&GpuState::Missing), None),
+            GlReconcile::Dead {
+                spoof: true,
+                state: GpuState::Missing,
+                changed: false
+            }
+        );
+        // External attach with no verdict at all: record the absence once.
+        assert_eq!(
+            reconcile_gl(None, None),
+            GlReconcile::Dead {
+                spoof: true,
+                state: GpuState::Missing,
+                changed: true
+            }
+        );
+    }
+
+    #[test]
+    fn recovery_updates_the_state() {
+        assert_eq!(
+            reconcile_gl(Some(&GpuState::Missing), Some(SW)),
+            GlReconcile::Live {
+                spoof: true,
+                state: sw(),
+                changed: true
+            }
+        );
+    }
+
+    #[test]
+    fn live_truth_overrides_a_stale_verdict() {
+        // Launch said hardware, the live page now reports software: the live
+        // truth wins — mask what pages actually see.
+        assert_eq!(
+            reconcile_gl(Some(&hw()), Some(SW)),
+            GlReconcile::Live {
+                spoof: true,
+                state: sw(),
+                changed: true
+            }
+        );
+    }
+
+    #[test]
+    fn mid_session_marker_clears_on_new_verdicts() {
+        mark_gl_mid_session_loss();
+        assert!(gl_mid_session_loss());
+        // A fresh verdict (any) supersedes the old loss record.
+        set_gpu_state(Some(GpuState::Missing));
+        assert!(!gl_mid_session_loss());
+        // The demotion order used by the reconcilers: set, then mark.
+        set_gpu_state(Some(GpuState::Missing));
+        mark_gl_mid_session_loss();
+        assert!(gl_mid_session_loss());
+        set_gpu_state(Some(sw()));
+        assert!(!gl_mid_session_loss());
+        set_gpu_state(None);
+        assert!(!gl_mid_session_loss());
     }
 }

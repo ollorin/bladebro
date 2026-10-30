@@ -1,0 +1,87 @@
+# 2026-10-26T14:54:03Z git 5a83604 bladebro v4.6.5 (9d20e81-dirty)
+# BLADE_HOME=/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q BLADE_HEADLESS=1 BLADE_FFMPEG=/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg fixtures=http://127.0.0.1:8765
+fixture server on :8000 up
+
+SNIPPET toggle
+--- text (toggle.sh):
+bladebro headless status   # browser mode: platform default (source: default)
+bladebro headless on       # saved to <data root>/launch.json
+bladebro stop              # a running daemon keeps its old mode
+bladebro nav http://127.0.0.1:8000/   # now hidden
+bladebro headless off
+--- run:
++ bladebro headless status
+browser mode: platform default (source: default)
++ bladebro headless on
+headless: on (saved to /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q/launch.json)
+browser mode: headless (source: user config /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q/launch.json)
+applies at the next browser launch; run `bladebro stop` first if a daemon is running (MCP servers: restart the client's server)
++ bladebro stop
+daemon not running
++ bladebro nav http://127.0.0.1:8000/
+[bladebro] browser mode: headless (source: user config /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q/launch.json)
+outcome: navigated → http://127.0.0.1:8000/
+
+Directory listing for / a.html anim.html b.html blocked.html c.html chain.html idle.html mark.html popper.html popup.html selfclose.html tick.html
++ bladebro headless off
+headless: off (saved to /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q/launch.json)
+browser mode: headed (source: user config /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q/launch.json)
+applies at the next browser launch; run `bladebro stop` first if a daemon is running (MCP servers: restart the client's server)
+launch.json now: {
+  "headless": false
+}
+
+SNIPPET one-off
+--- text (one-off.sh):
+BLADE_HEADLESS=1 bladebro nav http://127.0.0.1:8000/
+--- run:
++ BLADE_HEADLESS=1
++ bladebro nav http://127.0.0.1:8000/
+[bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+outcome: navigated → http://127.0.0.1:8000/
+
+SNIPPET mismatch
+$ (daemon running headless) BLADE_HEADLESS=0 bladebro nav http://127.0.0.1:8000/a.html
+bladebro: browser mode mismatch: the running daemon's browser is headless (source: env BLADE_HEADLESS) but this command resolves to headed (source: env BLADE_HEADLESS). Run `bladebro stop`, then retry; the next command starts the browser in the requested mode.
+exit=1
+daemon stopped
+
+SNIPPET qa-server
+--- text (qa-server.mcp.json):
+{
+  "mcpServers": {
+    "bladebro-qa": {
+      "command": "bladebro",
+      "args": ["mcp"],
+      "env": { "BLADE_HEADLESS": "1" }
+    }
+  }
+}
+--- run:
+SERVER bladebro-qa: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={"BLADE_HEADLESS": "1"} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro
+TOOLS mcp__bladebro-qa__act,mcp__bladebro-qa__see,mcp__bladebro-qa__state,mcp__bladebro-qa__run,mcp__bladebro-qa__vision
+CALL act {"action": "navigate", "url": "http://127.0.0.1:8765/a.html"}
+RESULT isError=false outcome: navigated → http://127.0.0.1:8765/a.html
+STDERR [bladebro] browser mode: headless (source: env BLADE_HEADLESS)
+EXIT 0
+
+SNIPPET interactive
+--- text (interactive.mcp.json):
+{
+  "mcpServers": {
+    "bladebro": {
+      "command": "bladebro",
+      "args": ["mcp"]
+    }
+  }
+}
+--- run:
+$ BLADE_HEADLESS unset: bladebro headless status
+browser mode: platform default (source: default)
+$ the server starts and lists its tools; no tool call, so no browser is launched (a visible window is not opened in this run)
+SERVER bladebro: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro mcp env={} cwd=/Users/sokolov.st@brainrocket.com/claude/bladebro
+TOOLS mcp__bladebro__act,mcp__bladebro__see,mcp__bladebro__state,mcp__bladebro__run,mcp__bladebro__vision
+EXIT 0
+/Users/sokolov.st@brainrocket.com/claude/bladebro/.planning/phases/11-integration-docs/evidence/scripts/common.sh: line 13: 90810 Terminated: 15          python3 -m http.server 8000 --bind 127.0.0.1 --directory "$REPO/tools/record_sidecar/fixtures" > /dev/null 2>&1
+/Users/sokolov.st@brainrocket.com/claude/bladebro/tools/record_sidecar/env.sh: line 63: 90804 Terminated: 15          python3 -m http.server "$FIX_PORT" --bind 127.0.0.1 --directory "$RS/fixtures" > /dev/null 2>&1
+no leftover processes for /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrec.TppLxGej6q

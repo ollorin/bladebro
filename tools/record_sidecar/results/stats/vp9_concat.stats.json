@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "args": {
+    "port": 64254,
+    "target": null,
+    "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/vp9_concat.webm",
+    "duration": 8,
+    "codec": "vp9",
+    "ts": "concat",
+    "fps": 10,
+    "quality": 70,
+    "maxWidth": 1280,
+    "maxHeight": 720,
+    "everyNth": 1,
+    "queue": 16,
+    "slowWriterMs": 0,
+    "sizeMode": "fixed",
+    "pageEnable": true,
+    "tail": true,
+    "statsPath": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/vp9_concat.webm.stats.json",
+    "finalizeTimeout": 10000,
+    "keepFrames": false,
+    "ffmpeg": "/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg"
+  },
+  "chrome": "Chrome/154.0.8037.58",
+  "ffmpeg_path": "/Users/sokolov.st@brainrocket.com/.local/ffmpeg/bin/ffmpeg",
+  "started_at": "2026-10-21T10:41:05.295Z",
+  "wall_ms": 8619,
+  "frames_received": 793,
+  "acks_sent": 793,
+  "acks_ok": 793,
+  "acks_err": 0,
+  "frames_written": 0,
+  "dup_frames_written": 0,
+  "frames_dropped": 0,
+  "queue_max": 0,
+  "ack_send_us": {
+    "p50": 32.875000000331056,
+    "p95": 48.16599999992377,
+    "max": 220.66699999999173
+  },
+  "ack_rtt_ms": {
+    "p50": 0.2786670000000129,
+    "p95": 0.38712500000019645,
+    "max": 4.7511249999997744
+  },
+  "capture_to_recv_ms": {
+    "p50": 2.639892578125,
+    "p95": 3.26904296875,
+    "max": 4.135986328125
+  },
+  "effective_fps_recv": 92.01,
+  "first_frame_ms": 8,
+  "max_gap_ms": 19,
+  "fps_buckets": [
+    92,
+    101,
+    99,
+    100,
+    101,
+    99,
+    101,
+    99,
+    1
+  ],
+  "frame_sizes": {
+    "1185x720": 793
+  },
+  "concat_clock": "capture_metadata",
+  "segments": [
+    {
+      "t_ms": 0,
+      "targetId": "5A9B306AE841699E73D50073F3211218",
+      "url": "http://127.0.0.1:8765/anim.html",
+      "frames": 793
+    }
+  ],
+  "events": [],
+  "encoder": {
+    "exit_code": 0,
+    "signal": null,
+    "finalized": true,
+    "killed": false,
+    "finalize_ms": 562,
+    "bench": {
+      "utime_s": 2.233,
+      "stime_s": 0.605,
+      "rtime_s": 0.546
+    },
+    "stderr_tail": "Input #0, concat, from '/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/vp9_concat.webm.frames/list.ffconcat':\n  Duration: N/A, start: 0.000000, bitrate: N/A\n  Stream #0:0: Video: mjpeg (Baseline), yuvj420p(pc, bt470bg/unknown/unknown), 1185x720 [SAR 1:1 DAR 79:48], 25 fps, 25 tbr, 25 tbn\nStream mapping:\n  Stream #0:0 -> #0:0 (mjpeg (native) -> vp9 (libvpx-vp9))\nPress [q] to stop, [?] for help\n[swscaler @ 0x89d7ec000] deprecated pixel format used, make sure you did set range correctly\n[libvpx-vp9 @ 0x89cc94000] v1.17.0\nOutput #0, webm, to '/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/vp9_concat.webm':\n  Metadata:\n    encoder         : Lavf63.1.102\n  Stream #0:0: Video: vp9, yuv420p(pc, bt470bg/unknown/unknown, progressive), 1280x720 [SAR 1185:1186 DAR 3160:1779], q=2-31, 25 fps, 1k tbn\n    Metadata:\n      encoder         : Lavc63.1.102 libvpx-vp9\n    Side data:\n      CPB properties: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/webm @ 0x89d000780] video:778KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.786740%\nframe=  794 fps=0.0 q=40.0 Lsize=     785KiB time=00:00:08.04 bitrate= 799.4kbits/s speed=14.7x elapsed=0:00:00.54    \nbench: utime=2.233s stime=0.605s rtime=0.546s\nbench: maxrss=232161280KiB\n"
+  },
+  "out": "/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.6T3UhTs2NK/vp9_concat.webm",
+  "out_bytes": 803358
+}

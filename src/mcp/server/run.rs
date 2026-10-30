@@ -10,21 +10,24 @@ use crate::action::Action;
 use crate::error::{BladeError, Result};
 use crate::page::Page;
 
-use super::act::handle_fill;
-use super::eval::handle_eval;
-use super::extract::handle_collect;
-use super::files::{handle_download, handle_pdf};
-use super::resolve::{resolve_selector_target, resolve_text_target};
+use super::act::handle_act;
 use super::see::handle_see;
 use super::state::handle_state;
 
 pub async fn handle_run(args: &Value, page: &mut Page) -> Result<String> {
+    super::validate::fields(args, "run")?;
+    let slim = args.get("slim").and_then(Value::as_bool).unwrap_or(false);
+    let mut inherited = args.clone();
+    inherit_slim(&mut inherited, slim);
+    let args = &inherited;
     let steps = args
         .get("steps")
         .and_then(|s| s.as_array())
         .ok_or_else(|| crate::error::BladeError::Other("run requires 'steps' array".into()))?;
 
     let mut observations = Vec::new();
+    let mut ok_count = 0usize;
+    let total = steps.len();
     // Track page moves: a navigation mid-run can consume a later step's
     // target (an auto-applying filter click, an SPA route change). The
     // failing step's error names the navigation so the agent can tell
@@ -40,6 +43,7 @@ pub async fn handle_run(args: &Value, page: &mut Page) -> Result<String> {
             .unwrap_or(false);
         match execute_step(page, step, &step_num.to_string(), &mut observations).await {
             Ok(()) => {
+                ok_count += 1;
                 let curr_url = page.model().url().to_string();
                 if curr_url != prev_url {
                     last_nav = Some((step_num, curr_url.clone()));
@@ -62,199 +66,161 @@ pub async fn handle_run(args: &Value, page: &mut Page) -> Result<String> {
                     ),
                     _ => String::new(),
                 };
-                return Err(crate::error::BladeError::Other(format!(
-                    "step {step_num} failed: {e}{nav_ctx}"
-                )));
+                // W5: a page-step failure is a structured result, not an
+                // exception — the run stops at the step and the result still
+                // carries every prior observation, so a surrounding pipeline
+                // keeps the context an exception would have thrown away.
+                // (Closed stays unwrapped above so serve() can self-heal.)
+                let mut out = format!(
+                    "run stopped at step {step_num} of {total} ({ok_count} ok): step {step_num} failed: {e}{nav_ctx}"
+                );
+                if !observations.is_empty() {
+                    out.push_str("\n--- steps before the stop ---\n");
+                    out.push_str(&observations.join("\n"));
+                }
+                if !out.contains("--- current page state ---") {
+                    out.push_str(&format!(
+                        "\n--- current page state ---\n{}",
+                        page.view(1200)
+                    ));
+                }
+                if ok_count > 0 {
+                    out.push_str("\nnote: completed steps remain applied; verify the failed step's outcome before retrying.");
+                }
+                return Ok(out);
             }
         }
     }
     Ok(observations.join("\n"))
 }
 
-/// A `wait` with `text` but no explicit condition means "wait for this text".
-/// The old default (condition=settle with `text` silently ignored) made
-/// `wait text:"X"` a no-op that reported success without waiting for anything.
-pub(super) fn wait_condition(cond: &str, text: &str) -> String {
-    if !cond.is_empty() {
-        cond.to_string()
-    } else if !text.is_empty() {
-        "text".to_string()
-    } else {
-        "settle".to_string()
+// Inherit through branches; a step can explicitly opt back into full output.
+fn inherit_slim(value: &mut Value, inherited: bool) {
+    let own = value
+        .get("slim")
+        .and_then(Value::as_bool)
+        .unwrap_or(inherited);
+    if let Some(obj) = value.as_object_mut() {
+        obj.entry("slim").or_insert(Value::Bool(own));
+        for key in ["steps", "then", "else"] {
+            if let Some(Value::Array(steps)) = obj.get_mut(key) {
+                for step in steps {
+                    inherit_slim(step, own);
+                }
+            }
+        }
     }
 }
 
-/// Build an Action from a step's JSON fields. Used by `execute_step` for
-/// regular (non-special) actions. Supports the same addressing as `act`:
-/// ref, text (+role/nth) for click, label for type.
-async fn build_action(step: &Value, page: &mut Page) -> Result<Action> {
-    let action_str = step.get("action").and_then(|a| a.as_str()).unwrap_or("");
-    let ref_id = step.get("ref").and_then(|r| r.as_str()).unwrap_or("");
-    let selector = step.get("selector").and_then(|s| s.as_str()).unwrap_or("");
-    let text = step.get("text").and_then(|t| t.as_str()).unwrap_or("");
-    let key = step.get("key").and_then(|k| k.as_str()).unwrap_or("");
-    let dx = step.get("dx").and_then(|d| d.as_i64()).unwrap_or(0);
-    let dy = step.get("dy").and_then(|d| d.as_i64()).unwrap_or(0);
-    let role_str = step.get("role").and_then(|r| r.as_str()).unwrap_or("");
-    let label = step.get("label").and_then(|l| l.as_str()).unwrap_or("");
-    let nth = step.get("nth").and_then(|n| n.as_u64()).map(|n| n as usize);
-
-    match action_str {
-        "click" => {
-            let resolved = if !ref_id.is_empty() {
-                ref_id.to_string()
-            } else if !text.is_empty() {
-                let rf = if !role_str.is_empty() {
-                    Some(role_str)
-                } else {
-                    None
-                };
-                resolve_text_target(page, text, rf, nth).await?
-            } else if !label.is_empty() {
-                let rf = if !role_str.is_empty() {
-                    Some(role_str)
-                } else {
-                    None
-                };
-                resolve_text_target(page, label, rf, nth).await?
-            } else if !selector.is_empty() {
-                resolve_selector_target(page, selector, nth).await?
-            } else {
-                return Err(crate::error::BladeError::Other(
-                    "click step requires 'ref', 'text', 'label', or 'selector'".into(),
-                ));
-            };
-            Ok(Action::Click { ref_id: resolved })
-        }
-        "type" => {
-            let resolved = if !ref_id.is_empty() {
-                ref_id.to_string()
-            } else if !label.is_empty() {
-                let rf = if !role_str.is_empty() {
-                    Some(role_str)
-                } else {
-                    None
-                };
-                resolve_text_target(page, label, rf, nth).await?
-            } else if !selector.is_empty() {
-                resolve_selector_target(page, selector, nth).await?
-            } else {
-                return Err(crate::error::BladeError::Other(
-                    "type step requires 'ref', 'label', or 'selector'".into(),
-                ));
-            };
-            Ok(Action::Type {
-                ref_id: resolved,
-                text: text.into(),
-            })
-        }
-        "clear" => {
-            let resolved = if !ref_id.is_empty() {
-                ref_id.to_string()
-            } else if !selector.is_empty() {
-                resolve_selector_target(page, selector, nth).await?
-            } else {
-                return Err(crate::error::BladeError::Other(
-                    "clear step requires 'ref' or 'selector'".into(),
-                ));
-            };
-            Ok(Action::Clear { ref_id: resolved })
-        }
-        "select" => {
-            let opt = step
-                .get("option")
-                .and_then(|o| o.as_str())
-                .or_else(|| step.get("text").and_then(|t| t.as_str()))
-                .unwrap_or("");
-            let resolved = if !ref_id.is_empty() {
-                ref_id.to_string()
-            } else if !label.is_empty() {
-                let rf = if !role_str.is_empty() {
-                    Some(role_str)
-                } else {
-                    None
-                };
-                resolve_text_target(page, label, rf, nth).await?
-            } else if !selector.is_empty() {
-                resolve_selector_target(page, selector, nth).await?
-            } else {
-                return Err(crate::error::BladeError::Other(
-                    "select step requires 'ref', 'label', or 'selector'".into(),
-                ));
-            };
-            Ok(Action::Select {
-                ref_id: resolved,
-                option: opt.into(),
-            })
-        }
-        "press" => Ok(Action::Press { key: key.into() }),
-        "scroll" => Ok(Action::Scroll { dx, dy }),
-        "reload" => Ok(Action::Reload),
-        "forward" => Ok(Action::Forward),
-        "hover" => {
-            let resolved = if !ref_id.is_empty() {
-                ref_id.to_string()
-            } else if !text.is_empty() {
-                let rf = if !role_str.is_empty() {
-                    Some(role_str)
-                } else {
-                    None
-                };
-                resolve_text_target(page, text, rf, nth).await?
-            } else if !label.is_empty() {
-                let rf = if !role_str.is_empty() {
-                    Some(role_str)
-                } else {
-                    None
-                };
-                resolve_text_target(page, label, rf, nth).await?
-            } else if !selector.is_empty() {
-                resolve_selector_target(page, selector, nth).await?
-            } else {
-                return Err(crate::error::BladeError::Other(
-                    "hover step requires 'ref', 'text', 'label', or 'selector'".into(),
-                ));
-            };
-            Ok(Action::Hover { ref_id: resolved })
-        }
-        "upload" => {
-            let resolved = if !ref_id.is_empty() {
-                ref_id.to_string()
-            } else if !selector.is_empty() {
-                resolve_selector_target(page, selector, nth).await?
-            } else {
-                return Err(crate::error::BladeError::Other(
-                    "upload step requires 'ref' or 'selector'".into(),
-                ));
-            };
-            Ok(Action::Upload {
-                ref_id: resolved,
-                path: text.into(),
-            })
-        }
-        "wait" => {
-            let timeout_secs = step.get("timeout").and_then(|t| t.as_u64()).unwrap_or(10);
-            let match_text = step.get("text").and_then(|t| t.as_str()).unwrap_or("");
-            let condition = wait_condition(
-                step.get("condition").and_then(|c| c.as_str()).unwrap_or(""),
-                match_text,
-            );
-            Ok(Action::Wait {
-                condition,
-                text: match_text.into(),
-                timeout: std::time::Duration::from_secs(timeout_secs),
-            })
-        }
-        "back" => Ok(Action::Back),
-        _ => Err(crate::error::BladeError::Other(format!(
-            "unknown action: {action_str}"
-        ))),
+/// Unified wait/condition field resolution (G02): ONE expression contract for
+/// `act`, nested `batch`, `run` steps and `if`/`while`.
+///
+/// - `condition:"js"` takes the expression from `js=` (preferred) or `text=`
+///   (the documented legacy alias - the CLI and older prompts put the
+///   expression there). Both set to DIFFERENT values is ambiguous and is
+///   rejected; neither set is rejected before an empty expression could be
+///   waited on (the old behavior silently timed out on it).
+/// - A non-js condition with a `js=` field is rejected: that field would be
+///   silently ignored, which is exactly the confusion this contract kills.
+/// - No condition + `text=` keeps the long-documented "wait for this text";
+///   no condition + `js=` alone means a js condition; neither → the caller's
+///   default (settle for wait/if).
+pub(super) fn resolve_condition_fields(
+    cond: &str,
+    text: &str,
+    js: &str,
+    default_cond: &str,
+) -> Result<(String, String)> {
+    let cond = cond.trim();
+    if cond.is_empty() {
+        return match (text.is_empty(), js.is_empty()) {
+            (false, false) => Err(crate::error::BladeError::Usage(
+                "wait: both 'text' and 'js' are set but condition= is empty - pass condition=\"js\" (js expression) or condition=\"text\" (page text), or drop one field".into(),
+            )),
+            (false, true) => Ok(("text".to_string(), text.to_string())),
+            (true, false) => Ok(("js".to_string(), js.to_string())),
+            (true, true) => Ok((default_cond.to_string(), String::new())),
+        };
     }
+    if cond == "js" {
+        return match (js.is_empty(), text.is_empty()) {
+            (false, true) => Ok(("js".to_string(), js.to_string())),
+            (true, false) => Ok(("js".to_string(), text.to_string())),
+            (false, false) => {
+                if js == text {
+                    Ok(("js".to_string(), js.to_string()))
+                } else {
+                    Err(crate::error::BladeError::Usage(
+                        "wait condition=js: 'js' and 'text' both carry an expression and they differ - pass the expression once (js= preferred; text= is the legacy alias)".into(),
+                    ))
+                }
+            }
+            (true, true) => Err(crate::error::BladeError::Usage(
+                "wait condition=js needs the expression in 'js' (or the legacy 'text' alias) - got neither".into(),
+            )),
+        };
+    }
+    if !matches!(
+        cond,
+        "element" | "selector" | "title" | "url" | "text" | "settle" | "network" | "network-idle"
+    ) {
+        return Err(BladeError::Usage(format!("unknown wait condition '{cond}' - use element, selector, text, title, url, js, settle or network")));
+    }
+    if !js.is_empty() {
+        return Err(crate::error::BladeError::Usage(format!(
+            "wait: a 'js' field is set but condition=\"{cond}\" does not evaluate JavaScript - use condition=\"js\", or drop the js field"
+        )));
+    }
+    if matches!(cond, "element" | "selector" | "title" | "url" | "text") && text.is_empty() {
+        return Err(crate::error::BladeError::Usage(format!(
+            "wait condition=\"{cond}\" needs a non-empty match value in 'text'"
+        )));
+    }
+    Ok((cond.to_string(), text.to_string()))
 }
-/// Execute one step in a `run` sequence. Handles regular actions (via
-/// `build_action` + `page.act`), `navigate` (special: stealth + navigate +
-/// wait), `read` (special: returns text, not delta), and `if` (conditional
-/// branching with `then`/`else` sub-steps). Recursion supports nested `if`.
+
+pub(super) fn condition_from_args(args: &Value, default: &str) -> Result<(String, String)> {
+    let cond = args.get("condition").and_then(Value::as_str).unwrap_or("");
+    let text = args.get("text").and_then(Value::as_str).unwrap_or("");
+    let js = args.get("js").and_then(Value::as_str).unwrap_or("");
+    if let Some(selector) = args
+        .get("selector")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        if !matches!(cond, "" | "selector") || !text.is_empty() || !js.is_empty() {
+            return Err(BladeError::Usage(
+                "selector wait cannot be combined with another condition/text/js".into(),
+            ));
+        }
+        return Ok(("selector".into(), selector.into()));
+    }
+    resolve_condition_fields(cond, text, js, default)
+}
+
+/// Timeout validation shared by wait/if/while (G02): integer seconds,
+/// 0-3600. A fractional/string/negative value is a loud usage error instead
+/// of a silent fallback to the default, and the cap stops a mistyped
+/// "60000" from pinning the server for most of a day.
+pub(super) fn resolve_wait_timeout(step: &Value, default_secs: u64) -> Result<std::time::Duration> {
+    let Some(t) = step.get("timeout") else {
+        return Ok(std::time::Duration::from_secs(default_secs));
+    };
+    let secs = t.as_u64().ok_or_else(|| {
+        crate::error::BladeError::Usage(
+            "timeout must be an integer number of seconds (0-3600)".into(),
+        )
+    })?;
+    if secs > 3600 {
+        return Err(crate::error::BladeError::Usage(format!(
+            "timeout {secs}s exceeds the 3600s cap - use shorter, iterative waits instead"
+        )));
+    }
+    Ok(std::time::Duration::from_secs(secs))
+}
+
+/// Execute a branch/read/state step or delegate to the shared act dispatcher.
+/// Recursion supports nested conditions without duplicating input mechanics.
 ///
 /// `path` is a display label for the step (e.g. "0" for top-level, "0.1" for
 /// the first sub-step inside step 0's branch).
@@ -264,16 +230,13 @@ async fn execute_step(
     path: &str,
     observations: &mut Vec<String>,
 ) -> Result<()> {
+    super::validate::fields(step, "run step")?;
     let action_str = step.get("action").and_then(|a| a.as_str()).unwrap_or("");
 
     match action_str {
         "if" => {
-            let condition = step
-                .get("condition")
-                .and_then(|c| c.as_str())
-                .unwrap_or("settle");
-            let timeout_secs = step.get("timeout").and_then(|t| t.as_u64()).unwrap_or(5);
-            let match_text = step.get("text").and_then(|t| t.as_str()).unwrap_or("");
+            let timeout = resolve_wait_timeout(step, 5)?;
+            let (condition, match_text) = super::run::condition_from_args(step, "settle")?;
             let then_steps = step
                 .get("then")
                 .and_then(|s| s.as_array())
@@ -285,15 +248,26 @@ async fn execute_step(
                 .cloned()
                 .unwrap_or_default();
 
-            // Evaluate the condition (waits up to timeout).
-            let met = crate::action::check_condition(
+            // Evaluate the condition (waits up to timeout). A deterministic
+            // evaluation failure (a js syntax error) fails the STEP with the
+            // reason instead of silently taking the else branch.
+            let met = match crate::action::eval_condition(
                 page.cdp_ref(),
-                condition,
-                match_text,
-                std::time::Duration::from_secs(timeout_secs),
+                &condition,
+                &match_text,
+                timeout,
                 Some(page.in_flight_ref()),
             )
-            .await;
+            .await?
+            {
+                crate::action::CondOutcome::Met => true,
+                crate::action::CondOutcome::Timeout => false,
+                crate::action::CondOutcome::Error(e) => {
+                    return Err(crate::error::BladeError::Other(format!(
+                        "step {path} if: {e}"
+                    )));
+                }
+            };
 
             let (branch, label) = if met {
                 (&then_steps, "then")
@@ -307,7 +281,10 @@ async fn execute_step(
                         "step {path}: if({condition} \"{match_text}\") → then (no steps)"
                     ));
                 } else {
-                    observations.push(format!("step {path}: if({condition} \"{match_text}\") → skipped (timeout {timeout_secs}s)"));
+                    observations.push(format!(
+                        "step {path}: if({condition} \"{match_text}\") → skipped (condition not met; budget {}s)",
+                        timeout.as_secs()
+                    ));
                 }
             } else {
                 observations.push(format!(
@@ -332,12 +309,8 @@ async fn execute_step(
             }
         }
         "while" => {
-            let condition = step
-                .get("condition")
-                .and_then(|c| c.as_str())
-                .unwrap_or("element");
-            let match_text = step.get("text").and_then(|t| t.as_str()).unwrap_or("");
-            let timeout_secs = step.get("timeout").and_then(|t| t.as_u64()).unwrap_or(5);
+            let timeout = resolve_wait_timeout(step, 5)?;
+            let (condition, match_text) = super::run::condition_from_args(step, "element")?;
             let max = step.get("max").and_then(|m| m.as_u64()).unwrap_or(10) as usize;
             let body = step
                 .get("steps")
@@ -345,14 +318,23 @@ async fn execute_step(
                 .cloned()
                 .unwrap_or_default();
             for i in 0..max {
-                let met = crate::action::check_condition(
+                let met = match crate::action::eval_condition(
                     page.cdp_ref(),
-                    condition,
-                    match_text,
-                    std::time::Duration::from_secs(timeout_secs),
+                    &condition,
+                    &match_text,
+                    timeout,
                     Some(page.in_flight_ref()),
                 )
-                .await;
+                .await?
+                {
+                    crate::action::CondOutcome::Met => true,
+                    crate::action::CondOutcome::Timeout => false,
+                    crate::action::CondOutcome::Error(e) => {
+                        return Err(crate::error::BladeError::Other(format!(
+                            "step {path} while: {e}"
+                        )));
+                    }
+                };
                 if !met {
                     observations.push(format!("step {path}: while({condition} \"{match_text}\") \u{2192} done after {i} iterations"));
                     break;
@@ -372,56 +354,6 @@ async fn execute_step(
                 }
             }
         }
-        "navigate" => {
-            if crate::realbrowser::input_paused() {
-                return Err(crate::realbrowser::paused_error());
-            }
-            let url = step.get("url").and_then(|u| u.as_str()).unwrap_or("");
-            let delta = page.navigate(url).await?;
-            if delta.navigated {
-                // navigate already waited for load+settle; one more quiet pass
-                // catches late SPA render without the old blind 500ms.
-                crate::page::wait_for_settle_with_network(
-                    page.cdp_ref(),
-                    std::time::Duration::from_millis(800),
-                    Some(page.in_flight_ref()),
-                )
-                .await?;
-                let _ = page.recapture().await;
-            }
-            observations.push(format!("step {path}: {}", page.delta_view(&delta, 4000)));
-        }
-        "read" => {
-            let mut ref_id = step
-                .get("ref")
-                .and_then(|r| r.as_str())
-                .unwrap_or("")
-                .to_string();
-            if ref_id.is_empty() {
-                // Parity with `act read`: a run step must accept selector
-                // addressing too (it used to ignore selector= and fail on
-                // the empty ref with "stale ref: ").
-                let selector = step.get("selector").and_then(|s| s.as_str()).unwrap_or("");
-                if selector.is_empty() {
-                    return Err(crate::error::BladeError::Other(
-                        "read step requires 'ref' or 'selector'".into(),
-                    ));
-                }
-                let nth = step.get("nth").and_then(|n| n.as_u64()).map(|n| n as usize);
-                ref_id = resolve_selector_target(page, selector, nth).await?;
-            }
-            let text_content =
-                crate::action::read_text(page.cdp_ref(), page.model(), &ref_id).await?;
-            let (role, name) = page
-                .model()
-                .element(&ref_id)
-                .map(|e| (e.raw.role.clone(), e.raw.name.clone()))
-                .unwrap_or_default();
-            let truncated: String = text_content.chars().take(200).collect();
-            observations.push(format!(
-                "step {path}: read {ref_id} {role} \"{name}\"\n  text: \"{truncated}\""
-            ));
-        }
         "js" | "eval" => {
             // V7: JS eval step. Result is captured as an
             // observation, capped inline.
@@ -435,20 +367,21 @@ async fn execute_step(
                     "js step requires 'js' field".into(),
                 ));
             }
-            let step_ref = step.get("ref").and_then(|r| r.as_str()).unwrap_or("");
-            let eval_ref = if !step_ref.is_empty() {
-                step_ref.to_string()
-            } else if let Some(sel) = step.get("selector").and_then(|s| s.as_str()) {
-                // Parity with `act eval`: selector addressing resolves the
-                // element the JS runs against (the step used to run unscoped).
-                let nth = step.get("nth").and_then(|n| n.as_u64()).map(|n| n as usize);
-                resolve_selector_target(page, sel, nth).await?
-            } else {
-                String::new()
-            };
-            match handle_eval(page, js_code, &eval_ref).await {
+            let mut eval_args = step.clone();
+            eval_args["action"] = serde_json::json!("eval");
+            eval_args["js"] = serde_json::json!(js_code);
+            match Box::pin(handle_act(&eval_args, page)).await {
                 Ok(result) => {
-                    let capped: String = result.chars().take(500).collect();
+                    // P1: the 500-char cap is real (a step observation is not a
+                    // payload channel) but it must never be SILENT - a cut
+                    // mid-JSON used to read as a complete value, which is
+                    // exactly how a loop returns TOTAL=0 with data on screen.
+                    let capped: String = if result.chars().count() > 500 {
+                        let head: String = result.chars().take(500).collect();
+                        format!("{head}… (+{} chars truncated - use a `see`/`act eval` step for the full value)", result.chars().count() - 500)
+                    } else {
+                        result.clone()
+                    };
                     observations.push(format!("step {path}: js → {capped}"));
                 }
                 // Closed propagates unwrapped so serve() self-heals.
@@ -462,19 +395,42 @@ async fn execute_step(
                 }
             }
         }
-        "see" => {
+        "see" | "extract" => {
             // v3.10: read steps — `run` can navigate, interact, and extract in
             // ONE call; with while-loops this turns multi-page scraping into a
-            // single tool call.
+            // single tool call. W1: `extract` is accepted as an alias (the
+            // docs promise every act action works in run steps; agents wrote
+            // {"action":"extract"} and got "unknown action" — silently, under
+            // optional:true).
             let mut see_args = step.clone();
+            if action_str == "extract" && see_args.get("extract").is_none() {
+                if let Some(obj) = see_args.as_object_mut() {
+                    obj.insert("extract".into(), serde_json::json!("auto"));
+                }
+            }
             if see_args.get("budget").is_none() {
                 if let Some(obj) = see_args.as_object_mut() {
                     obj.insert("budget".into(), serde_json::json!(3000));
                 }
             }
+            // url= navigates first — the documented contract for every act
+            // action; see/extract steps used to ignore it silently.
+            let step_url = step.get("url").and_then(|u| u.as_str()).unwrap_or("");
+            if !step_url.is_empty() {
+                if crate::realbrowser::input_paused() {
+                    return Err(crate::realbrowser::paused_error());
+                }
+                page.navigate(step_url).await?;
+                let _ = crate::page::wait_for_settle_with_network(
+                    page.cdp_ref(),
+                    std::time::Duration::from_millis(1200),
+                    Some(page.in_flight_ref()),
+                )
+                .await;
+            }
             let out = handle_see(&see_args, page).await?;
             let chars = out.chars().count();
-            observations.push(format!("step {path}: see ({chars} chars):\n{out}"));
+            observations.push(format!("step {path}: {action_str} ({chars} chars):\n{out}"));
         }
         "state" | "open-tab" | "close-tab" | "switch-tab" | "save" | "load" | "cookies"
         | "set-cookie" => {
@@ -504,26 +460,9 @@ async fn execute_step(
                 }
             }
         }
-        "download" => match handle_download(page, step).await {
-            Ok(result) => {
-                observations.push(format!("step {path}: {result}"));
-            }
-            Err(BladeError::Closed) => return Err(BladeError::Closed),
-            Err(e) => {
-                let _ = page.recapture().await;
-                let view = page.view(2000);
-                return Err(crate::error::BladeError::Other(format!(
-                    "step {path} download failed: {e}\n\n--- current page state ---\n{view}"
-                )));
-            }
-        },
         "wait" => {
-            let timeout_secs = step.get("timeout").and_then(|t| t.as_u64()).unwrap_or(10);
-            let match_text = step.get("text").and_then(|t| t.as_str()).unwrap_or("");
-            let condition = wait_condition(
-                step.get("condition").and_then(|c| c.as_str()).unwrap_or(""),
-                match_text,
-            );
+            let timeout = resolve_wait_timeout(step, 10)?;
+            let (condition, match_text) = super::run::condition_from_args(step, "settle")?;
             let else_steps = step
                 .get("else")
                 .and_then(|s| s.as_array())
@@ -534,14 +473,18 @@ async fn execute_step(
                 // carries the page state, so the agent can recover.
                 let action = Action::Wait {
                     condition,
-                    text: match_text.into(),
-                    timeout: std::time::Duration::from_secs(timeout_secs),
+                    text: match_text,
+                    timeout,
                 };
                 match page.act(action).await {
                     Ok((delta, verdict)) => {
                         observations.push(format!(
                             "step {path}: {verdict}\n{}",
-                            page.delta_view(&delta, 4000)
+                            if step.get("slim").and_then(Value::as_bool).unwrap_or(false) {
+                                String::new()
+                            } else {
+                                page.delta_view(&delta, 4000)
+                            }
                         ));
                     }
                     Err(BladeError::Closed) => return Err(BladeError::Closed),
@@ -557,19 +500,28 @@ async fn execute_step(
                 // wait + else: a gate with a fallback branch — the branch runs
                 // only when the condition times out, and the outcome line says
                 // which path was taken.
-                if condition == "settle" || condition == "network" {
+                if condition == "settle" {
                     return Err(crate::error::BladeError::Other(
                         "wait else: 'else' needs a real condition (element/text/title/url/js) — 'settle' always succeeds; use an 'if' step for plain branching".into(),
                     ));
                 }
-                let met = crate::action::check_condition(
+                let met = match crate::action::eval_condition(
                     page.cdp_ref(),
                     &condition,
-                    match_text,
-                    std::time::Duration::from_secs(timeout_secs),
+                    &match_text,
+                    timeout,
                     Some(page.in_flight_ref()),
                 )
-                .await;
+                .await?
+                {
+                    crate::action::CondOutcome::Met => true,
+                    crate::action::CondOutcome::Timeout => false,
+                    crate::action::CondOutcome::Error(e) => {
+                        return Err(crate::error::BladeError::Other(format!(
+                            "step {path} wait: {e}"
+                        )));
+                    }
+                };
                 if met {
                     observations.push(format!(
                         "step {path}: wait({condition} \"{match_text}\") → matched"
@@ -582,7 +534,10 @@ async fn execute_step(
                     .await;
                     let _ = page.recapture().await?;
                 } else {
-                    observations.push(format!("step {path}: wait({condition} \"{match_text}\") → timeout {timeout_secs}s → else"));
+                    observations.push(format!(
+                        "step {path}: wait({condition} \"{match_text}\") → timeout {}s → else",
+                        timeout.as_secs()
+                    ));
                     let _ = page.recapture().await?;
                     for (j, sub_step) in else_steps.iter().enumerate() {
                         let sub_path = format!("{path}.{j}");
@@ -591,108 +546,103 @@ async fn execute_step(
                 }
             }
         }
-        "fill" => {
-            let step_url = step.get("url").and_then(|u| u.as_str()).unwrap_or("");
-            if !step_url.is_empty() {
-                // Manual-control pause: the pre-navigation runs before the
-                // fill, whose per-field actions are gated in `Page::act`.
-                if crate::realbrowser::input_paused() {
-                    return Err(crate::realbrowser::paused_error());
-                }
-                page.navigate(step_url).await?;
-            }
-            match handle_fill(step, page).await {
-                Ok(result) => {
-                    let capped: String = result.chars().take(2000).collect();
-                    observations.push(format!("step {path}: {capped}"));
-                }
-                Err(BladeError::Closed) => return Err(BladeError::Closed),
-                Err(e) => {
-                    let _ = page.recapture().await;
-                    let view = page.view(3000);
-                    return Err(crate::error::BladeError::Other(format!(
-                        "step {path} fill failed: {e}\n\n--- current page state ---\n{view}"
-                    )));
-                }
-            }
-        }
-        "pdf" => {
-            let step_url = step.get("url").and_then(|u| u.as_str()).unwrap_or("");
-            if !step_url.is_empty() {
-                // Manual-control pause: the pre-navigation runs first.
-                if crate::realbrowser::input_paused() {
-                    return Err(crate::realbrowser::paused_error());
-                }
-                page.navigate(step_url).await?;
-            }
-            match handle_pdf(page, step).await {
-                Ok(result) => {
-                    observations.push(format!("step {path}: {result}"));
-                }
-                Err(BladeError::Closed) => return Err(BladeError::Closed),
-                Err(e) => {
-                    let _ = page.recapture().await;
-                    let view = page.view(3000);
-                    return Err(crate::error::BladeError::Other(format!(
-                        "step {path} pdf failed: {e}\n\n--- current page state ---\n{view}"
-                    )));
-                }
-            }
-        }
-        "collect" => match handle_collect(page, step).await {
-            Ok(result) => {
-                observations.push(format!("step {path}: {result}"));
-            }
-            Err(BladeError::Closed) => return Err(BladeError::Closed),
-            Err(e) => {
-                let _ = page.recapture().await;
-                let view = page.view(2000);
-                return Err(crate::error::BladeError::Other(format!(
-                    "step {path} collect failed: {e}\n\n--- current page state ---\n{view}"
-                )));
-            }
-        },
         _ => {
-            // Navigate first if url is given for a non-navigate action.
-            let step_url = step.get("url").and_then(|u| u.as_str()).unwrap_or("");
-            if !step_url.is_empty() && action_str != "navigate" {
-                // Manual-control pause: the pre-navigation runs before the
-                // action, whose own gate is in `Page::act`.
-                if crate::realbrowser::input_paused() {
-                    return Err(crate::realbrowser::paused_error());
-                }
-                page.navigate(step_url).await?;
-            }
-            let action = build_action(step, page).await?;
-            match page.act(action).await {
-                Ok((delta, verdict)) => {
-                    if delta.navigated {
-                        // Settle-based (content-aware, typically faster than
-                        // the old blind 500ms) — same wait the batch loop uses.
-                        let _ = crate::page::wait_for_settle_with_network(
-                            page.cdp_ref(),
-                            std::time::Duration::from_millis(1200),
-                            Some(page.in_flight_ref()),
-                        )
-                        .await;
-                        let _ = page.recapture().await;
-                    }
-                    observations.push(format!(
-                        "step {path}: {verdict}\n{}",
-                        page.delta_view(&delta, 4000)
-                    ));
-                }
-                // Closed propagates unwrapped so serve() self-heals.
+            // Share the act dispatcher: coordinates, type+press, dialogs,
+            // addressing and future fixes must have one implementation.
+            match Box::pin(handle_act(step, page)).await {
+                Ok(result) => observations.push(format!("step {path}: {result}")),
                 Err(BladeError::Closed) => return Err(BladeError::Closed),
-                Err(e) => {
-                    let _ = page.recapture().await;
-                    let view = page.view(3000);
-                    return Err(crate::error::BladeError::Other(format!(
-                        "step {path} failed: {e}\n\n--- current page state ---\n{view}"
-                    )));
-                }
+                Err(e) => return Err(BladeError::Other(format!("step {path} failed: {e}"))),
             }
         }
     }
     Ok(())
+}
+#[cfg(test)]
+mod condition_contract_tests {
+    //! G02: the unified wait-expression contract. These lock the acceptance
+    //! matrix for `resolve_condition_fields` / `resolve_wait_timeout` — the
+    //! footer of every `act wait`, batch step, `run` step and if/while.
+
+    use super::{resolve_condition_fields, resolve_wait_timeout};
+    use serde_json::json;
+
+    #[test]
+    fn js_condition_accepts_js_field_and_legacy_text_alias() {
+        // The G02 defect: condition=js with the expression in `js` used to be
+        // ignored (waited on text=""), timing out. The js field is now the
+        // primary carrier; `text` remains the documented legacy alias.
+        let (c, e) = resolve_condition_fields("js", "", "true", "settle").unwrap();
+        assert_eq!((c.as_str(), e.as_str()), ("js", "true"));
+        let (c, e) = resolve_condition_fields("js", "true", "", "settle").unwrap();
+        assert_eq!((c.as_str(), e.as_str()), ("js", "true"));
+        // Both, identical: unambiguous, accepted.
+        let (c, e) = resolve_condition_fields("js", "true", "true", "settle").unwrap();
+        assert_eq!((c.as_str(), e.as_str()), ("js", "true"));
+    }
+
+    #[test]
+    fn conflicting_or_missing_expressions_fail_fast() {
+        // Both fields with different content: which one is the expression?
+        let err = resolve_condition_fields("js", "a", "b", "settle").unwrap_err();
+        assert!(err.to_string().contains("differ"), "{err}");
+        // Neither: reject before an empty expression can be waited on.
+        let err = resolve_condition_fields("js", "", "", "settle").unwrap_err();
+        assert!(err.to_string().contains("got neither"), "{err}");
+        // A js field with a non-js condition would be silently ignored: reject.
+        let err = resolve_condition_fields("text", "hello", "1+1", "settle").unwrap_err();
+        assert!(
+            err.to_string().contains("does not evaluate JavaScript"),
+            "{err}"
+        );
+        // No condition + both fields: ambiguous.
+        let err = resolve_condition_fields("", "x", "y", "settle").unwrap_err();
+        assert!(err.to_string().contains("condition="), "{err}");
+    }
+
+    #[test]
+    fn legacy_text_wait_and_defaults_survive() {
+        // text= without condition keeps the documented "wait for this text".
+        let (c, e) = resolve_condition_fields("", "Sign in", "", "settle").unwrap();
+        assert_eq!((c.as_str(), e.as_str()), ("text", "Sign in"));
+        // js= without condition means a js condition.
+        let (c, e) = resolve_condition_fields("", "", "window.ready", "settle").unwrap();
+        assert_eq!((c.as_str(), e.as_str()), ("js", "window.ready"));
+        // Neither: the caller's default (settle for wait/if, element for while).
+        let (c, _) = resolve_condition_fields("", "", "", "settle").unwrap();
+        assert_eq!(c, "settle");
+        let (c, _) = resolve_condition_fields("", "", "", "element").unwrap();
+        assert_eq!(c, "element");
+        // Explicit text condition with a needle passes through.
+        let (c, e) = resolve_condition_fields("text", "hello", "", "settle").unwrap();
+        assert_eq!((c.as_str(), e.as_str()), ("text", "hello"));
+        // Empty needle for a content condition is a loud error, not an
+        // instant "met" ('' is a substring of everything).
+        let err = resolve_condition_fields("text", "", "", "settle").unwrap_err();
+        assert!(err.to_string().contains("non-empty match value"), "{err}");
+    }
+
+    #[test]
+    fn timeout_contract_is_integer_seconds_zero_to_hour() {
+        use std::time::Duration;
+        let t = |v: serde_json::Value| resolve_wait_timeout(&json!({"timeout": v}), 10);
+        assert_eq!(t(json!(0)).unwrap(), Duration::from_secs(0));
+        assert_eq!(t(json!(45)).unwrap(), Duration::from_secs(45));
+        assert_eq!(t(json!(3600)).unwrap(), Duration::from_secs(3600));
+        // Missing → the caller's default.
+        assert_eq!(
+            resolve_wait_timeout(&json!({}), 10).unwrap(),
+            Duration::from_secs(10)
+        );
+        // Fractional / string / negative / oversized: all loud.
+        for bad in [
+            json!(1.5),
+            json!("10"),
+            json!(-3),
+            json!(3601),
+            json!(u64::MAX),
+        ] {
+            assert!(t(bad.clone()).is_err(), "timeout {bad} should be rejected");
+        }
+    }
 }

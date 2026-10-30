@@ -11,7 +11,7 @@ pub(crate) fn parse_state_args(args: &[String]) -> Result<Value> {
         return Err(BladeError::Usage(
             "state needs an op — cookies, set-cookie, del-cookie, ls, ss, set-ls, set-ss, \
              rm-ls, rm-ss, clear-ls, clear-ss, tabs, open-tab, close-tab, switch-tab, save, \
-             load, compress, block (see 'bladebro help state')"
+             load, compress, block, record-start, record-stop (see 'bladebro help state')"
                 .into(),
         ));
     }
@@ -36,6 +36,8 @@ pub(crate) fn parse_state_args(args: &[String]) -> Result<Value> {
         "load",
         "compress",
         "block",
+        "record-start",
+        "record-stop",
     ];
     // Aliases: MCP-style names.
     let op = match args[0].as_str() {
@@ -242,7 +244,12 @@ pub(crate) fn parse_state_args(args: &[String]) -> Result<Value> {
                 }
             }
         }
-        "tabs" | "ls" | "ss" | "clear-ls" | "clear-ss" => {
+        // fork hook (record): see .planning/HOOKS.md
+        "record-start" => {
+            let flag = j.get("name").and_then(|x| x.as_str());
+            j["name"] = json!(crate::record::hub::cli_name(flag, &pos)?);
+        }
+        "tabs" | "ls" | "ss" | "clear-ls" | "clear-ss" | "record-stop" => {
             if !pos.is_empty() {
                 return Err(BladeError::Usage(format!(
                     "unexpected extra argument '{}' for {op}",
@@ -255,3 +262,8 @@ pub(crate) fn parse_state_args(args: &[String]) -> Result<Value> {
 
     Ok(j)
 }
+
+// fork hook (record): see .planning/HOOKS.md
+#[cfg(test)]
+#[path = "../../record/hub/state_parse_tests.rs"]
+mod record_parse_tests;

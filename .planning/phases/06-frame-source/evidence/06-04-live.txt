@@ -1,0 +1,20 @@
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:02:18Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] REC_LIVE_REPORT {"encoder":{"bytes":12820,"finalize_ms":39,"frames_dropped":0,"frames_queued":9,"frames_written":80,"ok":true,"outcome":"Finalized","path":"/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.R6vTysQsAY/dur-tick8.webm","verdict":"recording finalized: /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbrecvid.R6vTysQsAY/dur-tick8.webm (12820 bytes; 80 frames written, 0 dropped at the queue)"},"frame_sizes":[{"count":9,"first_ms":11,"last_ms":7586,"size":"1280x628"}],"harness":[],"health_at_stop":"Receiving { last_age_ms: 418 }","mode":"plain","secs_requested":8,"source":{"ack_errors":0,"acks_ok":9,"acks_sent":9,"bad_frames":0,"capped":0,"elapsed_ms":8504,"first_frame_ms":9,"forwarded":9,"frames_received":9,"hidden":false,"last_frame_age_ms":920,"last_frame_ms":7584,"longest_gap_ms":1009,"lost":0,"methods_sent":[["Page.enable",1],["Page.startScreencast",1],["Page.screencastFrameAck",9],["Page.stopScreencast",1]],"ok":true,"outcome":"Captured","queue_dropped":0,"quiet_tail_ms":null,"ts_fallback":0,"unacked":0,"verdict":"capture ok: 9 frames received, 9 acked, 9 to the encoder, 0 skipped by the fps cap, 0 dropped at the queue, 0 lost; last frame 0.9 s before stop"},"target":"222EFAFA6CAC71235F363386226BE873","wall_ms":8002}
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.000000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=80
+[dur-tick8] drift: ffprobe_duration_ms=8000 wall_ms=8002 drift_pct=-0.02
+[dur-tick8] leftover processes after stop: 14
+20964 /bin/zsh -c source /Users/sokolov.st@brainrocket.com/.claude/shell-snapshots/snapshot-zsh-1792652906468-3xhkfm.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'python3 - <<'"'"'EOF'"'"'
+p='"'"'tests/record_live.rs'"'"'
+s=open(p).read()
+s=s.replace("""        self.inner.send_frame(jpeg, ts_ms)
+    }
+}""","""        self.inner.send_frame(jpeg, ts_ms)
+    }
+
+    fn mark_end(&self) {
+        self.inner.mark_end()
+# finished: 2026-10-22T10:02:30Z

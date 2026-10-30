@@ -1,0 +1,82 @@
+# 06-05 live dur-tick8 x8 (runs 1-4 whole 8 s; 5-8 REC_LIVE_EXTRA_MS=685,822,59,196), headless, scratch BLADE_HOME, local fixtures
+## run 1
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:36:37Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.000000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=80
+[dur-tick8] drift: ffprobe_duration_ms=8000 wall_ms=8002 drift_pct=-0.02
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:36:50Z
+## run 2
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:36:51Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.000000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=80
+[dur-tick8] drift: ffprobe_duration_ms=8000 wall_ms=8001 drift_pct=-0.01
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:37:03Z
+## run 3
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:37:04Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.000000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=80
+[dur-tick8] drift: ffprobe_duration_ms=8000 wall_ms=8001 drift_pct=-0.01
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:37:16Z
+## run 4
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:37:17Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.000000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=80
+[dur-tick8] drift: ffprobe_duration_ms=8000 wall_ms=8000 drift_pct=+0.00
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:37:29Z
+## run 5
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:37:30Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.700000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=87
+[dur-tick8] drift: ffprobe_duration_ms=8700 wall_ms=8686 drift_pct=+0.16
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:37:43Z
+## run 6
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:37:44Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.800000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=88
+[dur-tick8] drift: ffprobe_duration_ms=8800 wall_ms=8824 drift_pct=-0.27
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:37:56Z
+## run 7
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:37:58Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.000000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=80
+[dur-tick8] drift: ffprobe_duration_ms=8000 wall_ms=8060 drift_pct=-0.74
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:38:10Z
+## run 8
+# test binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/deps/record_live-4d817e4914e12c4d
+# chrome: bladebro 4.6.5
+# started: 2026-10-22T10:38:11Z  headless=1  fixtures=http://127.0.0.1:8765
+=== dur-tick8: nav tick.html, 8s plain ===
+[dur-tick8] ffprobe: {"programs":[],"stream_groups":[],"streams":[{"codec_name":"vp9","width":1280,"height":720}],"format":{"format_name":"matroska,webm","duration":"8.200000"}}
+[dur-tick8] decode: exit=0 warning_lines=0 nb_read_frames=82
+[dur-tick8] drift: ffprobe_duration_ms=8200 wall_ms=8197 drift_pct=+0.04
+[dur-tick8] leftover processes after stop: 0
+# finished: 2026-10-22T10:38:23Z
+# summary: drifts -0.02 -0.01 -0.01 +0.00 +0.16 -0.27 -0.74 +0.04 %; max |drift| 0.74 % (60 ms short, 100 ms slot quantization at 10 fps); pre-fix measured +5.00 %. leftovers 0 after every run

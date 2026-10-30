@@ -20,7 +20,8 @@
 //! loop); the protocol verbs — `initialize`, `server/discover`, `tools/list`,
 //! `tools/call` — live in `proto`. Handlers: `act`/`see`/`state`/`run`/
 //! `vision`, with shared pieces in `eval` (JS), `extract` (template/auto/
-//! collect), `files` (pdf/download), and `resolve` (text/selector → ref).
+//! collect), `files` (pdf/download), `paginate` (bounded read/advance), `resolve` (text/selector → ref), and
+//! `validate` (supplied argument types before any navigation/input).
 
 use serde_json::{json, Value};
 
@@ -29,12 +30,14 @@ mod boot;
 mod eval;
 mod extract;
 mod files;
+mod paginate;
 mod proto;
 mod resolve;
 mod run;
 mod see;
 mod serve;
 mod state;
+mod validate;
 mod vision;
 
 pub use act::{handle_act, handle_fill};
@@ -67,7 +70,13 @@ const SUPPORTED_VERSIONS: &[&str] = &[
 ];
 
 /// Server instructions shared by `initialize` and `server/discover`.
-const INSTRUCTIONS: &str = "Stealth browser driver. `see` reads the page (diff-first), `act` interacts (click/type/navigate), `state` manages cookies/tabs/sessions, `run` runs step batches with branching/loops/inline reads, `vision` screenshots.";
+///
+/// This is the ONE place every MCP client reads before it sees a tool, so it
+/// carries the working loop, not just the tool names — issue #41 was agents
+/// flailing at a surface they had to reverse-engineer from five schemas
+/// (the pi package now also bundles the same guidance as a skill). It is
+/// deliberately compact: it is paid for once per session, in every client.
+const INSTRUCTIONS: &str = "Stealth browser driver. act interacts (navigate/click/type/fill/batch/eval), see reads (extract=\"auto\" first on list/search/product pages; mode=\"content\" for articles; format=\"json\" for pure JSON), state manages cookies/tabs/sessions, run executes step batches with branching and inline reads, vision screenshots. WORK LOOP: navigate -> act by text (no see needed) or by ref (refs are page-scoped: refresh them after a navigation or tab switch; within a page they self-heal) -> every action returns an observation, so a see after acting is usually unnecessary. act eval answers one line, `result: <compact JSON>` (a returned string containing JSON is flagged in a note). Results disclose what the driver cannot verify: page_total/partial (lazy or paginated results), sponsored items, unwrapped redirect links, duplicates removed, and a URL range filter whose page prices fall outside it. Oversized payloads go to an artifact file, read back with see artifact=\"...\" - nothing is truncated silently. Errors carry the current page state; never blind-retry a submit.";
 
 /// Extract the per-request protocol version (SEP-2575). New-spec clients
 /// send `_meta["io.modelcontextprotocol/protocolVersion"]` on every

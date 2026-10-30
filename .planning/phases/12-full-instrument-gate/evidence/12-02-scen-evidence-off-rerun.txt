@@ -1,0 +1,32 @@
+# evidence_live.sh  started 2026-10-27T10:21:48Z  headless=1  fixtures=http://127.0.0.1:8765  ids=off
+# new binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (e4648a9-dirty))  git: e4648a9
+# baseline binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+== off: recording OFF: CDP method trace, normalized stdout and sidecar absence, base d18dae1 vs HEAD
+[off] base: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+[off] new:  /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (e4648a9-dirty))
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 11
+[off] base run 1: total=109 Page.bringToFront=3 Target.getTargets=1
+[off] base run 2: total=111 Page.bringToFront=3 Target.getTargets=1
+[off] new distinct WS methods: 11
+[off] new run 1: total=111 Page.bringToFront=3 Target.getTargets=1
+[off] new run 2: total=107 Page.bringToFront=3 Target.getTargets=1
+PASS [off] traces non-empty
+PASS [off] distinct WS method sets equal (base vs new)
+FAIL [off] per-method counts equal, base run 1 vs new run 1
+FAIL [off] per-method counts equal, base run 2 vs new run 2
+[off] noise probe: Input.dispatchMouseEvent base run1 29 run2 31 | new run1 31 run2 27
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 1
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 2
+PASS [off] no screencast method in new
+PASS [off] normalized stdout byte-identical, base vs new (run 1)
+PASS [off] normalized stdout byte-identical, base vs new (run 2)
+PASS [off] normalized stdout byte-identical, base run 1 vs base run 2 (same binary, noise check)
+PASS [off-files] no timeline/poster anywhere under the off homes
+PASS [off-files] recordings dir absent or empty in every off home (counts: 0 0 0 0 )
+final pgrep of our fixtures/daemons: none
+== total FAIL count: 2
+evidence_off_rerun_exit=1

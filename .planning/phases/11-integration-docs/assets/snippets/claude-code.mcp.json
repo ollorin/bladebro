@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bladebro": {
+      "command": "bladebro",
+      "args": ["mcp"],
+      "env": { "BLADE_RECORD": "1" }
+    }
+  }
+}

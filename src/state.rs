@@ -177,7 +177,7 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
             if res.get("success").and_then(Value::as_bool) == Some(false) {
                 return Err(BladeError::Other(format!("Chrome rejected cookie {name:?}; check its URL, domain and security attributes")));
             }
-            let stored = cdp.send("Storage.getCookies", None).await?;
+            let stored = cdp.cookie_store().await?;
             let expected_domain = if let Some(u) = url {
                 url::Url::parse(u)
                     .ok()
@@ -256,9 +256,11 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
             if tabs.is_empty() {
                 return Ok("(no tabs)".into());
             }
+            let own = crate::record::hub::own_target(cdp).await;
             let mut out = String::new();
             for tab in &tabs {
-                let marker = if tab.attached { "*" } else { " " };
+                let marker =
+                    crate::record::hub::tab_marker(tab.attached, &tab.target_id, own.as_ref());
                 out.push_str(&format!(
                     "{} {}  {}\n",
                     marker,
@@ -270,6 +272,7 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
                     }
                 ));
             }
+            out.push_str(crate::record::hub::tabs_footer(own.as_ref()));
             out.push_str("(* = current tab; switch-tab <target_id> to change)");
             Ok(out)
         }
@@ -303,6 +306,17 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
 
         // ---- sessions (M10) ----
         StateOp::SaveSession { name } => {
+            // SECURITY: the real-browser lane skips the login snapshot
+            // ("not our cookie store") — the same boundary must hold here.
+            // Without this gate, one agent-callable state save on the rb
+            // lane writes the user's REAL browser cookie jar in cleartext
+            // under the blade data dir, where the upload read lane could
+            // forward it to any driven page.
+            if crate::realbrowser::real_lane() {
+                return Err(BladeError::Other(
+                    "state save is disabled on the real-browser lane — it would persist your real browser's cookies into bladebro's data dir".into(),
+                ));
+            }
             validate_session_name(name)?;
 
             cdp.enable("Network").await?;
@@ -371,8 +385,18 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
             let path = crate::platform::blade_dir()
                 .join("sessions")
                 .join(format!("{name}.json"));
+            if std::fs::symlink_metadata(&path)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+            {
+                // A symlinked session file is attack state — never read
+                // through it into the restore path.
+                return Err(BladeError::Other(format!(
+                    "session '{name}' is a symlink — refusing to read it"
+                )));
+            }
             use std::io::Read;
-            let file = std::fs::File::open(&path)
+            let file = crate::platform::open_nofollow(&path)
                 .map_err(|e| BladeError::Other(format!("cannot read session '{name}': {e}")))?;
             let mut content = Vec::new();
             file.take(8 * 1024 * 1024 + 1).read_to_end(&mut content)?;
@@ -418,7 +442,7 @@ pub async fn perform(cdp: &CdpSession, op: &StateOp) -> Result<String> {
                     )));
                 }
             }
-            let restored = cdp.send("Storage.getCookies", None).await?;
+            let restored = cdp.cookie_store().await?;
             let all = restored
                 .get("cookies")
                 .and_then(Value::as_array)

@@ -14,6 +14,7 @@
 //! Rotation keeps the newest 300 files; older ones are
 //! deleted on write.
 
+use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::Result;
@@ -77,12 +78,20 @@ fn rotate_artifacts(dir: &std::path::Path) {
     }
 }
 
-/// Read a slice of an artifact file — char-addressed (offset/limit in chars).
-/// The read-back surface for pure-MCP clients with no filesystem access:
-/// `see artifact="<path>"`. Restricted to the artifacts directory (this must
-/// not become an arbitrary file reader) and to text-ish files; binary
-/// artifacts (png/pdf) are refused with a pointer to the file.
-pub fn read_artifact(path: &str, offset: usize, limit: usize) -> Result<String> {
+/// A validated, char-sliced read of an artifact file (shared by the text
+/// and JSON read paths).
+struct ArtifactChunk {
+    canon: std::path::PathBuf,
+    chunk: String,
+    offset: usize,
+    next: usize,
+    total: usize,
+}
+
+/// Validate the path (inside the artifact dir, text-ish) and slice the
+/// requested char range. The restrictions live here once; the text and
+/// JSON readers both build their result from this.
+fn artifact_path(path: &str) -> Result<std::path::PathBuf> {
     let dir = artifact_dir();
     let dir_canon = dir
         .canonicalize()
@@ -108,6 +117,11 @@ pub fn read_artifact(path: &str, offset: usize, limit: usize) -> Result<String> 
             canon.display()
         )));
     }
+    Ok(canon)
+}
+
+fn artifact_chunk(path: &str, offset: usize, limit: usize) -> Result<ArtifactChunk> {
+    let canon = artifact_path(path)?;
     let bytes = std::fs::read(&canon)
         .map_err(|e| crate::error::BladeError::Other(format!("artifact read: {e}")))?;
     let text = String::from_utf8_lossy(&bytes);
@@ -116,18 +130,135 @@ pub fn read_artifact(path: &str, offset: usize, limit: usize) -> Result<String> 
     let offset = offset.min(total);
     let chunk: String = text.chars().skip(offset).take(limit).collect();
     let next = offset + chunk.chars().count();
-    let tail = if next >= total {
+    Ok(ArtifactChunk {
+        canon,
+        chunk,
+        offset,
+        next,
+        total,
+    })
+}
+
+/// Read a slice of an artifact file — char-addressed (offset/limit in chars).
+/// The read-back surface for pure-MCP clients with no filesystem access:
+/// `see artifact="<path>"`. Restricted to the artifacts directory (this must
+/// not become an arbitrary file reader) and to text-ish files; binary
+/// artifacts (png/pdf) are refused with a pointer to the file.
+pub fn read_artifact(path: &str, offset: usize, limit: usize) -> Result<String> {
+    let c = artifact_chunk(path, offset, limit)?;
+    let tail = if c.next >= c.total {
         "end of artifact".to_string()
     } else {
-        format!("read more with offset={next}")
+        format!("read more with offset={}", c.next)
     };
     Ok(format!(
-        "artifact {} — chars {offset}..{next} of {total} ({tail})\n{chunk}",
-        canon.display()
+        "artifact {} — chars {}..{} of {} ({tail})\n{}",
+        c.canon.display(),
+        c.offset,
+        c.next,
+        c.total,
+        c.chunk
     ))
+}
+
+/// JSON-mode read (W2): each page is itself valid JSON —
+/// `see artifact="<path>" format=json offset=N` returns
+/// `{path, offset, next_offset, total_chars, data}` with `next_offset`
+/// null at the end. A truncated payload is never emitted as a bare page,
+/// so clients can parse every page.
+pub fn read_artifact_json(path: &str, offset: usize, limit: usize) -> Result<String> {
+    let c = artifact_chunk(path, offset, limit)?;
+    let next_offset = if c.next >= c.total {
+        serde_json::Value::Null
+    } else {
+        serde_json::json!(c.next)
+    };
+    Ok(serde_json::json!({
+        "path": c.canon.display().to_string(),
+        "offset": c.offset,
+        "next_offset": next_offset,
+        "total_chars": c.total,
+        "data": c.chunk,
+    })
+    .to_string())
+}
+
+/// Item-addressed JSON pages. Restrict via the same path/binary gate first.
+pub(crate) fn read_artifact_value(path: &str) -> Result<serde_json::Value> {
+    let canon = artifact_path(path)?;
+    if std::fs::metadata(&canon)?.len() > 32 * 1024 * 1024 {
+        return Err(crate::error::BladeError::Other(
+            "JSON item reads require <=32 MiB; use char paging or a file tool".into(),
+        ));
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(&canon)?
+        .take(32 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 32 * 1024 * 1024 {
+        return Err(crate::error::BladeError::Other(
+            "artifact grew beyond 32 MiB".into(),
+        ));
+    }
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+pub fn read_artifact_items(path: &str, offset: usize, limit: usize) -> Result<String> {
+    let canon = artifact_path(path)?;
+    let value = read_artifact_value(path)?;
+    let rows = value.as_array().or_else(|| value.get("items").and_then(|v| v.as_array())).or_else(|| value.get("data").and_then(|v| v.as_array())).or_else(|| value.get("pages").and_then(|v|v.as_array())).ok_or_else(|| crate::error::BladeError::Other("items=true requires a JSON array, or an items/data array; use char paging for other shapes".into()))?;
+    let offset = offset.min(rows.len());
+    let mut end = offset;
+    let mut bytes = 0;
+    for row in rows.iter().skip(offset).take(limit.clamp(1, 500)) {
+        bytes += serde_json::to_vec(row)?.len();
+        if bytes > 200_000 {
+            if end == offset {
+                return Err(crate::error::BladeError::Other(
+                    "one item exceeds 200000 bytes; use char paging or a file tool".into(),
+                ));
+            }
+            break;
+        }
+        end += 1;
+    }
+    Ok(serde_json::json!({"path":canon.display().to_string(),"offset":offset,"next_offset":if end < rows.len(){Some(end)}else{None},"total_items":rows.len(),"items":rows[offset..end]}).to_string())
 }
 
 /// The artifact directory: `~/.blade/artifacts/`.
 pub fn artifact_dir() -> std::path::PathBuf {
     crate::platform::blade_dir().join("artifacts")
+}
+
+#[cfg(test)]
+mod artifact_tests {
+    use super::*;
+
+    /// W2: JSON-mode pages are always parseable, the next_offset chain
+    /// terminates, and the pages reassemble to the exact payload — the
+    /// anti-requirement being "a truncated JSON blob as a bare page".
+    #[test]
+    fn json_pages_parse_and_terminate() {
+        let payload = format!("{{\"k\":\"{}\"}}", "x".repeat(500));
+        let path = write_artifact(&payload, "json").unwrap();
+        let p1: serde_json::Value =
+            serde_json::from_str(&read_artifact_json(&path, 0, 100).unwrap()).unwrap();
+        assert_eq!(p1["offset"].as_u64(), Some(0));
+        assert_eq!(
+            p1["total_chars"].as_u64(),
+            Some(payload.chars().count() as u64)
+        );
+        assert_eq!(p1["data"].as_str().unwrap().chars().count(), 100);
+        let next = p1["next_offset"].as_u64().unwrap() as usize;
+        assert!(next > 0, "a truncated read must point at the next offset");
+        let p2: serde_json::Value =
+            serde_json::from_str(&read_artifact_json(&path, next, 200_000).unwrap()).unwrap();
+        assert_eq!(p2["next_offset"], serde_json::Value::Null);
+        let mut rebuilt = p1["data"].as_str().unwrap().to_string();
+        rebuilt.push_str(p2["data"].as_str().unwrap());
+        assert_eq!(rebuilt, payload, "pages reassemble to the exact payload");
+        // Text mode still renders for the same file.
+        let t = read_artifact(&path, 0, 40).unwrap();
+        assert!(t.contains("chars 0..40 of"), "{t}");
+    }
 }

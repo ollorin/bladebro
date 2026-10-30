@@ -23,21 +23,45 @@ use std::time::{Duration, Instant};
 use crate::error::{BladeError, Result};
 use crate::platform;
 
+mod alerts;
+mod compat;
 mod discover;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 mod display;
 mod flags;
 mod launch;
 mod pipe;
 mod probe;
+pub mod proxy;
 
-#[cfg(target_os = "linux")]
+pub use self::alerts::{
+    pending_notes, reset_gl_alert, set_stealth_inject_failed, set_ua_override_failed,
+};
+pub(crate) use self::compat::{incognito_policy, launched_incognito};
+pub(crate) use self::discover::endpoint_owned_by_own_browser;
+pub(crate) use self::discover::find_chrome;
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub use self::display::VirtualDisplay;
 pub use self::flags::{
-    gpu_state, is_software_renderer, launched_headless, launched_pipe, set_gpu_state,
-    set_launched_headless, set_launched_pipe, GlStage, GpuState, Transport,
+    gl_mid_session_loss, gpu_state, is_software_renderer, launched_headless, launched_no_sandbox,
+    launched_pipe, mark_gl_mid_session_loss, reconcile_gl, set_gpu_state, set_launched_headless,
+    set_launched_no_sandbox, set_launched_pipe, GlReconcile, GlStage, GpuState, Transport,
 };
 pub use self::launch::launch_lane;
+pub use self::probe::{probe_gl_live, GlLive, WorkerEvidence};
+// Chromium appends a singleton socket name under TMPDIR. Hermes and other
+// harnesses may supply a long workspace path, exceeding even macOS's 104-byte
+// sockaddr_un limit and fatally aborting Chrome. Only the browser child uses
+// the short system temp root; Chromium creates its own private random directory.
+fn browser_temp_env(cmd: &mut Command) {
+    #[cfg(unix)]
+    if std::env::temp_dir().as_os_str().as_encoded_bytes().len() > 48 {
+        cmd.env("TMPDIR", "/tmp");
+    }
+    #[cfg(not(unix))]
+    let _ = cmd;
+}
+
 /// A launched Chrome process + virtual display + session
 /// profile. Chrome killed on Drop; the session profile is
 /// synced back to the template and removed on explicit
@@ -45,7 +69,7 @@ pub use self::launch::launch_lane;
 /// orphan reaper (ungraceful death).
 pub struct Browser {
     child: Child,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     #[allow(dead_code)]
     xvfb: Option<VirtualDisplay>,
     port: u16,

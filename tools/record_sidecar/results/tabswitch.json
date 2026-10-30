@@ -1,0 +1,318 @@
+{
+  "scenario": "tabswitch",
+  "host": {
+    "os": "macOS arm64",
+    "ffmpeg": "n9.0.2",
+    "transport": "ws",
+    "headless": true
+  },
+  "poll": {
+    "name": "tabswitch_poll",
+    "chrome": "Chrome/154.0.8037.58",
+    "follow": "poll",
+    "stop_reason": "duration",
+    "wall_ms": 32061,
+    "frames_received": 1915,
+    "stale_frames": 0,
+    "acks_sent": 1915,
+    "acks_ok": 1915,
+    "acks_err": 0,
+    "frames_written": 1916,
+    "frames_dropped": 0,
+    "dup_frames_written": 0,
+    "queue_max": 7,
+    "ack_send_us": {
+      "p50": 46.66700000234414,
+      "p95": 121.2919999998121,
+      "max": 279.7499999996944
+    },
+    "ack_rtt_ms": {
+      "p50": 0.37354200000118,
+      "p95": 0.5256669999998849,
+      "max": 2.318790999999692
+    },
+    "capture_to_recv_ms": {
+      "p50": 2.343994140625,
+      "p95": 3.899169921875,
+      "max": 5.931884765625
+    },
+    "effective_fps_recv": 59.73,
+    "first_frame_ms": 21,
+    "max_gap_ms": 55,
+    "fps_buckets": [
+      59,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      57,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      58,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      1
+    ],
+    "frame_sizes": {
+      "756x469": 1915
+    },
+    "segments": [
+      {
+        "t_ms": 0,
+        "targetId": "14803966B71331AC696D5F6090EAF88F",
+        "url": "http://127.0.0.1:8765/a.html",
+        "frames": 599,
+        "switch_ms": null
+      },
+      {
+        "t_ms": 10070,
+        "targetId": "F0A22D22219AE499780CCA6090CF2E77",
+        "url": "http://127.0.0.1:8765/b.html",
+        "frames": 615,
+        "switch_ms": 7
+      },
+      {
+        "t_ms": 20352,
+        "targetId": "14803966B71331AC696D5F6090EAF88F",
+        "url": "http://127.0.0.1:8765/a.html",
+        "frames": 701,
+        "switch_ms": 10
+      }
+    ],
+    "segment_summary": {
+      "count": 3,
+      "frames_per_segment": [
+        599,
+        615,
+        701
+      ],
+      "all_nonzero": true
+    },
+    "events": [],
+    "stop_begin_ms": 32028,
+    "encoder": {
+      "finalized": true,
+      "bench": {
+        "utime_s": 6.864,
+        "stime_s": 1.983,
+        "rtime_s": 20.372
+      },
+      "exit_code": 0,
+      "finalize_ms": 32
+    },
+    "probe": {
+      "codec": "vp9",
+      "width": 1280,
+      "height": 720,
+      "duration_s": 31.982,
+      "nb_read_frames": 1916,
+      "size_bytes": 508453,
+      "decode_exit": 0,
+      "decode_error_lines": 65,
+      "decode_errors": "[null @ 0xc73018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 360 >= 360\n[null @ 0xc73018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 365 >= 365\n[null @ 0xc73018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 367 >= 367\n[null @ 0xc73018280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 383 >= 383\n[null @ 0xc73018280] Application",
+      "playable": false,
+      "decodes_clean_exit": true
+    },
+    "drift_pct": -0.246,
+    "drift_pct_capture": -0.144,
+    "bytes_per_min": 953885.9,
+    "json_list_while_b_current": [
+      {
+        "id": "F0A22D22219AE499780CCA6090CF2E77",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/b.html"
+      },
+      {
+        "id": "6A300C757068D35222845FD19AB24900",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/"
+      },
+      {
+        "id": "A1C1823DE1FE792510BA0287F681B82F",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html"
+      },
+      {
+        "id": "14803966B71331AC696D5F6090EAF88F",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/a.html"
+      },
+      {
+        "id": "8E1179C2D19D3D7772E3BA6C6C98288A",
+        "type": "background_page",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html"
+      },
+      {
+        "id": "60BA03C226C4C8EFFF60260FBAB63235",
+        "type": "service_worker",
+        "url": "chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js"
+      }
+    ]
+  },
+  "newest": {
+    "name": "tabswitch_newest",
+    "chrome": "Chrome/154.0.8037.58",
+    "follow": "newest",
+    "stop_reason": "duration",
+    "wall_ms": 32070,
+    "frames_received": 1216,
+    "stale_frames": 0,
+    "acks_sent": 1216,
+    "acks_ok": 1215,
+    "acks_err": 1,
+    "frames_written": 1217,
+    "frames_dropped": 0,
+    "dup_frames_written": 0,
+    "queue_max": 7,
+    "ack_send_us": {
+      "p50": 56.04200000016135,
+      "p95": 140.2499999999236,
+      "max": 324.1249999991851
+    },
+    "ack_rtt_ms": {
+      "p50": 0.39837500000021464,
+      "p95": 0.5629579999999805,
+      "max": 1.7277920000015001
+    },
+    "capture_to_recv_ms": {
+      "p50": 2.650146484375,
+      "p95": 4.095947265625,
+      "max": 5.2529296875
+    },
+    "effective_fps_recv": 37.92,
+    "first_frame_ms": 19,
+    "max_gap_ms": 27,
+    "fps_buckets": [
+      59,
+      61,
+      59,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      59,
+      61,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      60,
+      17
+    ],
+    "frame_sizes": {
+      "756x469": 1216
+    },
+    "segments": [
+      {
+        "t_ms": 0,
+        "targetId": "C98C8461871618B175E5077CCE3654F1",
+        "url": "http://127.0.0.1:8765/a.html",
+        "frames": 599,
+        "switch_ms": null
+      },
+      {
+        "t_ms": 10024,
+        "targetId": "E256136D7C38FA7B268755E2F3D47C97",
+        "url": "http://127.0.0.1:8765/b.html",
+        "frames": 617,
+        "switch_ms": 35
+      }
+    ],
+    "segment_summary": {
+      "count": 2,
+      "frames_per_segment": [
+        599,
+        617
+      ],
+      "all_nonzero": true
+    },
+    "events": [],
+    "stop_begin_ms": 32029,
+    "encoder": {
+      "finalized": true,
+      "bench": {
+        "utime_s": 3.72,
+        "stime_s": 1.173,
+        "rtime_s": 20.414
+      },
+      "exit_code": 0,
+      "finalize_ms": 35
+    },
+    "probe": {
+      "codec": "vp9",
+      "width": 1280,
+      "height": 720,
+      "duration_s": 31.99,
+      "nb_read_frames": 1217,
+      "size_bytes": 323045,
+      "decode_exit": 0,
+      "decode_error_lines": 34,
+      "decode_errors": "[null @ 0x724c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 323 >= 323\n[null @ 0x724c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 345 >= 345\n[null @ 0x724c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 348 >= 348\n[null @ 0x724c20280] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 372 >= 372\n[null @ 0x724c20280] Application",
+      "playable": false,
+      "decodes_clean_exit": true
+    },
+    "drift_pct": -0.249,
+    "drift_pct_capture": -0.122,
+    "bytes_per_min": 605898.7,
+    "json_list_while_b_current": [
+      {
+        "id": "E256136D7C38FA7B268755E2F3D47C97",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/b.html"
+      },
+      {
+        "id": "06E898DEF40D31A8E37DC1841C94B52E",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/"
+      },
+      {
+        "id": "0329B168072F9D5F5B0BEE56EA688711",
+        "type": "browser_ui",
+        "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html"
+      },
+      {
+        "id": "C98C8461871618B175E5077CCE3654F1",
+        "type": "page",
+        "url": "http://127.0.0.1:8765/a.html"
+      },
+      {
+        "id": "6CB8C1109510BBCE3BE823B219DE7ABE",
+        "type": "background_page",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html"
+      },
+      {
+        "id": "5C632E7751815A821B10BE03131FB1E5",
+        "type": "service_worker",
+        "url": "chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js"
+      }
+    ]
+  },
+  "follow_finding": "poll: open-tab tracked=true, switch-tab tracked=true, segment urls=a.html>b.html>a.html | newest: open-tab tracked=true, switch-tab tracked=false, segment urls=a.html>b.html"
+}

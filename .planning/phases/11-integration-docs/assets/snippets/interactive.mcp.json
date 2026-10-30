@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bladebro": {
+      "command": "bladebro",
+      "args": ["mcp"]
+    }
+  }
+}

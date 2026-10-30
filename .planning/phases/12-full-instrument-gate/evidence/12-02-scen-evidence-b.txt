@@ -1,0 +1,121 @@
+# evidence_live.sh  started 2026-10-27T10:20:36Z  headless=1  fixtures=http://127.0.0.1:8765  ids=timeline,timeline-mp4,timeline-run,per-tab-timeline,off,mcp
+# new binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (e4648a9-dirty))  git: e4648a9
+# baseline binary: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+[timeline] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3P9r6vUvwA/recordings/timeline-20261027T102037Z-8af630.webm (tab 58065EAF84543EAAFE106E7F41FD90EF); first frame not awaited. record-stop saves it.
+[timeline] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline] click: ✗ error: no element matching "no such button" found
+[timeline] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3P9r6vUvwA/recordings/timeline-20261027T102037Z-8af630.webm (bytes 45049, duration 7.1 s, frames 71, dropped 0, segments [0.0 s tab 58065EAF84543EAAFE106E7F41FD90EF]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3P9r6vUvwA/recordings/timeline-20261027T102037Z-8af630.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3P9r6vUvwA/recordings/timeline-20261027T102037Z-8af630.timeline.json (3 actions). Marker at 7.0 s
+PASS [timeline] record-stop exits 0 and saves the webm
+[timeline] timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3P9r6vUvwA/recordings/timeline-20261027T102037Z-8af630.timeline.json  video: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.3P9r6vUvwA/recordings/timeline-20261027T102037Z-8af630.webm
+PASS [timeline] timeline path printed: '. Timeline: <abs>.timeline.json (N actions)'
+PASS [timeline] timeline mode 600 (is 600)
+PASS [timeline] timeline named <video stem>.timeline.json next to the video
+PASS [timeline] JSON version 1, basenames only, dropped 0
+PASS [timeline] result N actions == action entries in the JSON
+[timeline] entries: action click ok=True at_s=1.51 end_s=2.23 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=True at_s=3.75 end_s=4.45 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=False at_s=5.98 end_s=5.99 verdict='no element matching "no such button" found' note=None | marker None ok=None at_s=7.02 end_s=None verdict=None note='FAIL: demo'
+PASS [timeline] entries in order: click(ok) click(ok) click(ok:false) marker
+PASS [timeline] failed click carries a non-empty verdict
+PASS [timeline] marker entry note is 'FAIL: demo' and last on the clock
+PASS [timeline] note text is not echoed in the result
+PASS [timeline] every at_s and end_s <= duration_s (7.1 s)
+[timeline] container duration: 7.100000 s
+PASS [timeline] blue click: end_s+0.4 s is blue at 2.63 s (frame is blue)
+PASS [timeline] blue click: at_s-0.3 s is the previous colour (red) at 1.21 s (frame is red)
+PASS [timeline] green click: end_s+0.4 s is green at 4.85 s (frame is green)
+PASS [timeline] green click: at_s-0.3 s is the previous colour (blue) at 3.45 s (frame is blue)
+alignment error blue click: -0.3 s (end_s 2.23, first blue frame at 1.93 s; 0.1 s scan step)
+alignment error green click: -0.3 s (end_s 4.45, first green frame at 4.15 s; 0.1 s scan step)
+PASS [timeline] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[timeline-mp4] record-start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.I5eTsqZB5J/recordings/timeline-mp4-20261027T102047Z-50ac28.mp4 (tab 61BE1E460069BA0737BC4358559C2F05); first frame not awaited. record-stop saves it.
+[timeline-mp4] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline-mp4] click: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline-mp4] click: ✗ error: no element matching "no such button" found
+[timeline-mp4] stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.I5eTsqZB5J/recordings/timeline-mp4-20261027T102047Z-50ac28.mp4 (bytes 22464, duration 7.2 s, frames 72, dropped 0, segments [0.0 s tab 61BE1E460069BA0737BC4358559C2F05], captured 71). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.I5eTsqZB5J/recordings/timeline-mp4-20261027T102047Z-50ac28.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.I5eTsqZB5J/recordings/timeline-mp4-20261027T102047Z-50ac28.timeline.json (3 actions). Marker at 7.1 s
+PASS [timeline-mp4] record-stop exits 0 and saves the mp4
+[timeline-mp4] timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.I5eTsqZB5J/recordings/timeline-mp4-20261027T102047Z-50ac28.timeline.json  video: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.I5eTsqZB5J/recordings/timeline-mp4-20261027T102047Z-50ac28.mp4
+PASS [timeline-mp4] timeline path printed: '. Timeline: <abs>.timeline.json (N actions)'
+PASS [timeline-mp4] timeline mode 600 (is 600)
+PASS [timeline-mp4] timeline named <video stem>.timeline.json next to the video
+PASS [timeline-mp4] JSON version 1, basenames only, dropped 0
+PASS [timeline-mp4] result N actions == action entries in the JSON
+[timeline-mp4] entries: action click ok=True at_s=1.52 end_s=2.21 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=True at_s=3.74 end_s=4.48 verdict='outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking' note=None | action click ok=False at_s=6.01 end_s=6.01 verdict='no element matching "no such button" found' note=None | marker None ok=None at_s=7.06 end_s=None verdict=None note='FAIL: demo'
+PASS [timeline-mp4] entries in order: click(ok) click(ok) click(ok:false) marker
+PASS [timeline-mp4] failed click carries a non-empty verdict
+PASS [timeline-mp4] marker entry note is 'FAIL: demo' and last on the clock
+PASS [timeline-mp4] note text is not echoed in the result
+PASS [timeline-mp4] every at_s and end_s <= duration_s (7.2 s)
+[timeline-mp4] container duration: 7.200000 s
+PASS [timeline-mp4] blue click: end_s+0.4 s is blue at 2.61 s (frame is blue)
+PASS [timeline-mp4] blue click: at_s-0.3 s is the previous colour (red) at 1.22 s (frame is red)
+PASS [timeline-mp4] green click: end_s+0.4 s is green at 4.88 s (frame is green)
+PASS [timeline-mp4] green click: at_s-0.3 s is the previous colour (blue) at 3.44 s (frame is blue)
+alignment error blue click: -0.3 s (end_s 2.21, first blue frame at 1.91 s; 0.1 s scan step)
+alignment error green click: -0.2 s (end_s 4.48, first green frame at 4.28 s; 0.1 s scan step)
+PASS [timeline-mp4] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[timeline-run] run rc=0: step 1: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[timeline-run] stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.zXJLuiBM9J/recordings/timeline-run-20261027T102058Z-7e1b08.webm (bytes 41962, duration 5.0 s, frames 50, dropped 0, segments [0.0 s tab 6B3511EE86F461CB2AE75834F8679210], captured 49). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.zXJLuiBM9J/recordings/timeline-run-20261027T102058Z-7e1b08.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.zXJLuiBM9J/recordings/timeline-run-20261027T102058Z-7e1b08.timeline.json (1 action)
+PASS [timeline-run] run exits 0 and the stop saves a file with a timeline
+[timeline-run] entries: [('action', 'run', 'run', 3, True)]
+PASS [timeline-run] one entry: tool run, action run, steps 3, ok true
+PASS [timeline-run] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[per-tab-timeline] record-start done
+[per-tab-timeline] click tab1: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[per-tab-timeline] open-tab: ✓ opened + switched to tab 4E0AFBDD3B63FD03EA788806DA382C0F
+Page: 127.0.0.1:8765/mark.html | phase: ready | 2 actionable
+title: Mark
+e1 button "turn blue"
+e2 button "turn green"
+[per-tab-timeline] click tab2: outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking
+[per-tab-timeline] stop rc=0: recording saved (per-tab, 2 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.M9RXyZI3DR/recordings/per-tab-timeline-tab1-20261027T102105Z-6b1380.webm (bytes 37787, duration 6.6 s, frames 66, dropped 0, segments [0.0 s tab DCE60CA1ED23869B2BAB8F681558DA50], captured 38); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.M9RXyZI3DR/recordings/per-tab-timeline-tab2-20261027T102109Z-ffc579.webm (bytes 29933, duration 2.8 s, frames 28, dropped 0, segments [0.0 s tab 4E0AFBDD3B63FD03EA788806DA382C0F]). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.M9RXyZI3DR/recordings/per-tab-timeline-tab2-20261027T102109Z-ffc579.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.M9RXyZI3DR/recordings/per-tab-timeline-tab1-20261027T102105Z-6b1380.timeline.json (3 actions)
+PASS [per-tab-timeline] stop exits 0 with two per-tab files
+PASS [per-tab-timeline] exactly one Timeline in the result, named after the -tab1- file
+PASS [per-tab-timeline] one timeline file in the recordings dir
+PASS [per-tab-timeline] files[] lists 2 files; file 2 starts after the clock origin
+[per-tab-timeline] files: [{'duration_s': 6.6, 'file': 'per-tab-timeline-tab1-20261027T102105Z-6b1380.webm', 'start_s': 0.0}, {'duration_s': 2.8, 'file': 'per-tab-timeline-tab2-20261027T102109Z-ffc579.webm', 'start_s': 3.93}]
+PASS [per-tab-timeline] both per-tab videos exist and decode
+[per-tab-timeline] entries: [('action', 'click', True, 1.52, 2.14), ('action', 'open-tab', True, 3.67, 3.9), ('action', 'click', True, 4.45, 5.1)]
+PASS [per-tab-timeline] entries: click(ok), open-tab(ok), click(ok) in order
+PASS [per-tab-timeline] green click starts inside file 2 (local at_s 0.52 s, file 2 is 2.8 s)
+PASS [per-tab-timeline] green click, file 2: local end_s+0.4 s is green at 1.57 s (frame is green)
+PASS [per-tab-timeline] blue click, file 1: end_s+0.4 s is blue at 2.54 s (frame is blue)
+alignment error green click: -0.3 s (end_s 1.17, first green frame at 0.87 s; 0.1 s scan step)
+PASS [per-tab-timeline] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+== off: recording OFF: CDP method trace, normalized stdout and sidecar absence, base d18dae1 vs HEAD
+[off] base: /Users/sokolov.st@brainrocket.com/claude/bladebro/target/ff-base/bladebro (bladebro v4.6.5 (6f5036f-dirty))
+[off] new:  /Users/sokolov.st@brainrocket.com/claude/bladebro/target/release/bladebro (bladebro v4.6.5 (e4648a9-dirty))
+PASS [off-trace-base-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-1] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-base-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+PASS [off-trace-new-2] cleanup: no daemon/Chrome/ffmpeg/cdp_tap left
+[off] base distinct WS methods: 11
+[off] base run 1: total=115 Page.bringToFront=3 Target.getTargets=1
+[off] base run 2: total=113 Page.bringToFront=3 Target.getTargets=1
+[off] new distinct WS methods: 11
+[off] new run 1: total=110 Page.bringToFront=3 Target.getTargets=1
+[off] new run 2: total=112 Page.bringToFront=3 Target.getTargets=1
+PASS [off] traces non-empty
+PASS [off] distinct WS method sets equal (base vs new)
+FAIL [off] per-method counts equal, base run 1 vs new run 1
+FAIL [off] per-method counts equal, base run 2 vs new run 2
+[off] noise probe: Input.dispatchMouseEvent base run1 35 run2 33 | new run1 30 run2 32
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 1
+PASS [off] per-method counts equal except Input.dispatchMouseEvent (random mouse path), base vs new run 2
+PASS [off] no screencast method in new
+PASS [off] normalized stdout byte-identical, base vs new (run 1)
+PASS [off] normalized stdout byte-identical, base vs new (run 2)
+PASS [off] normalized stdout byte-identical, base run 1 vs base run 2 (same binary, noise check)
+PASS [off-files] no timeline/poster anywhere under the off homes
+PASS [off-files] recordings dir absent or empty in every off home (counts: 0 0 0 0 )
+== mcp: tests/record_evidence.rs live tests (MCP stdio, headless), one cargo run per test (--exact)
+[mcp] RESULT mcp stop: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-3354/recordings/ev-20261027T102134Z-4d1878.webm (bytes 34827, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab 4BF0FA66FC1C1876CBE9473C1BE8CEED], captured 38). Poster: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-3354/recordings/ev-20261027T102134Z-4d1878.poster.png. Timeline: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbhub-evm-3354/recordings/ev-20261027T102134Z-4d1878.timeline.json (1 action). Marker at 3.7 s
+[mcp] RESULT mcp timeline: {"clock":"seconds from the first video frame","dropped":0,"duration_s":3.9,"entries":[{"action":"click","at_s":1.48,"end_s":2.23,"kind":"action","ok":true,"tool":"act","verdict":"outcome: clicked (no observable DOM change) via mouse on button [] (topmost=true,disabled=false) - dispatched once; verify state before re-clicking"},{"at_s":3.74,"kind":"marker","note":"x"}],"files":[{"duration_s":3.9,"file":"ev-20261027T102134Z-4d1878.webm","start_s":0.0}],"version":1,"video":"ev-20261027T102134Z-4d1878.webm"}
+[mcp] test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 5.93s
+PASS [mcp] mcp_stop_has_poster_timeline_marker
+[mcp] RESULT mcp off record-start: ✗ error: recording is off: the operator has not enabled it. Set BLADE_RECORD=1 (or record.enabled in .bladebro.json / record.json), then run bladebro stop (or restart the MCP server) so it is re-read. Nothing was recorded.
+[mcp] RESULT mcp off record-stop: ✗ error: no active recording; record-start <name> first. Marker not placed: no active recording
+[mcp] test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.30s
+PASS [mcp] mcp_recording_off_has_no_sidecars
+final pgrep of our fixtures/daemons: none
+== total FAIL count: 2
+evidence_b_exit=1

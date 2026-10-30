@@ -1,0 +1,1 @@
+{"phase":2,"phase_name":"sidecar-prototype-gate","last_step":"verify","step_status":"complete","timestamp":"2026-10-21T12:00:00Z","files_touched":["tools/record_sidecar/**","02-01..03-SUMMARY.md","02-VERIFICATION.md"],"key_context":"gate PASS-WITH-CAVEATS; verification passed (sonnet + opus)","resume_from":"done","charlotte_qa_ran":false}

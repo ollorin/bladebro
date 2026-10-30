@@ -1,0 +1,125 @@
+# qol_probe 2026-10-23T02:07:43Z
+PASS  nav lands on the fixture
+PASS  wrapper ref exposed in the model
+PASS  wrapper ref available after reload
+PASS  type verdict reports a value
+PASS  editor holds EXACTLY the typed text (draft race handled)
+PASS  wrapper never written to
+PASS  verdict honest about landing
+PASS  live editor ref available
+PASS  type replaces on the live editor
+PASS  replace noted
+PASS  clear verified empty
+PASS  wrapper ref heals and lands in the live editor
+PASS  heal is disclosed
+PASS  press accepts Control+a
+PASS  press Backspace
+FAIL  chord cleared the live editor  'via wrappe'
+PASS  plain input type verified
+PASS  plain input clear verified
+PASS  clear by label verified
+PASS  Unicode exact readback plain-text Hermes Δ✓
+PASS  Unicode native input plain-text Hermes Δ✓
+PASS  Unicode exact readback plain-text 浏览器
+PASS  Unicode native input plain-text 浏览器
+PASS  Unicode exact readback plain-text नमस्ते
+PASS  Unicode native input plain-text नमस्ते
+PASS  Unicode exact readback plain-text é 👨‍👩‍👧‍👦
+PASS  Unicode native input plain-text é 👨‍👩‍👧‍👦
+PASS  Unicode exact readback plain-area Hermes Δ✓
+PASS  Unicode native input plain-area Hermes Δ✓
+PASS  Unicode exact readback plain-area 浏览器
+PASS  Unicode native input plain-area 浏览器
+PASS  Unicode exact readback plain-area नमस्ते
+PASS  Unicode native input plain-area नमस्ते
+PASS  Unicode exact readback plain-area é 👨‍👩‍👧‍👦
+PASS  Unicode native input plain-area é 👨‍👩‍👧‍👦
+PASS  Unicode exact readback plain-ce Hermes Δ✓
+PASS  Unicode native input plain-ce Hermes Δ✓
+PASS  Unicode exact readback plain-ce 浏览器
+PASS  Unicode native input plain-ce 浏览器
+PASS  Unicode exact readback plain-ce नमस्ते
+PASS  Unicode native input plain-ce नमस्ते
+PASS  Unicode exact readback plain-ce é 👨‍👩‍👧‍👦
+PASS  Unicode native input plain-ce é 👨‍👩‍👧‍👦
+PASS  batch accepts a fill step
+PASS  batch fill landed
+PASS  run accepts a fill step
+PASS  run fill landed
+PASS  wait else branch fires and is reported
+PASS  wait match is reported
+PASS  wait else on settle errors by name
+PASS  extract picks the listing cards
+PASS  extract works as a batch step
+PASS  run accepts an extract alias step
+PASS  see format=json is pure parseable JSON (zero preamble)
+PASS  rb pause accepted
+PASS  paused: act eval url= refused
+PASS  paused: see <url> refused
+PASS  paused: open-tab refused
+PASS  paused: collect refused
+PASS  paused: switch-tab refused
+PASS  paused: the page never moved
+PASS  paused: eval (read) still works
+PASS  paused: see (read) still works
+PASS  paused: input refused
+PASS  resume restores navigation
+PASS  shadow element reachable by find (2 shadow roots deep)
+PASS  find (shadow-piercing) finds exactly one trigger
+PASS  find miss explains the hidden match
+PASS  selector click reaches the shadow trigger
+PASS  silent no-op reports state-only, not (+0 -0)
+PASS  selector click reaches the real handler
+PASS  menu items are findable while open
+PASS  hidden-only selector errors with the reason
+PASS  zero-match selector miss shows raw counts
+PASS  text-addressing miss carries the same explainer
+PASS  coord click names what actually received it
+PASS  occluded ref click escalates and lands
+PASS  occluded inert click says where clicks land
+PASS  type by selector lands in the shadow editor
+PASS  one call: close, reopen and read the shadow menu
+PASS  scoped content reads exactly that subtree
+PASS  scoped read honors the budget
+PASS  bogus scope errors loudly (was silently ignored)
+PASS  content mode still reads the page
+PASS  invalid CSS selector errors as invalid, not as a miss
+PASS  out-of-range nth (selector path) errors with the real count
+PASS  out-of-range nth (text path) errors with the real count
+PASS  run read step honors selector=
+PASS  run eval step honors selector= (el is the match)
+PASS  scoped read renders a nav/aside/header/footer root
+PASS  pending-mount editable surfaces with an honest note
+PASS  pending name resolves from aria-placeholder
+PASS  mounted composer loses the pending note
+PASS  mounted composer is typable (end to end)
+PASS  selector miss names the closest live matches
+PASS  multi visible matches require nth (context-listed)
+PASS  nth picks deliberately among visible matches
+PASS  find text-present names the container and nearby actionables
+PASS  href='#' renders honestly (no fake destination)
+PASS  filter output carries container context
+PASS  scroll reports measured page movement
+PASS  scroll at the bottom says so (no false success)
+FAIL  nested scroller movement is reported as such  outcome: scrolled page delta+1597 (y 0 -> 1597)
+PASS  scoped selector crosses shadow hosts (composed ancestors)
+PASS  menu item activates via the keyboard lane (role=menuitem)
+PASS  router fixture: the keyboard feed extracts
+PASS  extract right after a client-side route change reads the NEW route
+PASS  the follow-up read agrees (no flip-flop)
+PASS  read fixture exposes frame and shadow controls
+PASS  markdown excludes stylesheet-hidden text
+PASS  outline includes visible iframe and shadow headings
+PASS  outline excludes hidden and inaccessible frame headings
+PASS  element condition respects visible tree: Frame checkout
+PASS  element condition respects visible tree: Shadow checkout
+PASS  element condition respects visible tree: Hidden frame control
+PASS  element condition respects visible tree: Opaque frame control
+PASS  text condition respects visible tree: Frame heading
+PASS  text condition respects visible tree: Shadow heading
+PASS  text condition respects visible tree: SHADOW_HIDDEN_SENTINEL
+PASS  text condition respects visible tree: SHADOW_SCRIPT_SENTINEL
+PASS  product fast path respects subtree scope
+PASS  whole-page product fast path still extracts price
+120 passed, 2 failed
+qol exit 1

@@ -1,0 +1,9 @@
+# trial_merge.sh --self-test  2026-10-27T09:57:50Z  git e42007e
+SELFTEST PASS clean (exit 0)
+SELFTEST PASS hook (exit 1)
+SELFTEST PASS unlisted (exit 2)
+# selftest: 0 FAIL
+selftest_exit=0
+branches_left=0
+worktrees_left=0
+head_unchanged=yes

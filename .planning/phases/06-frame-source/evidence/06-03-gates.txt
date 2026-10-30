@@ -1,0 +1,54 @@
+# 06-03 gates, 2026-10-22T09:35:11Z, macOS arm64, BLADE_HEADLESS=1, Chrome 154; Linux/Windows/CI not executed; diff_oracle NOT RUN (python websockets missing, installs forbidden)
+## qol_probe (python3 tools/qol_probe/run.py, own home/server)
+FAIL  chord cleared the live editor  'via wrappe'
+FAIL  nested scroller movement is reported as such  outcome: scrolled page delta+1912 (y 0 -> 1912)
+120 passed, 2 failed
+pass bar: 120/122 with only 'chord cleared the live editor' and 'nested scroller movement is reported as such' failing -> MET (identical to baseline)
+## cargo fmt --check: clean
+## cargo clippy --release --all-targets -- -D warnings: clean
+## cargo test --release
+test result: ok. 579 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.77s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+total passed: 622 (06-02: 620; 06-01 baseline bar: >565); failed: 0
+(the 'failed' substring in two other lines is a test name, not a failure; concurrent_cold_starts_have_one_owner did not flake)
+## SYNC-01: git diff main...HEAD --stat -- src/ ':!src/record' ':!src/record.rs'
+ src/browser/alerts.rs       |   5 +-
+ src/browser/flags.rs        |  13 +-
+ src/browser/launch.rs       |  20 +-
+ src/browser/pipe.rs         |  20 +-
+ src/cdp/client.rs           |  13 +-
+ src/cli.rs                  |  15 +-
+ src/cli/daemon.rs           |   8 +
+ src/cli/help.rs             |   8 +-
+ src/launch_mode.rs          |  55 ++++++
+ src/launch_mode/cli.rs      | 352 +++++++++++++++++++++++++++++++++++
+ src/launch_mode/client.rs   | 136 ++++++++++++++
+ src/launch_mode/daemon.rs   | 172 +++++++++++++++++
+ src/launch_mode/display.rs  | 137 ++++++++++++++
+ src/launch_mode/find.rs     | 124 +++++++++++++
+ src/launch_mode/mode.rs     | 260 ++++++++++++++++++++++++++
+ src/launch_mode/project.rs  | 436 ++++++++++++++++++++++++++++++++++++++++++++
+ src/launch_mode/registry.rs | 298 ++++++++++++++++++++++++++++++
+ src/launch_mode/state.rs    |  66 +++++++
+ src/launch_mode/uad.rs      | 324 ++++++++++++++++++++++++++++++++
+ src/launch_mode/user.rs     | 113 ++++++++++++
+ src/launch_mode/wiring.rs   | 168 +++++++++++++++++
+ src/lib.rs                  |   2 +
+ src/main.rs                 |   4 +-
+ src/mcp/server/serve.rs     |   2 +-
+ src/page/attach.rs          |  45 +++--
+ src/updater/doctor.rs       |  29 +++
+ 26 files changed, 2796 insertions(+), 29 deletions(-)
+Phase 6 portion in an upstream file: 57db2b5 feat(06-01): keep screencast frames intact through the CDP event size bound
+(06-03 touched no src/ file; all listed files have rows in .planning/HOOKS.md or are fork-only launch_mode from 4.1)
+## leftovers (pgrep ffmpeg|record_live|http.server|bladebro, ps bbrec|qol_probe_home): 0 found

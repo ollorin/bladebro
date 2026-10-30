@@ -1,0 +1,2 @@
+## audit off (headless, scratch home): SCORE: 100/100 VERDICT: PASS
+## audit on-idle (headless, scratch home): SCORE: 100/100 VERDICT: PASS

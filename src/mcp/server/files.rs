@@ -28,6 +28,28 @@ pub async fn handle_pdf(page: &mut Page, args: &Value) -> Result<String> {
         .unwrap_or(1.0)
         .clamp(0.1, 2.0);
 
+    // SECURITY: validate an explicit target BEFORE rendering, and refuse
+    // to replace anything that already exists. A PDF export has no business
+    // destroying what lives at `path` — a prompt-injected page steering the
+    // agent at an existing file (saved sessions, project source, .git
+    // objects, keychain files) would otherwise replace it with PDF bytes,
+    // irreversibly, and still get a clean "pdf saved" success.
+    let explicit = args
+        .get("path")
+        .and_then(|p| p.as_str())
+        .filter(|p| !p.is_empty())
+        .map(std::path::PathBuf::from);
+    if let Some(pb) = &explicit {
+        if let Err(e) = crate::platform::validate_write_path(pb) {
+            return Err(BladeError::Other(e));
+        }
+        ensure_new_output(pb).map_err(BladeError::Other)?;
+        if let Some(parent) = pb.parent() {
+            crate::platform::secure_create_dir_all(parent)
+                .map_err(|e| BladeError::Other(format!("pdf dir: {e}")))?;
+        }
+    }
+
     let res = page
         .cdp_ref()
         .send(
@@ -57,26 +79,63 @@ pub async fn handle_pdf(page: &mut Page, args: &Value) -> Result<String> {
         .decode(data)
         .map_err(|e| BladeError::Other(format!("pdf base64 decode: {e}")))?;
 
-    let path = match args.get("path").and_then(|p| p.as_str()) {
-        Some(p) if !p.is_empty() => {
-            let pb = std::path::PathBuf::from(p);
-            // SECURITY: Block writes to system directories to prevent path
-            // traversal attacks via prompt injection.
-            if let Err(e) = crate::platform::validate_write_path(&pb) {
-                return Err(BladeError::Other(e));
-            }
-            if let Some(parent) = pb.parent() {
-                crate::platform::secure_create_dir_all(parent)
-                    .map_err(|e| BladeError::Other(format!("pdf dir: {e}")))?;
-            }
+    let path = match explicit {
+        Some(pb) => {
+            // Re-check before the write: the target must not have appeared
+            // between validation and render.
+            ensure_new_output(&pb).map_err(BladeError::Other)?;
             // 0600 — consistent with every other bladebro-written file.
             crate::platform::secure_write_file(&pb, &bytes)
                 .map_err(|e| BladeError::Other(format!("pdf write: {e}")))?;
             pb.display().to_string()
         }
-        _ => crate::artifacts::write_artifact_bytes(&bytes, "pdf")?,
+        None => crate::artifacts::write_artifact_bytes(&bytes, "pdf")?,
     };
     Ok(format!("pdf saved: {} ({} bytes)", path, bytes.len()))
+}
+
+/// Refuse a PDF export that would replace an existing file/dir/symlink.
+/// A symlink is refused on the entry itself (never write through it), and
+/// a dangling link must not be silently replaced either — an export target
+/// the operator did not create is not ours to overwrite.
+fn ensure_new_output(pb: &std::path::Path) -> std::result::Result<(), String> {
+    if pb.symlink_metadata().is_ok() {
+        return Err(format!(
+            "refusing to overwrite existing path: {} — save to a new path instead",
+            pb.display()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod pdf_output_tests {
+    use super::*;
+
+    #[test]
+    fn ensure_new_output_refuses_existing_files_dirs_and_symlinks() {
+        let dir = std::env::temp_dir().join(format!("blade-pdf-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fresh = dir.join("fresh.pdf");
+        assert!(ensure_new_output(&fresh).is_ok());
+        let existing = dir.join("existing.pdf");
+        std::fs::write(&existing, b"%PDF-old").unwrap();
+        assert!(ensure_new_output(&existing).is_err());
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        assert!(ensure_new_output(&sub).is_err());
+        #[cfg(unix)]
+        {
+            let victim = dir.join("victim.txt");
+            std::fs::write(&victim, b"keep").unwrap();
+            let link = dir.join("link.pdf");
+            std::os::unix::fs::symlink(&victim, &link).unwrap();
+            assert!(ensure_new_output(&link).is_err());
+            assert_eq!(std::fs::read(&victim).unwrap(), b"keep");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// How long a completed pre-existing entry is held back (no-url flow) so a
@@ -315,31 +374,40 @@ pub async fn handle_download(page: &mut Page, args: &Value) -> Result<String> {
                 // Chrome may still download it if the server returns
                 // Content-Disposition: attachment. The correlated wait
                 // tells a real download from a viewer tab.
-                let create_res = page
-                    .cdp_ref()
-                    .send(
-                        "Target.createTarget",
-                        Some(serde_json::json!({
-                            "url": url,
-                        })),
+                // Attach before navigating: download events belong to the
+                // initiating page, not the caller's original page. A blank
+                // target also keeps the request in the caller's cookie context.
+                let new_id = page.open_tab_target("about:blank").await?;
+                let waited = async {
+                    let download_page = page.attach_tab_target(&new_id).await?;
+                    let downloads = download_page.downloads();
+                    download_page
+                        .cdp_ref()
+                        .send("Page.navigate", Some(json!({"url": url})))
+                        .await?;
+                    let deadline =
+                        std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+                    wait_for_download(
+                        &downloads,
+                        &[],
+                        expected.as_deref(),
+                        deadline,
+                        None,
+                        timeout_secs,
                     )
-                    .await?;
-                let new_id = create_res
-                    .get("targetId")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        crate::error::BladeError::Other("no targetId for download tab".into())
-                    })?;
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
-                let waited = wait_for_download(
-                    &downloads,
-                    &seen,
-                    expected.as_deref(),
-                    deadline,
-                    None,
-                    timeout_secs,
-                )
+                    .await
+                    .map_err(|error| {
+                        if error.starts_with("no completed download") {
+                            BladeError::Other(format!(
+                                "{error} The cross-origin fallback did not produce a completed attachment. \
+                                 The server may serve content inline or require a different login. \
+                                 Navigate to the page linking to the file and click its download link."
+                            ))
+                        } else {
+                            BladeError::Other(error)
+                        }
+                    })
+                }
                 .await;
                 // Close the download tab regardless of outcome.
                 let _ = page
@@ -351,18 +419,7 @@ pub async fn handle_download(page: &mut Page, args: &Value) -> Result<String> {
                         })),
                     )
                     .await;
-                return match waited {
-                    Ok(d) => Ok(describe_download(&d)),
-                    Err(e) if e.starts_with("download canceled") => {
-                        Err(crate::error::BladeError::Other(e))
-                    }
-                    Err(_) => Err(crate::error::BladeError::Other(
-                        "URL is CORS-protected and Chrome opened it in the viewer instead of downloading.\n\
-                         The URL serves content inline (e.g. PDF, HTML) without Content-Disposition: attachment.\n\
-                         Workaround: navigate to the page that links to this file, then click the download link:\n\
-                         act navigate url=... ; act click text=\"Download\" ; act download".to_string(),
-                    )),
-                };
+                return waited.map(|download| describe_download(&download));
             }
             return Err(crate::error::BladeError::Other(format!(
                 "download failed: {err}"
@@ -527,5 +584,128 @@ mod download_correlation_tests {
             .expect_err("canceled download must error");
         assert!(err.contains("canceled"), "{err}");
         assert!(err.contains("two.pdf"), "{err}");
+    }
+}
+
+/// Explicit curl-like body fetch. Browser cookies/JS are intentionally absent;
+/// callers needing authenticated browser downloads keep the ordinary path.
+pub(super) async fn handle_body_download(args: &Value) -> Result<String> {
+    let url = args.get("url").and_then(Value::as_str).unwrap_or("");
+    let parsed = reqwest::Url::parse(url).map_err(|_| {
+        BladeError::Usage("download body=true requires an absolute http(s) url".into())
+    })?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(BladeError::Usage(
+            "body download supports http(s) only".into(),
+        ));
+    }
+    if args.get("path").is_some() {
+        return Err(BladeError::Usage(
+            "body downloads return an artifact; omit path".into(),
+        ));
+    }
+    let proxy = crate::browser::proxy::env_blade_proxy()
+        .map_err(|e| BladeError::Usage(format!("body download proxy: {e}")))?;
+    let client = body_client(proxy)?;
+    let mut response = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|e| BladeError::Other(format!("body download: {e}")))?;
+    let status = response.status().as_u16();
+    let final_url = response.url().to_string();
+    let kind = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| BladeError::Other(format!("body download: {e}")))?
+    {
+        if bytes.len() + chunk.len() > 32 * 1024 * 1024 {
+            return Err(BladeError::Other(
+                "body download exceeds 32 MiB; no artifact written".into(),
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let ext = if kind.contains("json") {
+        "json"
+    } else if kind.contains("html") {
+        "html"
+    } else if kind.starts_with("text/") {
+        "txt"
+    } else {
+        "bin"
+    };
+    let path = crate::artifacts::write_artifact_bytes(&bytes, ext)?;
+    Ok(json!({"path":path,"bytes":bytes.len(),"status":status,"url":final_url,"content_type":kind,"note":"HTTP body; browser cookies/session not used; status is the server response"}).to_string())
+}
+
+fn body_client(proxy: Option<crate::browser::proxy::ProxySpec>) -> Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30));
+    if let Some(proxy) = proxy {
+        if proxy.server.starts_with("socks") || proxy.server.starts_with("quic:") {
+            return Err(BladeError::Usage("body download supports HTTP(S) BLADE_PROXY only; use browser downloads for this proxy type".into()));
+        }
+        let server = if proxy.server.contains("://") {
+            proxy.server
+        } else {
+            format!("http://{}", proxy.server)
+        };
+        let configured = reqwest::Proxy::all(server).map_err(|_| {
+            BladeError::Usage(
+                "body download could not configure BLADE_PROXY; no request sent".into(),
+            )
+        })?;
+        builder = builder.proxy(configured);
+    }
+    builder
+        .build()
+        .map_err(|_| BladeError::Other("body download HTTP client setup failed".into()))
+}
+
+#[cfg(test)]
+mod body_proxy_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    #[tokio::test]
+    async fn body_fetch_reaches_configured_proxy_without_destination_dns() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut data = vec![0; 4096];
+            let count = stream.read(&mut data).await.unwrap();
+            let request = String::from_utf8_lossy(&data[..count]).to_string();
+            assert!(
+                request.starts_with("GET http://body-download.invalid/fixture HTTP/1.1"),
+                "{request}"
+            );
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nPROXIED",
+                )
+                .await
+                .unwrap();
+        });
+        let proxy = crate::browser::proxy::parse_blade_proxy(&format!("http://{address}")).unwrap();
+        let response = body_client(Some(proxy))
+            .unwrap()
+            .get("http://body-download.invalid/fixture")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.text().await.unwrap(), "PROXIED");
+        server.await.unwrap();
+        let proxy =
+            crate::browser::proxy::parse_blade_proxy("socks5://user:secret@127.0.0.1:9").unwrap();
+        let error = body_client(Some(proxy)).unwrap_err().to_string();
+        assert!(!error.contains("secret"));
+        assert!(error.contains("HTTP(S)"));
     }
 }

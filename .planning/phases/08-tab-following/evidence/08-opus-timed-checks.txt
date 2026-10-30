@@ -1,0 +1,117 @@
+# opus independent timed checks (own scripts; headless, scratch BLADE_HOME, BLADE_NO_UPDATE_CHECK=1, BLADE_RECORD=1, fixtures on 127.0.0.1:8766/8767). TIMING = wall time of each bladebro CLI command.
+# Default mode: A -> open-tab B -> open-tab C -> switch-tab A. Colour = 1x1 mean RGB of the frame at segment offset + 0.4 s (a=red, b=blue, c=green).
+=== opus_daemon run 1 01:52:39 load: 22.54 56.68 69.20
+start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopus.RCj2wKB6VY/recordings/opus-20261023T015251Z-ddc628.webm (tab DD3A0E4B36278C68E6724F1997E2A132); first frame not awaited. record-stop saves it.
+stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopus.RCj2wKB6VY/recordings/opus-20261023T015251Z-ddc628.webm (bytes 38351, duration 12.1 s, frames 121, dropped 0, segments [0.0 s tab DD3A0E4B36278C68E6724F1997E2A132, 3.9 s tab C6E62E6C1BFC296C8007806338300294, 8.0 s tab 7470812040FD5B5BCCA6D0ECBD0432EE, 10.1 s tab DD3A0E4B36278C68E6724F1997E2A132], captured 89)
+A=DD3A0E4B36278C68E6724F1997E2A132 B=C6E62E6C1BFC296C8007806338300294 C=7470812040FD5B5BCCA6D0ECBD0432EE
+ffmpeg pids: [54486 ] [54486 ] [54486 ]
+files in recordings dir: 1
+vp9,1280,720
+12.100000
+full decode rc=0 stderr_lines=0
+wall start-call->stop-return: 12834 ms; ffprobe duration: 12.100000 s; diff_s=0.734
+colour at offset 0.0 (+0.4 s = 0.4):  251 0 0 
+colour at offset 3.9 (+0.4 s = 4.3):  0 1 254 
+colour at offset 8.0 (+0.4 s = 8.4):  0 157 0 
+colour at offset 10.1 (+0.4 s = 10.5):  251 0 0 
+opus_daemon.sh: line 39: 54426 Terminated: 15          python3 -m http.server 8766 --bind 127.0.0.1 --directory $REPO/tools/record_sidecar/fixtures > /dev/null 2>&1
+leftovers: none
+TIMING 11026 ms rc=0: nav http://127.0.0.1:8766/a.html
+TIMING 185 ms rc=0: state record-start opus
+TIMING 378 ms rc=0: state open-tab http://127.0.0.1:8766/b.html
+TIMING 105 ms rc=0: state open-tab http://127.0.0.1:8766/c.html
+TIMING 78 ms rc=0: state switch-tab DD3A0E4B36278C68E6724F1997E2A132
+TIMING 597 ms rc=0: state record-stop
+=== opus_daemon run 2 01:53:05 load: 68.90 65.65 72.07
+start: recording started: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopus.BI5JrM4plR/recordings/opus-20261023T015313Z-16c738.webm (tab 462A3133DD34B1FFF9A88CBCFA42E86C); first frame not awaited. record-stop saves it.
+stop rc=0: recording saved: /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopus.BI5JrM4plR/recordings/opus-20261023T015313Z-16c738.webm (bytes 302887, duration 256.2 s, frames 2562, dropped 0, segments [0.0 s tab 462A3133DD34B1FFF9A88CBCFA42E86C, 3.9 s tab 9F935339060E1D508E6FCFED8EC4C721, 252.0 s tab CF507247CA5512DEF31413997E8CA0B7, 254.1 s tab 462A3133DD34B1FFF9A88CBCFA42E86C], captured 88)
+A=462A3133DD34B1FFF9A88CBCFA42E86C B=9F935339060E1D508E6FCFED8EC4C721 C=CF507247CA5512DEF31413997E8CA0B7
+ffmpeg pids: [54665 ] [54665 ] [54665 ]
+files in recordings dir: 1
+vp9,1280,720
+256.200000
+full decode rc=0 stderr_lines=0
+wall start-call->stop-return: 256883 ms; ffprobe duration: 256.200000 s; diff_s=0.683
+colour at offset 0.0 (+0.4 s = 0.4):  251 0 0 
+colour at offset 3.9 (+0.4 s = 4.3):  0 1 254 
+colour at offset 252.0 (+0.4 s = 252.4):  0 157 1 
+colour at offset 254.1 (+0.4 s = 254.5):  250 0 0 
+opus_daemon.sh: line 39: 54611 Terminated: 15          python3 -m http.server 8766 --bind 127.0.0.1 --directory $REPO/tools/record_sidecar/fixtures > /dev/null 2>&1
+leftovers: none
+TIMING 6841 ms rc=0: nav http://127.0.0.1:8766/a.html
+TIMING 149 ms rc=0: state record-start opus
+TIMING 366 ms rc=0: state open-tab http://127.0.0.1:8766/b.html
+TIMING 116 ms rc=0: state open-tab http://127.0.0.1:8766/c.html
+TIMING 120 ms rc=0: state switch-tab 462A3133DD34B1FFF9A88CBCFA42E86C
+TIMING 603 ms rc=0: state record-stop
+
+# Per-tab mode (BLADE_RECORD_TABS=per-tab), same steps.
+=== opus_pertab run 1 01:57:31 load: 50.58 61.69 70.50
+start: recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab1-20261023T015742Z-35de68.webm (tab CA60E9E132CA6496A4D5A0AE037CE8F7); first frame not awaited. record-stop saves every tab's file.
+stop rc=0: recording saved (per-tab, 3 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab1-20261023T015742Z-35de68.webm (bytes 20311, duration 12.3 s, frames 123, dropped 0, segments [0.0 s tab CA60E9E132CA6496A4D5A0AE037CE8F7, 10.3 s tab CA60E9E132CA6496A4D5A0AE037CE8F7], captured 44); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab2-20261023T015747Z-861b89.webm (bytes 15308, duration 8.0 s, frames 80, dropped 0, segments [0.0 s tab 1CB34C77D9E775C75780DDD0AAC3545A], captured 24); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab3-20261023T015751Z-d9a21a.webm (bytes 12049, duration 3.9 s, frames 39, dropped 0, segments [0.0 s tab B2A7E4C065C74C9149E1DDEBC74D8594], captured 20)
+A=CA60E9E132CA6496A4D5A0AE037CE8F7 B=1CB34C77D9E775C75780DDD0AAC3545A C=B2A7E4C065C74C9149E1DDEBC74D8594
+ffmpeg pids: [54837 ] [54837 54868 ] [54837 54868 54913 ]
+== /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab1-20261023T015742Z-35de68.webm
+vp9,1280,720
+12.300000
+decode rc=0 lines=0
+== /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab2-20261023T015747Z-861b89.webm
+vp9,1280,720
+8.000000
+decode rc=0 lines=0
+== /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.JCLtCadFMr/recordings/opus-tab3-20261023T015751Z-d9a21a.webm
+vp9,1280,720
+3.900000
+decode rc=0 lines=0
+files in recordings dir: 3
+vp9,1280,720
+12.300000
+full decode rc=0 stderr_lines=0
+wall start-call->stop-return: 13160 ms; ffprobe duration: 12.300000 s; diff_s=0.86
+colour at offset 0.0 (+0.4 s = 0.4):  251 0 0 
+opus_pertab.sh: line 39: 54788 Terminated: 15          python3 -m http.server 8767 --bind 127.0.0.1 --directory $REPO/tools/record_sidecar/fixtures > /dev/null 2>&1
+leftovers: none
+TIMING 8942 ms rc=0: nav http://127.0.0.1:8767/a.html
+TIMING 180 ms rc=0: state record-start opus
+TIMING 524 ms rc=0: state open-tab http://127.0.0.1:8767/b.html
+TIMING 104 ms rc=0: state open-tab http://127.0.0.1:8767/c.html
+TIMING 78 ms rc=0: state switch-tab CA60E9E132CA6496A4D5A0AE037CE8F7
+TIMING 638 ms rc=0: state record-stop
+=== opus_pertab run 2 01:57:56 load: 62.12 64.00 71.11
+start: recording started (per-tab files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab1-20261023T015805Z-be0ce8.webm (tab 1F1771D1728BA7B101BD2EA55015B0E4); first frame not awaited. record-stop saves every tab's file.
+stop rc=0: recording saved (per-tab, 3 files): /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab1-20261023T015805Z-be0ce8.webm (bytes 359622, duration 330.2 s, frames 3302, dropped 7, segments [0.0 s tab 1F1771D1728BA7B101BD2EA55015B0E4, 327.9 s tab 1F1771D1728BA7B101BD2EA55015B0E4], captured 40); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab2-20261023T015809Z-2a0e39.webm (bytes 351451, duration 326.2 s, frames 3262, dropped 1, segments [0.0 s tab 4F8625B7BE50117B3E880E60C6591667], captured 21); /private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab3-20261023T020331Z-7d28a2.webm (bytes 12604, duration 4.6 s, frames 46, dropped 0, segments [0.0 s tab 708A0BD492E83D5B0EA9CDEDE955DFA4], captured 22)
+A=1F1771D1728BA7B101BD2EA55015B0E4 B=4F8625B7BE50117B3E880E60C6591667 C=708A0BD492E83D5B0EA9CDEDE955DFA4
+ffmpeg pids: [55100 ] [55100 55122 ] [55100 55122 55175 ]
+== /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab1-20261023T015805Z-be0ce8.webm
+vp9,1280,720
+330.200000
+decode rc=0 lines=0
+== /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab2-20261023T015809Z-2a0e39.webm
+vp9,1280,720
+326.200000
+decode rc=0 lines=0
+== /var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbopuspt.dvorVBkSer/recordings/opus-tab3-20261023T020331Z-7d28a2.webm
+vp9,1280,720
+4.600000
+decode rc=0 lines=0
+files in recordings dir: 3
+vp9,1280,720
+330.200000
+full decode rc=0 stderr_lines=0
+wall start-call->stop-return: 339893 ms; ffprobe duration: 330.200000 s; diff_s=9.693
+colour at offset 0.0 (+0.4 s = 0.4):  251 0 0 
+opus_pertab.sh: line 39: 55031 Terminated: 15          python3 -m http.server 8767 --bind 127.0.0.1 --directory $REPO/tools/record_sidecar/fixtures > /dev/null 2>&1
+leftovers: none
+TIMING 7834 ms rc=0: nav http://127.0.0.1:8767/a.html
+TIMING 211 ms rc=0: state record-start opus
+TIMING 295 ms rc=0: state open-tab http://127.0.0.1:8767/b.html
+TIMING 123 ms rc=0: state open-tab http://127.0.0.1:8767/c.html
+TIMING 238 ms rc=0: state switch-tab 1F1771D1728BA7B101BD2EA55015B0E4
+TIMING 9410 ms rc=0: state record-stop
+
+# Note: run 2 of each had a 245-330 s stall between open-tab B and open-tab C. Every bladebro command in those runs returned in <=603 ms (record-stop 9.4 s in per-tab run 2, finalizing three ~330 s files), so the stall was in the shell steps between commands (sleep/pgrep/python3 exec) on a host at load 50-137 with endpoint-security agents busy. The recordings covered the stall honestly (duration == wall window - stop time; drops reported).
+
+# Harness FAIL in follow_live.sh per-tab ('output file missing: private/var/...'): offline re-parse of the same stop line gives the correct /private/... path for all 3 files (ugrep and /usr/bin/grep). Cause: analyse() runs ffmpeg without -nostdin inside 'while read ... done <<<$lines'; the long file-1 decode read the leading '/' of the next line from stdin.
+/private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.OASFh05MYF/recordings/pt-tab1-20261023T012253Z-
+/private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.OASFh05MYF/recordings/pt-tab2-20261023T012257Z-
+/private/var/folders/yd/45h1dsgj10d0ps99v319zxy00000gn/T/bbfol.OASFh05MYF/recordings/pt-tab3-20261023T012635Z-

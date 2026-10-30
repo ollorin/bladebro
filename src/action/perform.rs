@@ -45,11 +45,20 @@ pub async fn perform(
 /// script after it reads the count. No attributes: class/animation churn
 /// would flood the counter on animated pages.
 ///
+/// 2026-10-07: a MutationObserver watching only the document cannot see
+/// inside a shadow root or a same-origin iframe (platform limitation), so
+/// a shadow button that swapped its own text read as `no-effect` while the
+/// very same response's capture showed the new name. The watcher now
+/// attaches the same observer to every open shadow root and same-origin
+/// iframe document (a bounded walk finds them, and childList records keep
+/// new subtrees in step), so the mutation count covers exactly the tree
+/// the capture can read — light DOM, shadows, and iframes.
+///
 /// v3.9: state lives under Symbol-keyed window slots (invisible to
 /// Object.keys / for-in / `'name' in window` probes). The old
 /// `window.__blade_muts` / `__blade_mo` string properties named the tool
 /// outright on every page after the first action — a one-line detection.
-pub const MUT_WATCH: &str = "(function(){var K=Symbol.for('m'),O=Symbol.for('n');var c=window[K];if(!c){c={n:0};try{window[K]=c;}catch(e){return;}if(!window[O]){try{var mo=new MutationObserver(function(l){c.n+=l.length;});window[O]=mo;mo.observe(document.documentElement||document,{childList:true,subtree:true,characterData:true});}catch(e){}}}c.n=0;})();";
+pub const MUT_WATCH: &str = "(function(){var K=Symbol.for('m'),O=Symbol.for('n');var c=window[K];if(!c){c={n:0};try{window[K]=c;}catch(e){return;}if(!window[O]){try{var left=2000;var seen=new WeakSet();var mo=null;var obs=function(r){try{if(!r||seen.has(r)||left<=0)return;seen.add(r);mo.observe(r,{childList:true,subtree:true,characterData:true});left--;}catch(e){}};var scan=function(node){try{if(!node)return;if(node.shadowRoot)obs(node.shadowRoot);if(node.tagName==='IFRAME'){var fd0=null;try{fd0=node.contentDocument;}catch(e){}if(fd0&&fd0.documentElement)scanDoc(fd0);}var all=null;try{all=node.querySelectorAll('*');}catch(e){return;}for(var i=0;i<all.length;i++){if(left<=0)return;var el=all[i];var sr=el.shadowRoot;if(sr&&!seen.has(sr)){obs(sr);scan(sr);}if(el.tagName==='IFRAME'){var fd=null;try{fd=el.contentDocument;}catch(e){}if(fd&&fd.documentElement)scanDoc(fd);}}}catch(e){}};var scanDoc=function(doc){try{if(!doc)return;var dr=doc.documentElement||doc;obs(dr);scan(dr);}catch(e){}};mo=new MutationObserver(function(l){c.n+=l.length;if(left<=0)return;for(var i=0;i<l.length;i++){var r=l[i];if(r.type==='childList'&&r.addedNodes){for(var j=0;j<r.addedNodes.length;j++){var nd=r.addedNodes[j];if(nd&&nd.nodeType===1){scan(nd);}}}}});window[O]=mo;scanDoc(document);}catch(e){}}}c.n=0;})();";
 
 /// Eagerly-subscribed event waiter. `cdp.wait_for` subscribes LAZILY
 /// on first poll — events fired between creation and poll (a
@@ -89,6 +98,9 @@ pub async fn perform_with_network(
     // burst so the verdict can report what actually moved.
     let mut scroll_report: Option<ScrollReport> = None;
 
+    // G09: observable toggle state around a coordinate click (see ClickCoord).
+    let mut coord_toggle: Option<ToggleProbe> = None;
+
     // Start listening for navigation before dispatching. Eager
     // subscribe — a lazy wait_for would miss events fired synchronously
     // during dispatch (see sub_fires).
@@ -106,6 +118,14 @@ pub async fn perform_with_network(
                     })),
                 )
                 .await;
+            // G09: snapshot the toggle state under the point before/after so
+            // a click that flips a hidden control (a visible label toggling
+            // its checkbox) reads as a state change, not "no observable
+            // DOM change".
+            coord_toggle = Some(ToggleProbe {
+                before: coord_toggle_probe(cdp, *x, *y).await,
+                after: None,
+            });
             dispatch_mouse_click(cdp, *x, *y, last_mouse).await?;
         }
         Action::Click { ref_id } => {
@@ -138,6 +158,18 @@ pub async fn perform_with_network(
             // mouse-first with Space as the last resort (it activates native
             // buttons too).
             let role = sig.split('|').nth(1).unwrap_or("");
+            // G01/G09: for toggle-like roles, snapshot the observable state
+            // before dispatch so the verdict can report "checked=false ->
+            // true" even when the DOM itself stays visually quiet.
+            let stateful = matches!(role, "checkbox" | "radio" | "switch" | "option");
+            let state_before = if stateful {
+                find_by_sig(cdp, sig, frame, "state", None)
+                    .await
+                    .ok()
+                    .and_then(|f| f.state)
+            } else {
+                None
+            };
             let strategies: &[&str] = if role == "menuitem" {
                 &["space", "js", "mouse", "enter"]
             } else if found.is_topmost == Some(true) {
@@ -147,6 +179,9 @@ pub async fn perform_with_network(
             };
             let mut tried: Vec<&str> = Vec::new();
             let mut via = "";
+            // R2: did any lane actually DISPATCH a click? "no-effect" is
+            // reserved for the case where none did (every lane skipped).
+            let mut dispatched = false;
             let mut delta = PageDelta::default();
             let mut dialog_fired = false;
             for &strategy in strategies {
@@ -166,12 +201,13 @@ pub async fn perform_with_network(
                             let cx = box_[0] + box_[2] / 2.0;
                             let cy = box_[1] + box_[3] / 2.0;
                             dispatch_mouse_click(cdp, cx, cy, last_mouse).await?;
+                            dispatched = true;
                         } else {
                             continue;
                         }
                     }
                     "js" => match find_by_sig(cdp, sig, frame, "click", None).await {
-                        Ok(f) if f.ok => {}
+                        Ok(f) if f.ok => dispatched = true,
                         Ok(_) => continue,
                         Err(e) => return Err(e),
                     },
@@ -184,6 +220,7 @@ pub async fn perform_with_network(
                             continue;
                         }
                         dispatch_key(cdp, "Enter").await?;
+                        dispatched = true;
                     }
                     "space" => {
                         // Space over the focused element - the activation key
@@ -200,6 +237,7 @@ pub async fn perform_with_network(
                             continue;
                         }
                         dispatch_key(cdp, "Space").await?;
+                        dispatched = true;
                     }
                     _ => {}
                 }
@@ -229,13 +267,30 @@ pub async fn perform_with_network(
                 let cap = capture(cdp).await?;
                 delta = lpm.ingest(cap);
 
-                // Accepted dispatch is never replayed, including a no-effect verdict.
+                // Accepted dispatch is never replayed, including a quiet
+                // (clicked, no observable change) verdict.
                 break;
             }
-            // Expose the resolved click target so no-effect verdicts can
-            // distinguish a bad selector from a page that rejected a well-
-            // aimed click (issue #15). When the target is NOT topmost, name
-            // what actually receives the click there (occlusion diagnostic).
+            // G01/G09: state readback AFTER the dispatch for the toggle-like
+            // roles probed above; the verdict reports it as the effect (state
+            // changed) or as honest evidence of no change.
+            let toggle = if stateful {
+                let after = find_by_sig(cdp, sig, frame, "state", None)
+                    .await
+                    .ok()
+                    .and_then(|f| f.state);
+                Some(ToggleProbe {
+                    before: state_before,
+                    after,
+                })
+            } else {
+                None
+            };
+            // Expose the resolved click target so quiet-click and no-
+            // dispatch verdicts can distinguish a bad selector from a page
+            // that rejected a well-aimed click (issue #15). When the target
+            // is NOT topmost, name what actually receives the click there
+            // (occlusion diagnostic).
             let mut tgt_meta = found.hit_tgt.as_deref().unwrap_or("").to_string();
             if !tgt_meta.is_empty() {
                 if found.is_topmost == Some(false) {
@@ -257,14 +312,17 @@ pub async fn perform_with_network(
                 action,
                 &delta,
                 lpm,
-                Some((via, &tried, &tgt_meta)),
-                None,
+                ClickEvidence {
+                    via: Some((via, &tried, &tgt_meta)),
+                    coord_hit: None,
+                    toggle: toggle.as_ref(),
+                    dispatched,
+                },
                 None,
                 None,
             );
             if dialog_fired && !delta.navigated && delta.is_empty() && !delta.content_changed {
-                verdict =
-                    format!("outcome: dialog opened via {via} (auto-dismissed — see ambient)");
+                verdict = format!("outcome: dialog opened via {via} (handled — see ambient)");
             }
             return Ok((delta, verdict));
         }
@@ -375,7 +433,7 @@ pub async fn perform_with_network(
                 pre_cleared = cl.ok;
             }
             // Type: short text via per-char key events (the biometrics
-            // path: Shift wrapping, hold-time cadence), long text via one
+            // path: Shift wrapping, hold-time cadence), long/Unicode text via one
             // insertText (a paste/IME commit - human-plausible and fast).
             let _ = type_text(cdp, text).await;
             // Readback with a bounded poll: framework editors (and late
@@ -567,18 +625,18 @@ pub async fn perform_with_network(
                 let step_dx = total_x * (e(t1) - e(t0));
                 let step_dy = total_y * (e(t1) - e(t0));
 
-                let _ = cdp
-                    .send(
-                        "Input.dispatchMouseEvent",
-                        Some(json!({
-                            "type": "mouseWheel",
-                            "x": cx,
-                            "y": cy,
-                            "deltaX": step_dx,
-                            "deltaY": step_dy,
-                        })),
-                    )
-                    .await;
+                cdp.send_with_timeout(
+                    "Input.dispatchMouseEvent",
+                    Some(json!({
+                        "type": "mouseWheel",
+                        "x": cx,
+                        "y": cy,
+                        "deltaX": step_dx,
+                        "deltaY": step_dy,
+                    })),
+                    Duration::from_secs(5),
+                )
+                .await?;
 
                 // 8-18ms jitter between steps.
                 let jitter = 8 + rng.range(0, 10) as u64;
@@ -626,15 +684,36 @@ pub async fn perform_with_network(
             text,
             timeout,
         } => {
-            // check_condition polls until the condition is met or timeout.
+            // eval_condition polls until the condition is met or timeout.
             // On timeout, error so the agent gets the current page state to
             // recover (a silent "waited" would be a lie — the condition failed).
-            let met = check_condition(cdp, condition, text, *timeout, None).await;
-            if !met {
-                return Err(BladeError::Other(format!(
-                    "wait timeout: condition '{condition}' not met within {}s",
-                    timeout.as_secs()
-                )));
+            // A deterministic evaluation failure (js syntax error / repeated
+            // throw) carries its reason instead of masquerading as a timeout.
+            match eval_condition(
+                cdp,
+                condition,
+                text,
+                *timeout,
+                if matches!(condition.as_str(), "network" | "network-idle") {
+                    in_flight
+                } else {
+                    None
+                },
+            )
+            .await?
+            {
+                CondOutcome::Met => {}
+                CondOutcome::Timeout => {
+                    return Err(BladeError::Other(format!(
+                        "wait timeout: condition '{condition}' not met within {}s",
+                        timeout.as_secs()
+                    )));
+                }
+                CondOutcome::Error(e) => {
+                    return Err(BladeError::Other(format!(
+                        "wait condition '{condition}' failed: {e}"
+                    )));
+                }
             }
         }
         Action::Back => {
@@ -718,6 +797,13 @@ pub async fn perform_with_network(
             // (Removed 300ms pre-settle sleep; settle already waits for DOM quiet.)
         }
         Action::Upload { ref_id, path } => {
+            // SECURITY: the file path comes from tool args, which are not
+            // always operator intent — a prompt-injected page can steer the
+            // agent at credential files, and DOM.setFileInputFiles delivers
+            // their bytes straight into the page. Gate the read like the
+            // write side gates writes (pdf path= → validate_write_path).
+            crate::platform::validate_upload_path(std::path::Path::new(path.as_str()))
+                .map_err(BladeError::Other)?;
             let (sig, frame) = sig_frame.as_ref().unwrap();
             // Validate the element is a file input.
             let el = lpm
@@ -839,6 +925,18 @@ pub async fn perform_with_network(
     // whose content was restored after the action returned.
     if let (Some(mut rep), Some((sig, frame))) = (edit_report.take(), sig_frame.as_ref()) {
         finalize_edit(&mut rep, cdp, sig, frame).await?;
+        // S1: a JS-setter fallback is an untrusted input path, not a typed
+        // result - surface it as an error so no caller mistakes it for
+        // keystroke input (event-trust detectors can see the difference).
+        // Exception: a corrective pass that replaced the value via trusted
+        // keys (corrected + verified) - the final value is key-typed then.
+        if rep.set_via_js && !(rep.corrected && rep.verified) {
+            return Err(crate::error::BladeError::Other(format!(
+                "typed via JS setter on {}: key events did not register (untrusted input; trusted:false, degraded:true). The value \"{}\" was set programmatically - no keystrokes fired for it. Retry the type, or restart the browser for a fresh input path.",
+                action.ref_id().unwrap_or(""),
+                clip(&rep.final_text, 40)
+            )));
+        }
         edit_report = Some(rep);
     }
 
@@ -850,6 +948,9 @@ pub async fn perform_with_network(
     // element elsewhere, outside the viewport) instead of a bare fact.
     let mut coord_hit: Option<String> = None;
     if let Action::ClickCoord { x, y } = action {
+        if let Some(t) = coord_toggle.as_mut() {
+            t.after = coord_toggle_probe(cdp, *x, *y).await;
+        }
         if !delta.navigated && delta.is_empty() && !delta.content_changed {
             coord_hit = hit_probe(cdp, *x, *y).await.unwrap_or(None);
         }
@@ -858,9 +959,15 @@ pub async fn perform_with_network(
         action,
         &delta,
         lpm,
-        None,
+        ClickEvidence {
+            via: None,
+            coord_hit: coord_hit.as_deref(),
+            toggle: coord_toggle.as_ref(),
+            // A coord click always dispatches (the click above is
+            // unconditional); only ref clicks can end without a dispatch.
+            dispatched: true,
+        },
         edit_report.as_ref(),
-        coord_hit.as_deref(),
         scroll_report.as_ref(),
     );
     Ok((delta, verdict))
