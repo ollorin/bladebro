@@ -245,6 +245,7 @@ impl Browser {
             });
         }
 
+        platform::isolate_owned_child(&mut cmd);
         let mut child = cmd
             .spawn()
             .map_err(|e| BladeError::Other(format!("failed to launch Chrome: {e}")))?;
@@ -298,7 +299,7 @@ impl Browser {
                         }
                     }
                     if Instant::now() >= deadline {
-                        let _ = child.kill();
+                        platform::kill_child_tree(&mut child);
                         return Err(BladeError::Other(format!(
                             "Chrome pipe not responding after 20s{}",
                             super::launch::chrome_stderr_tail()
