@@ -206,6 +206,8 @@ cargo build --release
 ./target/release/bladebro mcp
 ```
 
+No `sudo` or Homebrew (Rust, Node, ffmpeg with VP9/H.264 built from source, test notes): [docs/dev-setup-no-sudo.md](docs/dev-setup-no-sudo.md).
+
 Source builds self-update too: `bladebro -u` swaps in the official released binary for your platform (it doesn't rebuild — for that: `git pull && cargo build --release`).
 
 ## 🎯 The 5 tools

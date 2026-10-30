@@ -57,3 +57,4 @@ Phase 9 ledger verified by the opus verifier (2026-10-26) against `git diff 9756
 Phase 11: the only upstream line changed is the README Gotchas row above; no source file changed besides fork-owned src/record/hub/** (11-01).
 
 Phase 8.1 ledger verified (2026-10-26, gate run) against `git diff 62cb476..HEAD -- src Cargo.toml Cargo.lock npm CHANGELOG.md .github` and `git cat-file -e upstream/main:<path>`: exactly two upstream files changed (src/page/mod.rs 1 line, src/state.rs 2 added + 6 removed); all other changed src paths are src/record/** (fork-owned). Cargo, npm, CHANGELOG, .github and src/updater, src/mcp, src/cli: no diff.
+| setup | README.md | one pointer line to docs/dev-setup-no-sudo.md after the "From source" code block (addition only) | document a sudo-free toolchain setup (fork-owned page) | pending |
