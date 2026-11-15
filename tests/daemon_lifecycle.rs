@@ -199,6 +199,12 @@ fn concurrent_cold_starts_have_one_owner() {
                 .unwrap()
         })
         .collect();
+    // Loaded hosts need more than a fixed 500 ms before the owner has written
+    // its pidfile: wait for it, then give the losers time to exit.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !home.join("cli.pid").exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
     std::thread::sleep(Duration::from_millis(500));
     let owner: u32 = std::fs::read_to_string(home.join("cli.pid"))
         .unwrap()
