@@ -235,6 +235,7 @@ Every call returns an **outcome verdict + page delta**. Clicks choose a role-awa
 | `clear` | `act clear e3` | Empty an input or rich editor |
 | `download` | `act download url=... timeout=10` | Fetch + Blob download, returns the path |
 | `pdf` | `act pdf` | Export the page as a PDF artifact |
+| `viewport` | `act viewport width=375 height=800` | Persistent viewport emulation (`dpr=`, `mobile=true`; `reset=true` to undo); `vision` reflects it |
 | `back` / `forward` / `reload` | `act back` | History + reload |
 
 - **Self-healing refs** — a dead ref re-resolves by identity: `act click e5` after navigation finds the new "Sign in" and reports `[ref e5 healed]`.
@@ -256,6 +257,7 @@ Every call returns an **outcome verdict + page delta**. Clicks choose a role-awa
 | `see` | Full model — interactive elements with refs (nav/footer auto-folded) |
 | `see mode=content` | Page text as clean markdown — for reading |
 | `see mode=outline` | Heading hierarchy only (~50–200 bytes) |
+| `see mode=audit` | Read-only page audit: contrast, missing names, duplicate ids, horizontal overflow, small touch targets, broken links. Counts + top 5 findings per kind; `full=true`, `limit=`, `min_target=`, `links=same-origin\|all\|off`, `max_links=`. See [docs/qa-usage.md](docs/qa-usage.md) |
 | `see find="price"` | Search by text (light DOM + open shadow roots) → refs + scores; a miss names hidden matches with reasons |
 | `see filter="button,link"` | Zoom by role/name/landmark |
 | `see extract="auto"` | Template-free list extraction, site-aware (below) |
@@ -297,7 +299,7 @@ Use instead of `act batch` when you need branching (`if`/`else`), loops (`while`
 
 ### `vision` — screenshot (last resort)
 
-Screenshot as PNG; `marks=true` overlays numbered ref badges. MCP returns it as an image; the CLI writes a file and reports `image_path`. The structural model is almost always better: cheaper, more reliable, and it hands you refs to act on.
+Screenshot as PNG; `marks=true` overlays numbered ref badges; `full_page=true` (CLI `--full-page`) captures the whole scrollable page instead of the viewport, and the output says which was captured. An `act viewport` emulation is reflected. MCP returns it as an image; the CLI writes a file and reports `image_path`. The structural model is almost always better: cheaper, more reliable, and it hands you refs to act on.
 
 ## 🔌 Usage
 
@@ -357,7 +359,7 @@ bladebro see content https://example.com --no-daemon   # one-shot: launch Chrome
 
 | Flag | What it does |
 |---|---|
-| `--json` | One JSON object on stdout: `{ok, is_error, text}` (+ `image_path` for vision) |
+| `--json` | One JSON object on stdout: `{ok, is_error, text}` (+ `image_path` for vision; + `data` for an `act eval` that returns an object/array) |
 | `--no-daemon` | Launch Chrome per command instead of using the daemon |
 | `--host` / `--port` | Drive an already-running Chrome on this debug port |
 | `--marks` | Vision: overlay numbered ref badges |

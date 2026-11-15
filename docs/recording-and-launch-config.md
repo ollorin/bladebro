@@ -22,6 +22,16 @@ Single reference for every bladebro-fork option: session recording, the ffmpeg o
 | `BLADE_RECORD_TABS` | `follow` | `follow`: one file follows the agent's tab. `per-tab`: one file per tab (at most 8 open). Anything else is an error naming the value | Multi-tab recording mode |
 | `BLADE_FFMPEG` | auto | Absolute path to the ffmpeg binary used for recording. Set but unusable is reported, never silently ignored. Otherwise PATH, then known install locations. `bladebro doctor` shows what was found | ffmpeg override |
 
+### Recorded QA run: every variable and prerequisite in one place
+
+Short path with the viewport and audit commands: [qa-usage.md](qa-usage.md). `bladebro help state` prints the same list.
+
+- ffmpeg 4.3+ on `PATH`, or `BLADE_FFMPEG=/abs/path/ffmpeg` (`bladebro doctor` shows what was found).
+- `BLADE_RECORD=1` (or an absolute directory). Required: `state record-start` is refused while recording is off, by design.
+- A daemon (CLI) or MCP server. Both read the environment once at start; after changing a variable run `bladebro stop` (or restart the MCP server).
+- Recording shape: `BLADE_RECORD_FORMAT`, `BLADE_RECORD_FPS`, `BLADE_RECORD_SIZE`, `BLADE_RECORD_TABS` (table above).
+- Run shape for unattended QA: `BLADE_HEADLESS=1`, `BLADE_NO_WARMING=1` (skip first-run profile warming), `BLADE_PACE=off` (no pacing gaps), `BLADE_NO_UPDATE_CHECK=1`, and a temporary `BLADE_HOME` so nothing touches a real profile.
+
 ## Browser launch mode (BLADE_HEADLESS)
 
 What each setting does to the managed browser, per OS:

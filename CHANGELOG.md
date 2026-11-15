@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `act viewport` (`width`, `height`, optional `dpr`, `mobile`; `reset` to undo): CDP device-metrics emulation that persists across navigations and tab switches in the session until reset. The verdict is the page's own `innerWidth`/`innerHeight`/`devicePixelRatio`. Also a `run`/`batch` step.
+- `see mode=audit`: read-only page audit with compact output (counts plus the top `limit`, default 5, findings per kind with selector and reason; `full=true` for all; `format=json`). Covers colour contrast, missing accessible names/alt/lang/title, duplicate ids, horizontal overflow, touch targets under `min_target` (default 24 CSS px, WCAG 2.2 SC 2.5.8 spacing exception applied) and link status (`links=same-origin|all|off`, `max_links`, default 20). Self-implemented rather than vendoring axe-core (MPL-2.0 file-level copyleft, ~550 KB).
+- `vision full_page=true` (CLI `--full-page`, `--viewport`) captures the whole scrollable page; the output text states `viewport WxH` or `full page WxH` and names an active viewport emulation.
+- `act eval` object/array results are also returned structured: CLI `--json` adds `data` beside the unchanged `text`; MCP adds `structuredContent`. Strings and scalars are unchanged.
+- `docs/qa-usage.md` (recommended QA environment, viewport/audit commands, a three-widths `run`), and `help state` / `help` / `docs/recording-and-launch-config.md` list the full env and ffmpeg prerequisites for a recorded QA run. The `BLADE_RECORD` gate is unchanged.
+
 ## [4.6.6] - 2026-10-28
 
 ### Fixed
