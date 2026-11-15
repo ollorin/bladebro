@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>QA layout fixture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 16px sans-serif; margin: 8px; background: #fff; color: #111; }
+  .faint { color: #bbbbbb; }
+  .wide { width: 600px; background: #ddd; }
+  .tiny { display: inline-block; width: 12px; height: 12px; background: #36c; margin-right: 2px; }
+  .icon-btn { width: 20px; height: 20px; padding: 0; }
+</style>
+</head>
+<body>
+  <h1>QA layout fixture</h1>
+  <p class="faint">Low contrast sentence on white.</p>
+  <div class="wide">A 600px wide block that overflows a phone viewport.</div>
+  <p id="dup">one</p><p id="dup">two</p>
+  <button class="icon-btn"></button>
+  <input type="text" placeholder="Email">
+  <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="10" height="10">
+  <p><a class="tiny" href="#a" aria-label="a"></a><a class="tiny" href="#b" aria-label="b"></a><a class="tiny" href="#c" aria-label="c"></a></p>
+</body>
+</html>

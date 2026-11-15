@@ -26,6 +26,7 @@
 use serde_json::{json, Value};
 
 mod act;
+mod audit;
 mod boot;
 mod eval;
 mod extract;
@@ -44,6 +45,7 @@ pub use act::{handle_act, handle_fill};
 pub use boot::run;
 #[cfg(unix)]
 pub use boot::run_pipe;
+pub use eval::structured_value;
 pub use proto::handle_tools_call;
 pub use run::handle_run;
 pub use see::handle_see;

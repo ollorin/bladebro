@@ -1004,6 +1004,7 @@ impl Page {
             compress_enabled: std::sync::atomic::AtomicBool::new(
                 std::env::var("BLADE_NO_COMPRESS").as_deref() != Ok("1"),
             ),
+            viewport: None,
         };
 
         let cap = capture(&page.cdp).await?;

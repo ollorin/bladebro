@@ -486,6 +486,7 @@ async fn run_cli_inner(
                     is_error: false,
                 },
                 json_mode,
+                &Value::Null,
             );
             Ok(())
         }
@@ -560,7 +561,7 @@ async fn run_tool(
     // Skip the local daemon entirely (never launch or own Chrome here).
     if let Some(base) = external {
         let result = run_connected(tool, args, &base, true).await?;
-        let code = print_result(&result, json_mode);
+        let code = print_result(&result, json_mode, args);
         if code != 0 {
             exit_with(code);
         }
@@ -578,7 +579,7 @@ async fn run_tool(
             if daemon_running() {
                 match send_to_daemon(tool, args) {
                     Ok(result) => {
-                        let code = print_result(&result, json_mode);
+                        let code = print_result(&result, json_mode, args);
                         if code != 0 {
                             exit_with(code);
                         }
@@ -622,7 +623,7 @@ async fn run_tool(
                 }
                 match send_to_daemon(tool, args) {
                     Ok(result) => {
-                        let code = print_result(&result, json_mode);
+                        let code = print_result(&result, json_mode, args);
                         if code != 0 {
                             exit_with(code);
                         }
@@ -657,7 +658,7 @@ async fn run_tool(
     }
 
     let result = result?;
-    let code = print_result(&result, json_mode);
+    let code = print_result(&result, json_mode, args);
     if code != 0 {
         exit_with(code);
     }
@@ -703,7 +704,7 @@ async fn run_connected(tool: &str, args: &Value, base: &str, external: bool) -> 
 }
 
 /// Print a tool result and return the process exit code (0 ok, 1 error).
-fn print_result(result: &ToolResult, json_mode: bool) -> i32 {
+fn print_result(result: &ToolResult, json_mode: bool, args: &Value) -> i32 {
     let code = if result.is_error { 1 } else { 0 };
 
     // Vision: always persist the PNG and hand back a PATH. The old --json
@@ -723,6 +724,14 @@ fn print_result(result: &ToolResult, json_mode: bool) -> i32 {
         });
         if let Some(p) = &image_path {
             v["image_path"] = json!(p);
+        }
+        // `act eval` returning an object/array: also hand it back parsed, so a
+        // --json caller does not have to decode `text` a second time. `text`
+        // keeps its contract; strings and scalars get no extra field.
+        if !result.is_error {
+            if let Some(data) = server::structured_value(args, &result.text) {
+                v["data"] = data;
+            }
         }
         println!("{v}");
     } else if let Some(p) = &image_path {

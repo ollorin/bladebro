@@ -279,3 +279,64 @@ async fn rejected_scroll_stops_at_first_dispatch_without_claiming_success() {
     assert_eq!(dispatched.load(Ordering::SeqCst), 1);
     server.abort();
 }
+
+/// `act viewport` speaks exactly Emulation.setDeviceMetricsOverride /
+/// clearDeviceMetricsOverride and reads the size back from the page, so the
+/// verdict is the page's own numbers, not an echo of the request.
+#[tokio::test]
+async fn viewport_emulation_sends_override_clear_and_reads_back() {
+    use bladebro::page::viewport::{apply, clear, readback, ViewportSpec};
+    use std::sync::{Arc, Mutex};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let seen: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
+    let log = seen.clone();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_async(stream).await.unwrap();
+        while let Some(Ok(message)) = ws.next().await {
+            let Ok(request) = serde_json::from_str::<Value>(message.to_text().unwrap_or("")) else {
+                continue;
+            };
+            let method = request["method"].as_str().unwrap_or("").to_string();
+            log.lock()
+                .unwrap()
+                .push((method.clone(), request["params"].clone()));
+            let result = if method == "Runtime.evaluate" {
+                json!({"result":{"value":[375, 800, 2]}})
+            } else {
+                json!({})
+            };
+            let response = json!({"id": request["id"], "result": result});
+            if ws
+                .send(Message::Text(response.to_string().into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+    let client = CdpClient::connect(&format!("ws://{address}"))
+        .await
+        .unwrap();
+    let cdp = CdpSession::root(client);
+    let spec = ViewportSpec {
+        width: 375,
+        height: 800,
+        dpr: 2.0,
+        mobile: true,
+    };
+    apply(&cdp, &spec).await.unwrap();
+    assert_eq!(readback(&cdp).await.unwrap(), (375, 800, 2.0));
+    clear(&cdp).await.unwrap();
+    let calls = seen.lock().unwrap().clone();
+    assert_eq!(calls[0].0, "Emulation.setDeviceMetricsOverride");
+    assert_eq!(calls[0].1["width"], 375);
+    assert_eq!(calls[0].1["height"], 800);
+    assert_eq!(calls[0].1["deviceScaleFactor"], 2.0);
+    assert_eq!(calls[0].1["mobile"], true);
+    assert_eq!(calls[1].0, "Runtime.evaluate");
+    assert_eq!(calls[2].0, "Emulation.clearDeviceMetricsOverride");
+    server.abort();
+}

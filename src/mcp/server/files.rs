@@ -646,7 +646,9 @@ pub(super) async fn handle_body_download(args: &Value) -> Result<String> {
     Ok(json!({"path":path,"bytes":bytes.len(),"status":status,"url":final_url,"content_type":kind,"note":"HTTP body; browser cookies/session not used; status is the server response"}).to_string())
 }
 
-fn body_client(proxy: Option<crate::browser::proxy::ProxySpec>) -> Result<reqwest::Client> {
+pub(super) fn body_client(
+    proxy: Option<crate::browser::proxy::ProxySpec>,
+) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30));
     if let Some(proxy) = proxy {
         if proxy.server.starts_with("socks") || proxy.server.starts_with("quic:") {

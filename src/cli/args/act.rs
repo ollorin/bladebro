@@ -13,7 +13,7 @@ pub(crate) fn parse_act_args(args: &[String]) -> Result<Value> {
         return Err(BladeError::Usage(
             "act needs an action — click, type, fill, select, clear, press, scroll, hover, \
              navigate, upload, download, wait, eval, collect, extract, read, batch, pdf, back, \
-             forward, reload, save, load, open-tab, close-tab, switch-tab (see 'bladebro help act')"
+             forward, reload, viewport, save, load, open-tab, close-tab, switch-tab (see 'bladebro help act')"
                 .into(),
         ));
     }
@@ -67,7 +67,7 @@ pub(crate) fn parse_act_args(args: &[String]) -> Result<Value> {
                         }
                     }
                 }
-                "nth" | "timeout" | "max" => {
+                "nth" | "timeout" | "max" | "width" | "height" => {
                     let v: u64 = take_num(args, &mut i, flag)?;
                     j[flag] = json!(v);
                 }
@@ -75,11 +75,13 @@ pub(crate) fn parse_act_args(args: &[String]) -> Result<Value> {
                     let v: i64 = take_num(args, &mut i, flag)?;
                     j[flag] = json!(v);
                 }
-                "x" | "y" | "scale" => {
+                "x" | "y" | "scale" | "dpr" => {
                     let v: f64 = take_num(args, &mut i, flag)?;
                     j[flag] = json!(v);
                 }
                 "body" => j["body"] = json!(true),
+                "reset" => j["reset"] = json!(true),
+                "mobile" => j["mobile"] = json!(true),
                 "next" | "sort" => j[flag] = json!(take_value(args, &mut i, flag)?),
                 "slim" => j["slim"] = json!(true),
                 "landscape" => j["landscape"] = json!(true),
@@ -490,6 +492,13 @@ pub(crate) fn parse_act_args(args: &[String]) -> Result<Value> {
             if j.get("target_id").is_none() {
                 return Err(BladeError::Usage(format!(
                     "{action} needs a tab id — `act {action} <id>` (ids come from `bladebro state tabs`)"
+                )));
+            }
+        }
+        "viewport" => {
+            if let Some(extra) = pos.first() {
+                return Err(BladeError::Usage(format!(
+                    "unexpected argument '{extra}' — `act viewport --width 375 --height 800` or `act viewport --reset`"
                 )));
             }
         }

@@ -153,6 +153,10 @@ pub async fn handle_see(args: &Value, page: &mut Page) -> Result<String> {
             Ok(page.delta_view(&delta, budget))
         };
     }
+    // mode=audit: read-only page audit (see audit.rs); owns format=json itself.
+    if mode == "audit" {
+        return super::audit::handle_audit(args, page).await;
+    }
     // format=json is only meaningful for extract=/artifact= reads; anything
     // else is refused instead of silently returning text.
     if json_out && extract.is_empty() {

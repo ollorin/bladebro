@@ -241,6 +241,36 @@ pub async fn handle_eval(
     unreachable!("at least one expression candidate is always provided");
 }
 
+/// The structured value of an `act eval` result, for callers that would
+/// otherwise parse the text twice: `Some` only for a returned object/array
+/// (strings and scalars stay in the text, so existing parsers see no change).
+/// Reads the first line of `text` - `result: <JSON>` in text mode, bare JSON in
+/// format=json - and ignores artifact envelopes and offloaded payloads.
+pub fn structured_value(args: &serde_json::Value, text: &str) -> Option<serde_json::Value> {
+    if args.get("action").and_then(|a| a.as_str()) != Some("eval") {
+        return None;
+    }
+    let line = text.lines().next()?;
+    let raw = line.strip_prefix("result: ").unwrap_or(line);
+    let parsed: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let unwrapped = match &parsed {
+        serde_json::Value::Object(o) if o.contains_key("artifact") && o.contains_key("bytes") => {
+            return None
+        }
+        serde_json::Value::Object(o)
+            if o.len() == 2 && o.contains_key("data") && o.contains_key("note") =>
+        {
+            o["data"].clone()
+        }
+        _ => parsed,
+    };
+    matches!(
+        unwrapped,
+        serde_json::Value::Object(_) | serde_json::Value::Array(_)
+    )
+    .then_some(unwrapped)
+}
+
 /// One-word shape of a returned value — used where the payload moves out of
 /// line (artifact header) and in notes, never as a required preamble line.
 fn shape_of(v: &serde_json::Value) -> String {
@@ -403,5 +433,44 @@ mod eval_contract_tests {
         assert_eq!(shape_of(&json!(1.5)), "number");
         assert_eq!(shape_of(&json!(false)), "boolean");
         assert_eq!(shape_of(&json!(null)), "null");
+    }
+
+    #[test]
+    fn structured_value_only_for_object_or_array_eval_results() {
+        let eval = json!({"action": "eval"});
+        // Text mode: one `result:` line, notes below it are ignored.
+        assert_eq!(
+            structured_value(&eval, "result: {\"n\":3}"),
+            Some(json!({"n": 3}))
+        );
+        assert_eq!(
+            structured_value(&eval, "result: [1,2]\nnote: x"),
+            Some(json!([1, 2]))
+        );
+        // format=json: bare value; {data,note} unwraps to data.
+        assert_eq!(
+            structured_value(&eval, "[{\"a\":1}]"),
+            Some(json!([{"a": 1}]))
+        );
+        assert_eq!(
+            structured_value(&eval, "{\"data\":[1],\"note\":\"n\"}"),
+            Some(json!([1]))
+        );
+        // Strings and scalars stay in the text; artifact envelopes are not data.
+        assert_eq!(structured_value(&eval, "result: \"{\\\"a\\\":1}\""), None);
+        assert_eq!(structured_value(&eval, "result: 12"), None);
+        assert_eq!(structured_value(&eval, "result: undefined\nnote: n"), None);
+        assert_eq!(
+            structured_value(
+                &eval,
+                "{\"artifact\":\"/x\",\"bytes\":9000,\"next_offset\":0}"
+            ),
+            None
+        );
+        // Other actions never gain a data field.
+        assert_eq!(
+            structured_value(&json!({"action": "click"}), "result: [1]"),
+            None
+        );
     }
 }

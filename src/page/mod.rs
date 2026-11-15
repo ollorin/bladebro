@@ -20,6 +20,7 @@ pub mod heal;
 pub mod logs;
 pub mod navigate;
 pub mod tabs;
+pub mod viewport;
 
 mod gl;
 mod route;
@@ -242,6 +243,8 @@ pub struct Page {
     /// Context pruning: enabled by default, toggled via
     /// `BLADE_NO_COMPRESS=1` env var or `state compress off`.
     compress_enabled: std::sync::atomic::AtomicBool,
+    /// Emulated viewport set by `act viewport`; re-applied on tab switch.
+    viewport: Option<viewport::ViewportSpec>,
 }
 
 impl std::fmt::Debug for Page {

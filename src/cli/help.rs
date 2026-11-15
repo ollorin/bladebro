@@ -40,18 +40,18 @@ shuts it down. `--no-daemon` forces isolated one-shot runs.
 
 COMMANDS
   nav <url> [--block <classes>]   navigate (refs + content preview; usually enough to act)
-  see [mode] [url] [flags]        read without acting: model|content|outline,
+  see [mode] [url] [flags]        read without acting: model|content|outline|audit,
                                   extract <auto|links|forms|json>, --find, --scope, --logs
   act <action> [args]             interact: click, type, fill, select, clear, press, scroll,
                                   hover, navigate, upload, download, wait, dialog, eval, collect,
-                                  read, batch, pdf, back, forward, reload, save, load,
+                                  read, batch, pdf, back, forward, reload, viewport, save, load,
                                   open-tab, close-tab, switch-tab
   state <op> [args]               cookies, set-cookie, del-cookie, ls, ss, set-ls, set-ss,
                                   rm-ls, rm-ss, clear-ls, clear-ss, tabs, open-tab,
                                   close-tab, switch-tab, save, load, compress, block,
                                   record-start <name>, record-stop
   run '<json-steps>'              batch with if/while branching + inline see reads
-  vision [--marks]                screenshot (saved to a file; path printed)
+  vision [--marks] [--full-page]  screenshot (viewport by default; saved to a file; path printed)
   daemon | stop                   manage the persistent Chrome session
   mcp                             MCP server on stdio — add to your agent's client config
   rb on|off [sub]                 real-browser lane: drive YOUR browser (see 'help rb')
@@ -98,6 +98,13 @@ ENVIRONMENT
   BLADE_PLAIN          plain output — no ANSI even on a terminal
                        (NO_COLOR also disables; CLICOLOR_FORCE=1 forces color off-TTY)
   CHROME_PATH          override the Chrome/Chromium binary
+  BLADE_RECORD         1 (or an absolute dir): enable state record-start/stop; needs ffmpeg
+  BLADE_FFMPEG         absolute path to ffmpeg (else PATH and known install dirs)
+  BLADE_RECORD_FORMAT/FPS/SIZE/TABS   webm|mp4 · 5-15 · WxH · follow|per-tab
+  BLADE_PACE           off = no human-like inter-action gaps (faster QA runs)
+  BLADE_NO_WARMING     1 = skip first-run profile warming
+  BLADE_NO_UPDATE_CHECK  1 = skip update checks
+  QA run set: see 'bladebro help state' (RECORDING) and docs/qa-usage.md
 
 Agents: `bladebro help --json` returns the machine version of this manual —
 tool schemas (same as MCP tools/list), per-command usage, exit codes, payload
@@ -201,7 +208,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
             "usage": "bladebro see [mode] [url] [extract <type>] [flags]",
             "tool": "see",
             "args": {
-                "mode": "model (default) | content | outline",
+                "mode": "model (default) | content | outline | audit",
                 "url": "optional — navigates first",
                 "extract": "auto | links | forms | json (json needs --template)"
             },
@@ -218,7 +225,11 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--preview": "auto-extract container/schema without rows",
                 "--changes": "model delta since last capture; --format json for structured fields",
                 "--clear": "read then clear the selected log",
-                "--format": "text (default) | json — pure JSON output for extract/artifact reads ({offset,next_offset,data} pages)"
+                "--full": "audit: every finding (default: counts + top --limit 5 per kind)",
+                "--min-target": "audit: minimum touch target in CSS px (default 24, WCAG 2.2 SC 2.5.8)",
+                "--links": "audit link check: same-origin (default) | all | off",
+                "--max-links": "audit: links checked (default 20, max 200)",
+                "--format": "text (default) | json — pure JSON output for extract/artifact reads ({offset,next_offset,data} pages); audit: structured report"
             },
             "examples": [
                 "bladebro see model",
@@ -226,7 +237,9 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro see extract auto --limit 20",
                 "bladebro see extract auto --format json",
                 "bladebro see --find \"Submit\"",
-                "bladebro see --logs network"
+                "bladebro see --logs network",
+                "bladebro see audit",
+                "bladebro see audit --full --format json"
             ],
             "notes": ["extract=auto is the first move on list/search/product/profile pages — one call returns structured items; on Reddit post pages it attempts the full comment tree; complete/partial disclose API denial and missing replies", "extract=auto envelope: container,count,items + page_total/partial/paged when the page claims more results than the DOM holds, sponsored (paid placements), duplicates_removed, redirects_unwrapped/redirects_unresolved — each explained by a note line"]
         }),
@@ -253,6 +266,10 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--body": "download: HTTP body, <=32MiB/30s, no browser cookies; honors HTTP(S) BLADE_PROXY",
                 "--sort": "Reddit post extract: confidence|top|new|controversial|old|qa",
                 "--slim": "verdict-only successful actions; batch/run inherit, reads/errors retained",
+                "--width/--height": "viewport: CSS px, 100-10000 (both required)",
+                "--dpr": "viewport: device scale factor 0.5-5 (default 1)",
+                "--mobile": "viewport: emulate a mobile device",
+                "--reset": "viewport: remove the emulation",
                 "--format": "extract/eval: text (default) | json — pure JSON output (for eval: the bare returned value; {data,note} when a note rides along; an {artifact,bytes} envelope when oversized)"
             },
             "examples": [
@@ -265,9 +282,13 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro act batch @steps.json",
                 "bladebro act extract --format json",
                 "bladebro act wait settle",
-                "bladebro act eval \"document.title\""
+                "bladebro act eval \"document.title\"",
+                "bladebro act viewport --width 375 --height 800",
+                "bladebro act viewport --reset"
             ],
             "notes": [
+                "viewport persists across navigations and tab switches in the daemon session until --reset; vision screenshots reflect it",
+                "--json eval: when the result is an object/array it also appears parsed under \"data\" (text is unchanged; strings and scalars get no data field)",
                 "unquoted multi-word values join: act click Sign in == act click \"Sign in\"",
                 "big JSON payloads: @file or - (stdin)",
                 "eval result contract: `result: <compact JSON>` on ONE line — json.loads that line; a returned JSON string is flagged in a note; --format json returns the value itself",
@@ -298,7 +319,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro state block images,fonts",
                 "bladebro state compress off"
             ],
-            "notes": ["save/load persists cookies+storage; navigate to the saved origin before load, then reload"]
+            "notes": ["save/load persists cookies+storage; navigate to the saved origin before load, then reload", "record-start needs BLADE_RECORD=1 in the daemon/MCP environment AND ffmpeg (BLADE_FFMPEG or PATH); the gate is deliberate; full QA env set: docs/qa-usage.md, help state"]
         }),
         "run" => json!({
             "usage": "bladebro run '<json-steps>' | @file | -",
@@ -312,11 +333,11 @@ fn command_help_json(cmd: &str) -> Option<Value> {
             "notes": ["stops on first error with the step number + page state", "while+see reads across pages in ONE call"]
         }),
         "vision" => json!({
-            "usage": "bladebro vision [--marks]",
+            "usage": "bladebro vision [--marks] [--full-page | --viewport]",
             "tool": "vision",
-            "flags": { "--marks": "numbered ref badges (Set-of-Marks)" },
-            "examples": ["bladebro vision", "bladebro vision --marks --json | jq -r .image_path"],
-            "notes": ["screenshot is saved to a file; path printed (json: image_path)", "last resort — see/act are cheaper and return actionable refs"]
+            "flags": { "--marks": "numbered ref badges (Set-of-Marks)", "--full-page": "capture the whole scrollable page", "--viewport": "capture the visible viewport only (default)" },
+            "examples": ["bladebro vision", "bladebro vision --full-page", "bladebro vision --marks --json | jq -r .image_path"],
+            "notes": ["the output text says which was captured: `(viewport WxH CSS px)` or `(full page WxH CSS px)`; an emulated viewport is named too", "screenshot is saved to a file; path printed (json: image_path)", "last resort — see/act are cheaper and return actionable refs"]
         }),
         "daemon" => json!({
             "usage": "bladebro daemon",
@@ -500,6 +521,15 @@ pub fn help_json(cmd: Option<&str>) -> Result<String> {
             "BLADE_PLAIN": "plain CLI output — no ANSI even on a TTY (NO_COLOR also honored; CLICOLOR_FORCE=1 forces color off-TTY)",
             "BLADE_TRANSPORT": "mcp transport: WebSocket by default (native webdriver=false); set 'pipe' for the zero-port transport (its automation flag is masked)",
             "CHROME_PATH": "override the Chrome/Chromium binary",
+            "BLADE_RECORD": "1|on|true|yes (or an absolute dir): enable state record-start/stop; off by default; needs ffmpeg; the daemon/MCP reads it at start (bladebro stop to re-read)",
+            "BLADE_FFMPEG": "absolute path to ffmpeg for recording (else PATH, then known install dirs; bladebro doctor shows what was found)",
+            "BLADE_RECORD_FORMAT": "webm (default) | mp4",
+            "BLADE_RECORD_FPS": "5-15 (default 10)",
+            "BLADE_RECORD_SIZE": "WIDTHxHEIGHT, even sides (default 1280x720)",
+            "BLADE_RECORD_TABS": "follow (default) | per-tab",
+            "BLADE_PACE": "off disables the human-like inter-action pacing",
+            "BLADE_NO_WARMING": "1 skips first-run profile warming",
+            "BLADE_NO_UPDATE_CHECK": "1 skips update checks",
             "RUST_LOG": "log filter (default warn,bladebro=info)"
         }
     });
@@ -540,6 +570,10 @@ MODES
   model (default)   interactive elements with refs (e1, e2, …)
   content           page text as clean markdown (reading articles/docs)
   outline           heading hierarchy only (cheapest read)
+  audit             read-only page audit: contrast, missing names/labels, duplicate
+                    ids, horizontal overflow, touch targets under --min-target
+                    (default 24 CSS px), broken links (same-origin by default).
+                    Counts + top 5 findings per kind (selector + reason).
 
 EXTRACTION
   extract auto      structured items in ONE call — lists, search results,
@@ -567,7 +601,10 @@ FLAGS
   --changes           model delta since last capture; --format json for structured fields
   --clear             read then clear --logs console|network
   --sort <sort>       Reddit post auto-extract: confidence|top|new|controversial|old|qa
-  --format text|json  json: pure JSON out for extract/artifact/eval reads
+  --full              audit: every finding (--limit N: top N per kind)
+  --min-target <px>   audit: touch target minimum (default 24)
+  --links same-origin|all|off   audit link check scope; --max-links <N> (default 20, max 200)
+  --format text|json  json: pure JSON out for extract/artifact/eval reads (and audit)
   --url <url>         navigate first (or pass the URL positionally)
 
 EXAMPLES
@@ -578,6 +615,7 @@ EXAMPLES
   bladebro see example.com content        navigate + read in one call
   bladebro see --find "Submit"            refs by text
   bladebro see --logs network             recent requests
+  bladebro see audit                      accessibility + layout audit, compact
 "#
         }
         "act" => {
@@ -597,6 +635,8 @@ ACTIONS
   extract [auto|links|forms|json]   structured data (same as 'see extract …')
   batch <steps|@file|->    pdf [--path] [--landscape]
   back / forward / reload  save <name> / load <name>
+  viewport --width W --height H [--dpr N] [--mobile]   emulate a viewport (persists
+                           across navigations until `viewport --reset`; vision reflects it)
   open-tab [url] / switch-tab <id> / close-tab <id>
 
 UNIVERSAL FLAGS (mirror the MCP schema — accepted on every action)
@@ -613,7 +653,9 @@ RESULT SHAPES (stable — parse them without guessing)
                 discard it); a DOM node/Window says what to return instead;
                 undefined reads `result: undefined`. `--format json` returns the
                 bare value, `{"data":…,"note":…}` when a note rides along, or an
-                `{"artifact":…,"bytes":…}` envelope when oversized.
+                `{"artifact":…,"bytes":…}` envelope when oversized. With the global
+                `--json`, an object/array result is ALSO returned parsed in a `data`
+                field next to `text` (strings/scalars: no `data`; `text` unchanged).
   extract auto  envelope {container,count,items,…} plus, when they apply:
                 page_total/partial/paged (the page claims more results than the
                 DOM holds), sponsored (paid placements — flagged per item, left in
@@ -631,6 +673,8 @@ EXAMPLES
   bladebro act wait settle                       wait for DOM quiet
   bladebro act wait element --text "Results"     wait for an element
   bladebro act eval "document.title"             evaluate JS
+  bladebro act viewport --width 375 --height 800   phone-width viewport
+  bladebro act viewport --reset                  back to the real window
   bladebro act batch '[{"action":"reload"}]'     sequential steps in ONE call
   bladebro act collect https://x.com/list --max 100   infinite-scroll collect
   bladebro act extract --format json             structured data as JSON
@@ -668,6 +712,17 @@ RECORDING (needs ffmpeg + BLADE_RECORD; daemon or MCP only)
   record-stop [--value <note>]         path, bytes, duration, frames, drops
   (writes <video>.poster.png and <video>.timeline.json next to the video)
 
+  Prerequisites and env for a recorded QA run (all in the daemon's environment;
+  `bladebro stop` first if a daemon is already running — it reads them at start):
+    ffmpeg 4.3+ on PATH, or BLADE_FFMPEG=/abs/path/ffmpeg   (bladebro doctor shows it)
+    BLADE_RECORD=1            required; the gate is deliberate (or an absolute dir)
+    BLADE_RECORD_FORMAT=webm|mp4  BLADE_RECORD_FPS=5-15  BLADE_RECORD_SIZE=1280x720
+    BLADE_RECORD_TABS=follow|per-tab
+    BLADE_HEADLESS=1          hidden browser    BLADE_HOME=<dir>  isolated state
+    BLADE_NO_WARMING=1        skip profile warming    BLADE_PACE=off  no pacing gaps
+    BLADE_NO_UPDATE_CHECK=1   no update check
+  Recommended set + examples: docs/qa-usage.md; every option: docs/recording-and-launch-config.md
+
 EXAMPLES
   bladebro state cookies
   bladebro state set-cookie token abc --domain example.com --secure
@@ -700,15 +755,20 @@ EXAMPLES
             r#"bladebro vision — screenshot
 
 USAGE
-  bladebro vision [--marks]
+  bladebro vision [--marks] [--full-page | --viewport]
 
 Always saves a PNG to a file and prints the path (--json: "image_path").
+Captures the visible viewport by default (--viewport says so explicitly);
+--full-page captures the whole scrollable page (tall pages capped at 16384
+CSS px). The output text states which was captured and its CSS size, and
+names an active `act viewport` emulation.
 --marks overlays numbered ref badges (Set-of-Marks) so you can click by ref
 after looking at the image. Vision is the LAST RESORT: the structural model
 (see/act with refs) is cheaper and gives actionable refs.
 
 EXAMPLES
   bladebro vision
+  bladebro vision --full-page
   bladebro vision --marks --json | jq -r .image_path
 "#
         }

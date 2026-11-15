@@ -46,6 +46,8 @@ pub const UPSTREAM_ALLOWLIST: &[&str] = &[
     "BLADE_TRANSPORT",       // MCP transport note
     "BLADE_LANE",            // real-lane note (headless is ignored there)
     "BLADE_IDLE_TIMEOUT",    // daemon lifetime note
+    "BLADE_PACE",            // QA run set: pacing off
+    "BLADE_NO_WARMING",      // QA run set: skip first-run warming
 ];
 
 /// All `BLADE_[A-Z0-9_]+` tokens in `text`, trailing `_` trimmed. A token must

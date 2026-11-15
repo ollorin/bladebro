@@ -14,6 +14,7 @@ pub(super) fn fields(args: &Value, tool: &str) -> Result<()> {
     let strings: &[&str] = match tool {
         "see" => &[
             "mode", "filter", "find", "extract", "logs", "scope", "artifact", "format", "sort",
+            "links",
         ],
         _ => &[
             "action",
@@ -56,12 +57,26 @@ pub(super) fn fields(args: &Value, tool: &str) -> Result<()> {
         "items",
         "changes",
         "body",
+        "reset",
+        "mobile",
+        "full",
+        "full_page",
     ] {
         if args.get(key).is_some_and(|v| !v.is_boolean()) {
             return Err(BladeError::Usage(format!("{tool} {key} must be a boolean")));
         }
     }
-    for key in ["nth", "budget", "limit", "offset", "max"] {
+    for key in [
+        "nth",
+        "budget",
+        "limit",
+        "offset",
+        "max",
+        "width",
+        "height",
+        "min_target",
+        "max_links",
+    ] {
         if let Some(value) = args.get(key) {
             let valid = value.as_u64().is_some_and(|n| key != "nth" || n > 0);
             if !valid {
@@ -83,7 +98,7 @@ pub(super) fn fields(args: &Value, tool: &str) -> Result<()> {
             )));
         }
     }
-    for key in ["x", "y", "scale"] {
+    for key in ["x", "y", "scale", "dpr"] {
         if args
             .get(key)
             .is_some_and(|v| v.as_f64().is_none_or(|n| !n.is_finite()))
@@ -225,7 +240,7 @@ pub(super) fn see(args: &Value) -> Result<()> {
         }
     }
     for (key, choices) in [
-        ("mode", "model|content|outline"),
+        ("mode", "model|content|outline|audit"),
         ("extract", "auto|json|links|forms"),
         ("logs", "console|network"),
         ("format", "text|json"),

@@ -241,8 +241,13 @@ impl Page {
         // Attach to the NEW target FIRST. The old code detached
         // the current session first — if the attach then failed,
         // the session was detached from everything (bricked).
-        let new_page = self.attach_tab_target(target_id).await?;
+        let mut new_page = self.attach_tab_target(target_id).await?;
         new_page.activate().await?;
+        // An emulated viewport follows the session to the new tab.
+        if let Some(spec) = self.viewport {
+            super::viewport::apply(&new_page.cdp, &spec).await?;
+            new_page.viewport = Some(spec);
+        }
         // New session attached — now detach the OLD one (pipe
         // mode) so only one session stays attached. Failure
         // here is harmless (two sessions attached briefly).

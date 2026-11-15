@@ -26,7 +26,7 @@ pub(crate) fn parse_see_args(args: &[String]) -> Result<Value> {
         };
         if let Some(flag) = long.strip_prefix("--") {
             match flag {
-                "filter" | "find" | "logs" | "scope" | "artifact" | "sort" => {
+                "filter" | "find" | "logs" | "scope" | "artifact" | "sort" | "links" => {
                     let v = take_value(args, &mut i, flag)?;
                     j[flag] = json!(v);
                 }
@@ -39,9 +39,9 @@ pub(crate) fn parse_see_args(args: &[String]) -> Result<Value> {
                     }
                     j["format"] = json!(v);
                 }
-                "budget" | "limit" | "offset" => {
+                "budget" | "limit" | "offset" | "min-target" | "max-links" => {
                     let v: u64 = take_num(args, &mut i, flag)?;
-                    j[flag] = json!(v);
+                    j[flag.replace('-', "_")] = json!(v);
                 }
                 "extract" => {
                     let v = take_value(args, &mut i, flag)?;
@@ -60,7 +60,9 @@ pub(crate) fn parse_see_args(args: &[String]) -> Result<Value> {
                     j["template"] = tpl;
                 }
                 "url" => url = Some(take_value(args, &mut i, flag)?),
-                "content" | "clear" | "preview" | "items" | "changes" => j[flag] = json!(true),
+                "content" | "clear" | "preview" | "items" | "changes" | "full" => {
+                    j[flag] = json!(true)
+                }
                 _ => {
                     return Err(BladeError::Usage(format!(
                         "unknown flag --{flag} for see — see 'bladebro help see'"
@@ -69,7 +71,8 @@ pub(crate) fn parse_see_args(args: &[String]) -> Result<Value> {
             }
         } else if a == "extract" {
             extract_pending = true;
-        } else if matches!(a.as_str(), "model" | "content" | "outline") && mode.is_none() {
+        } else if matches!(a.as_str(), "model" | "content" | "outline" | "audit") && mode.is_none()
+        {
             mode = Some(a);
         } else if extract_pending
             && extract_type.is_none()
@@ -85,7 +88,7 @@ pub(crate) fn parse_see_args(args: &[String]) -> Result<Value> {
             url = Some(a);
         } else {
             return Err(BladeError::Usage(format!(
-                "unrecognized argument '{a}' — expected a mode (model|content|outline), \
+                "unrecognized argument '{a}' — expected a mode (model|content|outline|audit), \
                  'extract <auto|links|forms|json>', or a URL. See 'bladebro help see'"
             )));
         }

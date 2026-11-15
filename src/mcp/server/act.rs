@@ -246,6 +246,37 @@ pub async fn handle_fill(args: &Value, page: &mut Page) -> Result<String> {
     ))
 }
 
+/// `act viewport`: device-metrics emulation, or `reset`. Reports the page's own
+/// readback, never just the request (honest verdicts).
+async fn handle_viewport(args: &Value, page: &mut Page) -> Result<String> {
+    use crate::page::viewport::{describe, parse_args, ViewportRequest};
+    match parse_args(args)? {
+        ViewportRequest::Set(spec) => {
+            let (w, h, dpr) = page.set_viewport(spec).await?;
+            let _ = page.recapture().await;
+            let verdict = if w == spec.width as u64 && h == spec.height as u64 {
+                "verified"
+            } else {
+                "MISMATCH - the page reports a different size"
+            };
+            Ok(format!(
+                "viewport set: {}\npage reports innerWidth={w} innerHeight={h} devicePixelRatio={dpr} ({verdict})\npersists across navigations until `act viewport --reset`; vision screenshots reflect it",
+                describe(&spec)
+            ))
+        }
+        ViewportRequest::Reset => {
+            let had = page.viewport();
+            let (w, h, dpr) = page.reset_viewport().await?;
+            let _ = page.recapture().await;
+            Ok(format!(
+                "viewport reset ({}); page reports innerWidth={w} innerHeight={h} devicePixelRatio={dpr}",
+                had.map(|s| format!("was {}", describe(&s)))
+                    .unwrap_or_else(|| "no override was active".into())
+            ))
+        }
+    }
+}
+
 pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
     super::validate::act(args)?;
     let action_str = args.get("action").and_then(|a| a.as_str()).unwrap_or("");
@@ -452,6 +483,7 @@ pub async fn handle_act(args: &Value, page: &mut Page) -> Result<String> {
             };
             return handle_eval(page, js, &eval_ref, eval_json).await;
         }
+        "viewport" => return handle_viewport(args, page).await,
         "pdf" => {
             // V20: export the current page as a PDF artifact.
             return handle_pdf(page, args).await;

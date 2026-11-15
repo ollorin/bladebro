@@ -614,9 +614,57 @@ mod tests {
     }
 
     #[test]
+    fn act_viewport_flags_reach_the_shared_handler_schema() {
+        let v = parse_act_args(&a(&[
+            "viewport", "--width", "375", "--height", "800", "--dpr", "2", "--mobile",
+        ]))
+        .unwrap();
+        assert_eq!(v["action"], "viewport");
+        assert_eq!(v["width"], 375);
+        assert_eq!(v["height"], 800);
+        assert_eq!(v["dpr"], 2.0);
+        assert_eq!(v["mobile"], true);
+        let r = parse_act_args(&a(&["viewport", "--reset"])).unwrap();
+        assert_eq!(r["reset"], true);
+    }
+
+    #[test]
+    fn see_audit_mode_and_flags_parse() {
+        let v = parse_see_args(&a(&[
+            "audit",
+            "--full",
+            "--min-target",
+            "44",
+            "--links",
+            "off",
+            "--max-links",
+            "5",
+            "--limit",
+            "3",
+        ]))
+        .unwrap();
+        assert_eq!(v["mode"], "audit");
+        assert_eq!(v["full"], true);
+        assert_eq!(v["min_target"], 44);
+        assert_eq!(v["links"], "off");
+        assert_eq!(v["max_links"], 5);
+        assert_eq!(v["limit"], 3);
+    }
+
+    #[test]
     fn vision_only_takes_marks() {
         assert_eq!(parse_vision_args(&a(&["--marks"])).unwrap()["marks"], true);
         assert_eq!(parse_vision_args(&a(&[])).unwrap()["marks"], false);
+        assert_eq!(parse_vision_args(&a(&[])).unwrap()["full_page"], false);
+        assert_eq!(
+            parse_vision_args(&a(&["--full-page"])).unwrap()["full_page"],
+            true
+        );
+        assert_eq!(
+            parse_vision_args(&a(&["--viewport"])).unwrap()["full_page"],
+            false
+        );
+        assert!(parse_vision_args(&a(&["--full-page", "--viewport"])).is_err());
         assert!(parse_vision_args(&a(&["--bogus"])).is_err());
         assert!(parse_vision_args(&a(&["wat"])).is_err());
     }

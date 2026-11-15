@@ -72,6 +72,7 @@ pub const ACT_ACTIONS: &[&str] = &[
     "switch-tab",
     "save",
     "load",
+    "viewport",
 ];
 
 /// The mistake a fresh agent actually makes: `{"action":"url"}` — a step

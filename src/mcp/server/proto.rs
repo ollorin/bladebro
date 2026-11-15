@@ -145,13 +145,11 @@ pub async fn handle_tools_call(
                 }
                 text.push_str(&format!("\u{26a0} {}\n", a));
             }
-            Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "content": [{ "type": "text", "text": text }]
-                }
-            }))
+            let mut result = json!({ "content": [{ "type": "text", "text": text }] });
+            if let Some(v) = super::eval::structured_value(&args, &text) {
+                result["structuredContent"] = v;
+            }
+            Ok(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
         }
         // Propagate Closed so serve() can self-heal (relaunch Chrome
         // and retry the tool call). The agent never sees this error.

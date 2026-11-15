@@ -40,7 +40,7 @@ pub fn all_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: "act",
-            description: "Interact; returns verified verdict + page delta. navigate includes refs/content. Address by ref > text > label > selector > x,y. Refs survive re-renders but require refresh after navigation/tab switch. Equally ranked text/label matches refuse; choose ref/selector/nth. Popup clicks keep the opener active; switch-tab explicitly to use the popup.\nfill requires fields=[{ref|label|selector,text|option|check}], with optional submit (ref/text). type replaces and verifies text, including rich editors; press with ref/label/selector focuses first, otherwise uses current focus. type+press=Enter submits after typing.\nwait: text= means page text; selector= waits for visible CSS across shadows/frames; condition=element matches visible role/text; title/url match text; js evaluates js= (legacy text=); settle waits DOM quiet; network waits 300ms with no tracked requests (long-lived streams excluded). Timeout is integer seconds, 0-3600.\nbatch runs sequential actions plus see/extract reads; optional:true continues on failure. slim=true omits successful action models throughout batch/run, retaining reads and error recovery. url= navigates first except download/state ops. paginate(next,max,extract) reads/clicks across pages; collect(max) scrolls a feed. download normally saves browser attachments; body=true saves an HTTP body without browser cookies. eval returns result: <JSON>, statements/IIFEs supported; format=json gives a bare value or artifact envelope. dialog arms one bounded, one-use answer before triggering it.\nErrors carry page state once. trusted:false means untrusted fallback. degraded:true means a client deadline/transport failure, not proof Chrome is dead; observe the destination before repeating input. A quiet dispatched click is never replayed.",
+            description: "Interact; returns verified verdict + page delta. navigate includes refs/content. Address by ref > text > label > selector > x,y. Refs survive re-renders but require refresh after navigation/tab switch. Equally ranked text/label matches refuse; choose ref/selector/nth. Popup clicks keep the opener active; switch-tab explicitly to use the popup.\nfill requires fields=[{ref|label|selector,text|option|check}], with optional submit (ref/text). type replaces and verifies text, including rich editors; press with ref/label/selector focuses first, otherwise uses current focus. type+press=Enter submits after typing.\nwait: text= means page text; selector= waits for visible CSS across shadows/frames; condition=element matches visible role/text; title/url match text; js evaluates js= (legacy text=); settle waits DOM quiet; network waits 300ms with no tracked requests (long-lived streams excluded). Timeout is integer seconds, 0-3600.\nbatch runs sequential actions plus see/extract reads; optional:true continues on failure. slim=true omits successful action models throughout batch/run, retaining reads and error recovery. url= navigates first except download/state ops. paginate(next,max,extract) reads/clicks across pages; collect(max) scrolls a feed. download normally saves browser attachments; body=true saves an HTTP body without browser cookies. eval returns result: <JSON>, statements/IIFEs supported; format=json gives a bare value or artifact envelope; object/array results also arrive as structuredContent (CLI --json: data). viewport width+height[,dpr,mobile] emulates a persistent viewport (across navigations/tabs) until reset=true. dialog arms one bounded, one-use answer before triggering it.\nErrors carry page state once. trusted:false means untrusted fallback. degraded:true means a client deadline/transport failure, not proof Chrome is dead; observe the destination before repeating input. A quiet dispatched click is never replayed.",
             input_schema: json!({
                 "type": "object",
                 "required": ["action"],
@@ -110,20 +110,25 @@ pub fn all_tools() -> Vec<ToolDef> {
                     "path": {"type": "string", "description": "PDF: output path."},
                     "landscape": {"type": "boolean"},
                     "printBackground": {"type": "boolean"},
-                    "scale": {"type": "number"}
+                    "scale": {"type": "number"},
+                    "width": {"type": "integer", "description": "Viewport: CSS px, 100-10000."},
+                    "height": {"type": "integer", "description": "Viewport: CSS px, 100-10000."},
+                    "dpr": {"type": "number", "description": "Viewport device scale factor, 0.5-5 (default 1)."},
+                    "mobile": {"type": "boolean", "description": "Viewport: emulate a mobile device."},
+                    "reset": {"type": "boolean", "description": "Viewport: remove the emulation."}
                 }
             }),
         },
         ToolDef {
             name: "see",
-            description: "Read: mode=model lists interactive refs, content returns rendered markdown, outline headings. extract=auto detects list/search/product/site fields; preview=true samples the container/schema without rows. Reddit post extraction attempts the full comment tree; complete/partial and fallback notes disclose API denial or missing replies; displayed scores are fuzzed_score. sort= overrides the active/page-URL sort. Opaque redirect URLs are flagged, never guessed. extract=json uses a template; links/forms are basic reads. find locates text; scope narrows reads. logs=console reads the current document; network resets on navigation; clear=true reads then clears that log.\nformat=json returns valid JSON: payload, {data,note}, or {artifact,bytes,next_offset:0} (zero means start reading). Default artifact pages contain character chunks: parse each envelope, concatenate its data strings, then parse the complete payload. With items=true, offset/limit address rows of an array or items/data array and each items page is independently usable. next_offset=null ends paging. changes=true returns the model delta since its last capture (format=json gives structured fields); no historical call ledger. Large output offloads instead of silently truncating.",
+            description: "Read: mode=model lists interactive refs, content returns rendered markdown, outline headings. extract=auto detects list/search/product/site fields; preview=true samples the container/schema without rows. Reddit post extraction attempts the full comment tree; complete/partial and fallback notes disclose API denial or missing replies; displayed scores are fuzzed_score. sort= overrides the active/page-URL sort. Opaque redirect URLs are flagged, never guessed. extract=json uses a template; links/forms are basic reads. find locates text; scope narrows reads. logs=console reads the current document; network resets on navigation; clear=true reads then clears that log.\nformat=json returns valid JSON: payload, {data,note}, or {artifact,bytes,next_offset:0} (zero means start reading). Default artifact pages contain character chunks: parse each envelope, concatenate its data strings, then parse the complete payload. With items=true, offset/limit address rows of an array or items/data array and each items page is independently usable. next_offset=null ends paging. changes=true returns the model delta since its last capture (format=json gives structured fields); no historical call ledger. mode=audit is a read-only page audit: contrast, missing names/labels, duplicate ids, horizontal overflow, small touch targets, broken links; counts + top limit (default 5) findings per kind with selector and reason, full=true for all. Large output offloads instead of silently truncating.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "mode": {
                         "type": "string",
-                        "enum": ["model", "content", "outline"],
-                        "description": "model (default): interactive elements with refs. content: page text as markdown for reading. outline: headings only, ultra-minimal."
+                        "enum": ["model", "content", "outline", "audit"],
+                        "description": "model (default): interactive elements with refs. content: page text as markdown for reading. outline: headings only, ultra-minimal. audit: accessibility/layout findings."
                     },
                     "filter": {"type": "string", "description": "Filter by role/name (comma-separated). model mode only."},
                     "content": {"type": "boolean", "description": "Include page's visible text. model mode only. Use mode=content instead for clean markdown."},
@@ -145,6 +150,10 @@ pub fn all_tools() -> Vec<ToolDef> {
                     "budget": {"type": "integer", "description": "Max chars in response. Default 8000."},
                     "artifact": {"type": "string", "description": "Read a previously offloaded payload from disk, paged. Pass the full payload path from a previous response; offset/limit are char-based (defaults 0 and 20000). With format=json each envelope is valid JSON; data is a text chunk, concatenate before parsing. items=true pages array rows."},
                     "offset": {"type": "integer", "description": "Artifact read: start char. Default 0."},
+                    "full": {"type": "boolean", "description": "audit: every finding, not the top limit."},
+                    "min_target": {"type": "integer", "description": "audit: minimum touch target, CSS px (default 24, WCAG 2.2)."},
+                    "links": {"type": "string", "enum": ["same-origin", "off", "all"], "description": "audit link check scope (default same-origin; all adds cross-origin from the driver)."},
+                    "max_links": {"type": "integer", "description": "audit: links checked, default 20, max 200."},
                     "format": {"type": "string", "enum": ["text", "json"], "description": "text (default) | json — pure JSON output for extract= and artifact= reads (zero preamble; never truncated JSON)."}
                 }
             }),
@@ -209,7 +218,8 @@ State ops (open-tab, save, load, etc.) also work as steps in batch and run.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "marks": {"type": "boolean", "description": "Overlay numbered ref badges on visible elements."}
+                    "marks": {"type": "boolean", "description": "Overlay numbered ref badges on visible elements."},
+                    "full_page": {"type": "boolean", "description": "Capture the whole scrollable page, not just the viewport (default). The result says which."}
                 }
             }),
         },
