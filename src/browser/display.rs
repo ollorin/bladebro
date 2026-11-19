@@ -70,21 +70,36 @@ impl VirtualDisplay {
                 continue;
             };
             let auth_arg = auth_file.to_string_lossy().into_owned();
-            let child = Command::new(xvfb_path)
-                .args([
-                    &format!(":{display_num}"),
-                    "-screen",
-                    "0",
-                    &format!("{XVFB_SCREEN_WIDTH}x{XVFB_SCREEN_HEIGHT}x24"),
-                    "-auth",
-                    &auth_arg, // cookie-only access control (never -ac)
-                    "-nolisten",
-                    "tcp",
-                ])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
-            let mut child = match child {
+            let mut xvfb = Command::new(xvfb_path);
+            xvfb.args([
+                &format!(":{display_num}"),
+                "-screen",
+                "0",
+                &format!("{XVFB_SCREEN_WIDTH}x{XVFB_SCREEN_HEIGHT}x24"),
+                // Xvfb compiles VFB_DEFAULT_DPI = 100, which under an X11
+                // window manager (xfwm4/GTK) causes Chromium Ozone-X11 to
+                // derive devicePixelRatio = 1.046875 (67/64) and shrink CSS
+                // screen.width to 1835 while --window-size=1920,1080 opens a
+                // 1912px inner viewport (tripping inner-within-screen). Pin
+                // standard desktop 96 DPI so CSS pixels match display pixels.
+                "-dpi",
+                "96",
+                "-auth",
+                &auth_arg, // cookie-only access control (never -ac)
+                "-nolisten",
+                "tcp",
+            ])
+            // Out of the terminal's job: a background group reading it stops.
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+            // Out of bladebro's process group, so a Ctrl-C to the foreground
+            // job leaves the display up while the browser closes and flushes
+            // (it died with bladebro's group, and Chrome lost its display
+            // mid-close). Killed by the kernel when bladebro dies, so a
+            // SIGKILL that runs no Drop still takes it down, and Chrome
+            // exits on losing its display.
+            let mut child = match crate::platform::spawn_tied_to_process(xvfb) {
                 Ok(c) => c,
                 Err(e) => {
                     release_display_claim(display_num);
@@ -157,6 +172,21 @@ impl VirtualDisplay {
     }
 }
 
+/// The window manager the virtual display starts, when it is installed. One
+/// lookup shared by the lane and by `doctor`, so the diagnostic cannot pass a
+/// machine the lane would silently degrade on: with Xvfb but no WM the screen
+/// carries no decorations (`outerWidth == innerWidth`, `availHeight ==
+/// height`) — an Xvfb signature only the audit otherwise notices.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub(crate) fn window_manager() -> Option<String> {
+    for path in ["/usr/bin/xfwm4", "/usr/local/bin/xfwm4"] {
+        if std::path::Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+    find_in_path("xfwm4")
+}
+
 /// Start a window manager on the virtual display. An X screen with no WM has
 /// no work area at all: `screen.availHeight` equals `screen.height`,
 /// `outerWidth` equals `innerWidth` and windows carry no decorations — an
@@ -174,24 +204,18 @@ impl VirtualDisplay {
 /// Degrades silently when the tools are missing.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn spawn_session_chrome(display_num: u16, xauth: &std::path::Path) -> Option<Child> {
-    fn find_bin(name: &str, extra: &[&str]) -> Option<String> {
-        for path in extra {
-            if std::path::Path::new(path).exists() {
-                return Some((*path).to_string());
-            }
-        }
-        find_in_path(name)
-    }
-    let wm = find_bin("xfwm4", &["/usr/bin/xfwm4", "/usr/local/bin/xfwm4"]).and_then(|path| {
+    let wm = window_manager().and_then(|path| {
         let mut cmd = Command::new(path);
         cmd.args(["--compositor=off", "--replace"])
             .env("DISPLAY", format!(":{display_num}"))
             .env("XAUTHORITY", xauth)
             .env_remove("WAYLAND_DISPLAY")
             .env_remove("XDG_SESSION_TYPE")
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        cmd.spawn().ok()
+        // Same lifetime as Xvfb: survives the job's Ctrl-C, dies with bladebro.
+        crate::platform::spawn_tied_to_process(cmd).ok()
     });
     // Declare the taskbar after the WM owns the root and verify the read-back.
     // xfwm4 may still re-publish the full-screen area later (measured: it does
@@ -519,7 +543,21 @@ mod readiness_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let script = dir.join("fake-xvfb");
         let pids = dir.join("pids");
-        std::fs::write(&script, format!("#!/usr/bin/env python3\nimport os,time\nwith open({:?},'a') as f:f.write(str(os.getpid())+'\\n')\ntime.sleep(60)\n", pids.to_string_lossy())).unwrap();
+        // A shell fake records its pid within a few ms. The old python3 fake
+        // could take longer than the 500ms readiness deadline to start on a
+        // loaded machine; that attempt was killed before writing its pid,
+        // and the count assert below failed (2 of 3). `exec` keeps the
+        // recorded pid the process start_with_path spawns and reaps.
+        let pids_path = pids.to_str().unwrap();
+        assert!(
+            !pids_path.contains('\''),
+            "temp path must be shell-quotable"
+        );
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\necho $$ >> '{pids_path}'\nexec sleep 60\n"),
+        )
+        .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
         let result = VirtualDisplay::start_with_path(script.to_str().unwrap());
         let recorded = std::fs::read_to_string(&pids).unwrap();
@@ -589,5 +627,37 @@ mod readiness_tests {
         assert_eq!(socket_peer_pid(&client), Some(std::process::id()));
         drop(listener);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn xvfb_command_pins_96_dpi_and_cookie_auth() {
+        let dir = std::env::temp_dir().join(format!("blade-xvfb-argv-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("fake-xvfb");
+        let argv = dir.join("argv");
+        let argv_path = argv.to_str().unwrap();
+        assert!(!argv_path.contains('\''));
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{argv_path}'\nexit 1\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let _ = VirtualDisplay::start_with_path(script.to_str().unwrap());
+        let recorded: Vec<String> = std::fs::read_to_string(&argv)
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            recorded.windows(2).any(|w| w == ["-dpi", "96"]),
+            "Xvfb must pin 96 DPI for 1:1 CSS screen geometry, got {recorded:?}"
+        );
+        assert!(
+            !recorded.iter().any(|a| a == "-ac"),
+            "Xvfb must never disable Xauthority access control"
+        );
     }
 }

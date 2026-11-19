@@ -31,6 +31,7 @@ const OLD_ENUM: &[&str] = &[
     "save",
     "load",
     "block",
+    "compress",
 ];
 
 fn state() -> crate::mcp::tools::ToolDef {
@@ -108,8 +109,14 @@ fn no_new_state_property() {
             "classes",
             "clear",
             "domain",
+            "httpOnly",
+            "mode",
             "name",
             "op",
+            "path",
+            "sameSite",
+            "secure",
+            "slim",
             "target_id",
             "url",
             "value"

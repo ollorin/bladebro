@@ -1,76 +1,51 @@
-# Support matrix
+# Support Matrix
 
-What is verified, on which platform, by which instrument. Every claim below
-points at a re-runnable instrument; everything not verified is listed as a gap.
-No perfect claims. Last full local floor: 2026-10-14, bladebro 4.6.1
-(Chromium 154.0.8037.97; receipts `work/floor461/`).
+Current verification coverage by platform, browser engine, and runnable instrument. Current release: `4.6.9` (verified locally on Arch Linux x86_64 with Chromium `157.0.8103.38` and pinned `rustc 1.100.0`).
 
 ## Platforms
 
-| Platform | Build | Unit tests | Browser lifecycle | Stealth floor | Status |
-|---|---|---|---|---|---|
-| Linux x86_64 | local + CI (ubuntu) | local + CI | CI (dsh probe x2) + local lanes | audit 63/63, QoL 122/122, reliability 36/36, oracle, lanes 5x5 | full |
-| macOS (arm64/x86_64) | CI (macos) | CI | CI (dsh probe x2) | audit 52/52 (CI, 4.6.1); full local floor not run | CI-verified |
-| Windows x86_64 | CI (windows) | CI | CI (dsh probe x2) | audit 52/52 (CI, 4.6.1); full local floor not run | CI-verified |
+| Platform | Blocking CI (`ci.yml` / `gate.yml`) | Release & Runtime Coverage |
+|---|---|---|
+| Linux x86_64 | `fmt`, `clippy --release --all-targets -D warnings`, `cargo test --profile gate`, MSRV `1.86.0` check | glibc `2.28` `zigbuild` + ABI check + binary smoke in `release.yml`; parallel Chrome suite in `probes.yml`; full local probe floor + `diff_oracle` on both lanes |
+| Linux ARM64 | Cross `cargo check --all-targets` (`zig cc`) | glibc `2.28` `zigbuild` + ABI check in `release.yml`; physical ARM64/Raspberry Pi browser runtime not run |
+| macOS Apple Silicon (`darwin-arm64`) | Native `cargo check --all-targets`, unit tests (`--lib`), `cargo build --release` on `macos-26` | Native `macos-26` release binary in `release.yml` |
+| macOS Intel (`darwin-x64`) | Cross `cargo check --all-targets` | Built on `macos-26` (`--target x86_64-apple-darwin`) in `release.yml`; not executed natively (`macos-26-intel` wedges headful Chrome in `ISIconManager` XPC) |
+| Windows x86_64 | Cross `cargo check --all-targets` + native check, unit tests (`--lib`), and `cargo build --release` on `windows-latest` | `zigbuild` PE binary in `release.yml` |
+| Android (`aarch64-linux-android`) | Source compile check (`ci.yml` NDK job) | Source-level `cfg` guard only; no binary published and no runtime claim |
 
-CI (`.github/workflows/ci.yml`) per OS: `cargo fmt --check`,
-`cargo clippy --release -- -D warnings`, `cargo test --release`,
-`cargo build --release`, then the DSH npm-package integration twice with the
-real native binary driving a browser (Node 24), and — since 4.6.1 —
-`bladebro audit`: the stealth vector suite through a real browser, exit-code
-gated (any FAIL fails the job; 4.6.1: ubuntu 55/55, macOS 52/52, Windows
-52/52). Linux CI installs Google
-Chrome stable + xvfb; macOS/Windows use the runner's Chrome. A separate msrv
-job checks Rust 1.86.0 (`cargo check --locked --all-targets`).
+## Browser Engines
 
-## Engines
-
-| Engine | Evidence |
+| Engine | Verified scope |
 |---|---|
-| Chromium 154 (this machine's /usr/sbin/chromium) | full local floor + acceptance probes |
-| Google Chrome stable (CI Linux; runner Chrome on macOS/Windows) | CI tests + lifecycle x2 per OS |
-| Other Chromium forks (Helium, Brave, Edge) | not verified |
+| Chromium `157` (Arch Linux x86_64) | Full local verification floor (`audit`, `diff_oracle` agent + real lanes, `qol_probe`, `lane_matrix`, `gap44`, `reliability_probe`) |
+| Google Chrome Stable (Ubuntu CI) | Parallel `probes.yml` browser jobs (`audit`, `qol`, `lanes`, `gap44`, `reliability`) |
+| Flatpak `org.chromium.Chromium` (`1.18.4` x86_64) | Discovery, sandboxed launch, host persistence, upload staging, download, and teardown verified on Linux x86_64 |
+| Chromium forks (Brave, Helium, Edge, Vivaldi, Opera) | Discovery, wrapper/AppImage PID ownership, and clone unit/integration fixtures (`tools/rb_live/helium.py` available for manual Helium runs) |
 
-## Feature to instrument
+## Feature-to-Instrument Map
+
+See [tools/README.md](tools/README.md) for exact invocations and pass criteria.
 
 | Area | Instrument |
 |---|---|
-| Trusted input (isTrusted, paused wrapper) | `tools/qol_probe/run.py` + `tools/gap44/probe.py` |
-| Addressing (selector/text/nth/scope, options, labels) | `tools/qol_probe/run.py` + G01 in `tools/gap44/probe.py` |
-| Wait/readiness contract | `tools/qol_probe/run.py` + G02 in `tools/gap44/probe.py` |
-| Dialog expectations | G03 in `tools/gap44/probe.py` |
-| Content reads, outline, template extraction | `tools/qol_probe/run.py` + G06 in `tools/gap44/probe.py` |
-| Product/offer extraction | `cargo test --release` (`mcp/server/extract` tests) |
-| Document/PDF paths | G08 in `tools/gap44/probe.py` |
-| Outcome wording, state readbacks | `cargo test --release` (verdict tests) + G01 in `tools/gap44/probe.py` |
-| Geometry coherence, WebRTC under proxy | `tools/gap44/webrtc_proxy.py` |
-| Proxy credential redaction | `cargo test --release` (`browser/proxy` tests) + G13 in `tools/gap44/probe.py` |
-| Updater retries, install integrity | `cargo test --release` (`updater` tests) |
-| Stealth posture | `bladebro audit` (63 vectors, stable across runs, exits non-zero on any FAIL since 4.6.1) |
-| Stock-parity (page-visible differences) | `tools/diff_oracle/oracle.py` |
-| Cold start, all 5 lanes, owned-process hygiene | `tools/lane_matrix.py all 5` |
-| Real-browser lane attachment | `tools/rb_live/attach_drift.py` (run when the lane changes) |
-| npm packaging, MCP over the package | `tools/dsh_probe/` (CI) + `scripts/publish-npm.sh` verify step |
+| Tool schemas, preflight validation, `run` plans, JSON notices | `tools/reliability_probe/agent_contract.py` + `cargo test --profile gate` |
+| Live control inspection (`act read`), option labels, `run format=json` | `tools/reliability_probe/agent_ux.py` |
+| Graceful shutdown storage flush, EOF, forked-launcher teardown | `tools/reliability_probe/persistence.py` + `tools/reliability_probe/browser-setup.py` |
+| Trusted input, framework editors, shadow DOM, `rb pause`, scoped reads | `tools/qol_probe/run.py` |
+| Addressing, readiness waits, dialogs, templates, PDFs, proxy redaction | `tools/gap44/probe.py` + `cargo test --profile gate` |
+| Cross-origin and `body: true` downloads | `tools/reliability_probe/download.py` |
+| Geometry coherence & fail-closed WebRTC under proxy | `tools/gap44/webrtc_proxy.py` |
+| Stealth vectors & cross-restart stamp stability | `bladebro audit` |
+| Stock-Chrome page parity (`agent` and `real` lanes) | `tools/diff_oracle/oracle.py` (`--lane real` for zero-mask parity) |
+| Cold-start stability across all 5 lanes | `tools/lane_matrix.py all 5` |
+| Real-browser attach → agent-lane switch | `tools/rb_live/attach_drift.py` |
+| Linux glibc ≤ `2.28` symbol gate | `tools/reliability_probe/linux-abi.py` |
+| npm / Cordis / Pi / Hermes host bridges | `tools/dsh_probe/`, `tools/reliability_probe/pi-stdio.mjs`, `tests/hermes_cli.rs`, `tools/hermes_probe/` |
 
-## Not verified (gaps)
+## Unverified Gaps
 
-- Stealth floor on macOS/Windows: the CI audit step (since 4.6.1) runs the
-  full vector suite through a real browser on each — but the larger local
-  floor (QoL, reliability, lanes, oracle) still runs on Linux only.
-- Real-network proxies and proxy chains: G10 evidence uses a local forward
-  proxy; behavior behind commercial proxies is untested.
-- Other Chromium forks (Helium and friends): untested, not claimed.
-- Scanned/image PDFs: out of scope by design (download hands the bytes to
-  host tooling; no OCR layer in the driver).
-
-## Re-run
-
-```bash
-cargo fmt --check && cargo clippy --release -- -D warnings && cargo test --release
-./target/release/bladebro audit
-python3 tools/qol_probe/run.py
-python3 tools/diff_oracle/oracle.py
-python3 tools/lane_matrix.py all 5
-python3 tools/gap44/probe.py 1 && python3 tools/gap44/probe.py 2
-python3 tools/gap44/webrtc_proxy.py
-```
+- **Remote `oracle` job in `probes.yml`**: currently fails on GitHub's Ubuntu runner before comparison starts (`stock Chrome debug endpoint did not come up`); verified locally on Linux x86_64.
+- **macOS & Windows live browser probes**: `gate.yml` runs native compile, unit tests, and release linking on `macos-26` and `windows-latest`; the live browser probe suite (`probes.yml`) runs on Linux only.
+- **Physical ARM64 / Raspberry Pi & SteamOS/Silverblue hosts**: covered by cross-builds, ABI checks, host-selector unit tests, and x86_64 Flatpak runs, not physical device runs.
+- **Commercial upstream proxies & non-stock fork GUIs**: proxy tests use local forward proxies; non-Chromium forks outside manual Helium runs are covered by discovery/ownership fixtures rather than full GUI suites.
+- **`SharedWorker` stealth scope & scanned PDFs**: `SharedWorker` globals remain native by design to avoid breaking module/shared workers; scanned image PDFs have no in-driver OCR (`act download` hands raw bytes to the caller).

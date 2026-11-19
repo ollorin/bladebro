@@ -18,29 +18,6 @@ use crate::page::Page;
 #[cfg(unix)]
 use serde_json::{json, Value};
 
-/// Wait for a termination signal (SIGTERM/SIGINT/SIGHUP on Unix, Ctrl+C on Windows).
-/// Same as the MCP server's signal handler.
-#[cfg(unix)]
-async fn wait_for_shutdown_signal() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        // Only catch SIGTERM and SIGINT. NOT SIGHUP — SIGHUP is sent
-        // when the parent process exits, which would kill the daemon
-        // immediately after the first CLI command. Daemons ignore SIGHUP.
-        let mut term = signal(SignalKind::terminate()).ok();
-        let mut int = signal(SignalKind::interrupt()).ok();
-        tokio::select! {
-            _ = async { if let Some(s) = &mut term { s.recv().await } else { std::future::pending().await } } => {}
-            _ = async { if let Some(s) = &mut int { s.recv().await } else { std::future::pending().await } } => {}
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tokio::signal::ctrl_c().await;
-    }
-}
-
 /// Best-effort daemon restart so a lane switch takes effect immediately:
 /// a running daemon holds the OLD lane's browser. Unix only (daemon mode is).
 pub(super) async fn restart_daemon_for_lane() {
@@ -50,6 +27,26 @@ pub(super) async fn restart_daemon_for_lane() {
             let _ = stop_daemon().await;
         }
     }
+}
+
+/// Stop the daemon before the clone template is replaced or wiped, and FAIL
+/// when it does not stop. Unlike a lane switch (which running surfaces pick
+/// up at their next action), a daemon left running here keeps its clone
+/// session: on exit it copies the stale clone back over a refresh, or keeps
+/// its browser running inside a wiped root. Unix only (daemon mode is).
+pub(super) async fn stop_daemon_for_clone_change() -> Result<()> {
+    #[cfg(unix)]
+    {
+        if daemon_running() {
+            stop_daemon().await.map_err(|e| {
+                BladeError::Other(format!(
+                    "the daemon did not stop ({e}) — its clone session would outlive this \
+                     change. Run `bladebro stop`, then retry."
+                ))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// Start the CLI daemon: persistent Chrome + Unix socket server.
@@ -62,6 +59,10 @@ pub async fn run_daemon() -> Result<()> {
     // Ignore SIGHUP — the daemon must survive the parent CLI exiting.
     #[cfg(unix)]
     ignore_sighup();
+    // SIGTERM/SIGINT listeners for the daemon's whole lifetime (not SIGHUP,
+    // see above). Registered before anything can keep the daemon busy, so
+    // a signal that lands mid-request or mid-launch is buffered, not lost.
+    let mut signals = crate::platform::ShutdownSignals::new(false);
 
     let path = socket_path();
     // Hold an OS lock for the daemon lifetime. A connect/remove/bind sequence
@@ -155,8 +156,11 @@ pub async fn run_daemon() -> Result<()> {
 
     loop {
         tokio::select! {
-            // Graceful shutdown on SIGTERM/SIGINT/SIGHUP.
-            _ = wait_for_shutdown_signal() => {
+            // Graceful shutdown on SIGTERM/SIGINT — checked first, so a
+            // signal buffered during the last request ends the loop before
+            // another connection is served.
+            biased;
+            _ = signals.recv() => {
                 eprintln!("[bladebro] termination signal \u{2014} shutting down Chrome gracefully");
                 break;
             }
@@ -185,10 +189,11 @@ pub async fn run_daemon() -> Result<()> {
                 // dies mid-request) must not stall the whole daemon — accepts,
                 // signals and the idle timer all sit behind this await.
                 let read = tokio::select! {
-                    _ = wait_for_shutdown_signal() => break,
+                    biased;
+                    _ = signals.recv() => break,
                     read = tokio::time::timeout(
                     std::time::Duration::from_secs(30),
-                    crate::framing::read_until_limited(&mut reader, b'\n', &mut input, 8 * 1024 * 1024),
+                    crate::framing::read_until_limited(&mut reader, b'\n', &mut input, MAX_REQUEST_BYTES),
                 )
                     => read,
                 };
@@ -228,6 +233,17 @@ pub async fn run_daemon() -> Result<()> {
                     break;
                 }
 
+                // The command's own lane/settings vs this daemon's (see
+                // `refusal`). Refused, not relaunched: the live browser may
+                // hold another command stream's page state.
+                if let Some(why) = refusal(&req) {
+                    let resp = json!({ "ok": false, "error": why });
+                    let resp_str = serde_json::to_string(&resp).unwrap_or_default();
+                    let _ = reader.get_mut().write_all(resp_str.as_bytes()).await;
+                    let _ = reader.get_mut().write_all(b"\n").await;
+                    continue;
+                }
+
                 // Lazy launch + self-heal + lane/settings drift (same as the
                 // MCP server): a running browser belongs to the lane it was
                 // launched on, so `rb on|off` (or a hand-edited config) must
@@ -265,7 +281,7 @@ pub async fn run_daemon() -> Result<()> {
                         );
                         if let Some(b) = browser.take() {
                             crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
-                            let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+                            b.shutdown_gracefully().await;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     } else if drifted {
@@ -311,7 +327,14 @@ pub async fn run_daemon() -> Result<()> {
                 // Dispatch.
                 let result = {
                     let p = page.as_mut().unwrap();
-                    dispatch(tool, &args, p).await
+                    dispatch_or_shutdown(&mut signals, tool, &args, p).await
+                };
+                let Some(result) = result else {
+                    eprintln!("[bladebro] termination signal during a command \u{2014} cancelled it; shutting down Chrome gracefully");
+                    let resp_str = serde_json::to_string(&cancelled_by_signal()).unwrap_or_default();
+                    let _ = reader.get_mut().write_all(resp_str.as_bytes()).await;
+                    let _ = reader.get_mut().write_all(b"\n").await;
+                    break;
                 };
 
                 // GL cadence revalidation (see `Page::gl_health_refresh`):
@@ -349,11 +372,13 @@ pub async fn run_daemon() -> Result<()> {
                     }
                 };
 
+                let mut cancelled = false;
                 let resp = match result {
                     Ok(r) => json!({
                         "ok": true,
                         "text": with_notes(r.text),
                         "image": r.image,
+                        "image_path": r.image_path,
                         "is_error": r.is_error,
                     }),
                     Err(BladeError::Closed) => {
@@ -361,7 +386,7 @@ pub async fn run_daemon() -> Result<()> {
                         eprintln!("[bladebro] browser closed during tool call, reconnecting...");
                         if let Some(b) = browser.take() {
                             crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
-                            let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+                            b.shutdown_gracefully().await;
                         }
                         page = None;
                         match launch_browser().await {
@@ -374,14 +399,19 @@ pub async fn run_daemon() -> Result<()> {
                                 let p = page.as_mut().unwrap();
                                 if !crate::mcp::server::retry_safe(tool, &args) {
                                     json!({"ok":false,"error":"Browser connection lost mid-action; outcome UNKNOWN. Chrome restarted. Inspect the destination before repeating the action."})
-                                } else { match dispatch(tool, &args, p).await {
-                                    Ok(r) => json!({
+                                } else { match dispatch_or_shutdown(&mut signals, tool, &args, p).await {
+                                    Some(Ok(r)) => json!({
                                         "ok": true,
                                         "text": with_notes(r.text),
                                         "image": r.image,
+                                        "image_path": r.image_path,
                                         "is_error": r.is_error,
                                     }),
-                                    Err(e) => json!({ "ok": false, "error": e.to_string() }),
+                                    Some(Err(e)) => json!({ "ok": false, "error": e.to_string() }),
+                                    None => {
+                                        cancelled = true;
+                                        cancelled_by_signal()
+                                    }
                                 } }
                             }
                             Err(e) => json!({ "ok": false, "error": format!("reconnect failed: {e}") }),
@@ -393,6 +423,10 @@ pub async fn run_daemon() -> Result<()> {
                 let resp_str = serde_json::to_string(&resp).unwrap_or_default();
                 let _ = reader.get_mut().write_all(resp_str.as_bytes()).await;
                 let _ = reader.get_mut().write_all(b"\n").await;
+                if cancelled {
+                    eprintln!("[bladebro] termination signal during a command \u{2014} cancelled it; shutting down Chrome gracefully");
+                    break;
+                }
 
                 last_activity = std::time::Instant::now();
             }
@@ -411,8 +445,8 @@ pub async fn run_daemon() -> Result<()> {
                                 if let Err(e) = crate::logins::snapshot(p.cdp_ref()).await { eprintln!("[bladebro] login snapshot failed: {e}"); }
                             }
                         }
-                        crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
-                        let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+                            crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
+                        b.shutdown_gracefully().await;
                     }
                     page = None;
                 }
@@ -454,7 +488,7 @@ pub async fn run_daemon() -> Result<()> {
         }
     }
     if let Some(b) = browser {
-        let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+        b.shutdown_gracefully().await;
     }
     // Flush the knowledge base before exit (consent, visits, timing, risk).
     if let Ok(mut kb) = knowledge.lock() {
@@ -471,6 +505,35 @@ pub async fn run_daemon() -> Result<()> {
     }
     eprintln!("[bladebro] daemon stopped");
     Ok(())
+}
+
+/// Run one command unless a termination signal arrives first (`None`).
+/// Cancel rather than finish: `bladebro stop` on a busy daemon and a
+/// service manager both escalate to SIGKILL after a short grace, and a long
+/// command (a navigate to a slow server) would outlive it, forfeiting the
+/// graceful Chrome flush the signal is meant to trigger.
+#[cfg(unix)]
+async fn dispatch_or_shutdown(
+    signals: &mut crate::platform::ShutdownSignals,
+    tool: &str,
+    args: &Value,
+    page: &mut Page,
+) -> Option<Result<super::ToolResult>> {
+    tokio::select! {
+        biased;
+        _ = signals.recv() => None,
+        result = dispatch(tool, args, page) => Some(result),
+    }
+}
+
+/// The reply to a command cut short by a termination signal. Its effect is
+/// unknowable: a click/submit may already have landed.
+#[cfg(unix)]
+fn cancelled_by_signal() -> Value {
+    json!({
+        "ok": false,
+        "error": "daemon shutting down (termination signal): the command was cancelled mid-flight and its outcome is UNKNOWN. Inspect the destination before repeating it (the next command starts a fresh daemon).",
+    })
 }
 
 #[cfg(not(unix))]
@@ -506,11 +569,141 @@ async fn launch_browser() -> Result<(Page, Option<crate::browser::Browser>)> {
         Err(e) => {
             // Clean up a browser we launched (attach lane: never ours).
             if let Some(b) = browser {
-                let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+                b.shutdown_gracefully().await;
             }
             Err(e)
         }
     }
+}
+
+// ── Per-command settings ────────────────────────────────────────────────
+
+/// Largest request line (newline included) the daemon reads; a longer one
+/// is dropped mid-read. The CLI checks against the same number before
+/// sending, so an oversized command fails with a reason instead.
+#[cfg(unix)]
+pub(super) const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
+
+/// Settings a command sets through its environment that the DAEMON reads
+/// from its own — inherited from whichever command auto-started it, or the
+/// shell that ran `bladebro daemon`: the browser binary, network identity,
+/// fingerprint, profile, and how results are shaped. A command that sets
+/// one differently would otherwise run silently with the daemon's value.
+/// Not listed: where the daemon lives (BLADE_HOME/XDG_*: another value is
+/// another daemon), client-side knobs (BLADE_CMD_TIMEOUT, BLADE_PLAIN),
+/// daemon lifecycle (BLADE_IDLE_TIMEOUT), MCP-only (BLADE_TRANSPORT) and
+/// diagnostics. The lane (BLADE_LANE + `rb` config) travels separately as
+/// the command's resolved lane.
+#[cfg(unix)]
+const DAEMON_SCOPED_ENV: &[&str] = &[
+    "CHROME_PATH",
+    "BLADE_CHROME_FLAGS",
+    "BLADE_PROFILE_DIR",
+    "BLADE_FRESH",
+    "BLADE_INCOGNITO",
+    "BLADE_NO_WARMING",
+    "BLADE_PROXY",
+    "BLADE_LOCALE",
+    "BLADE_TZ",
+    "BLADE_GPU",
+    "BLADE_WEBGL",
+    "BLADE_MEDIA",
+    "BLADE_NOISE",
+    "BLADE_PERMS",
+    "BLADE_CONSENT",
+    "BLADE_PACE",
+    "BLADE_NO_COMPRESS",
+];
+
+#[cfg(unix)]
+fn lane_name(real: bool) -> &'static str {
+    if real {
+        "real"
+    } else {
+        "agent"
+    }
+}
+
+/// The request for one tool call: this command's resolved lane and the
+/// daemon-scoped settings it sets, so the daemon can refuse to serve it
+/// with different ones ([`settings_mismatch`]).
+#[cfg(unix)]
+pub(super) fn daemon_request(tool: &str, args: &Value) -> Value {
+    let env: serde_json::Map<String, Value> = DAEMON_SCOPED_ENV
+        .iter()
+        .filter_map(|&k| {
+            let v = std::env::var(k).ok().filter(|v| !v.is_empty())?;
+            Some((k.to_string(), Value::String(v)))
+        })
+        .collect();
+    json!({
+        "tool": tool,
+        "args": args,
+        "lane": lane_name(crate::realbrowser::real_lane()),
+        "env": env,
+    })
+}
+
+/// Why this daemon must not serve `req` (`None` = serve it): the command
+/// resolved another lane, or set a daemon-scoped variable to a value the
+/// daemon does not run with. Without this the daemon ran every command in
+/// ITS lane — `BLADE_LANE=agent bladebro nav bank.com` after `rb on` drove
+/// the user's real browser. A setting the command does not set is the
+/// daemon's (documented daemon-wide behavior); a request without the
+/// fields (an older CLI) is served as before. Values are compared, never
+/// echoed: BLADE_PROXY can carry credentials.
+#[cfg(unix)]
+fn settings_mismatch(
+    req: &Value,
+    daemon_real_lane: bool,
+    daemon_env: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let mut differ: Vec<String> = Vec::new();
+    if let Some(lane) = req.get("lane").and_then(Value::as_str) {
+        let ours = lane_name(daemon_real_lane);
+        if lane != ours {
+            differ.push(format!("lane (this command: {lane}, daemon: {ours})"));
+        }
+    }
+    if let Some(env) = req.get("env").and_then(Value::as_object) {
+        // Only the listed names: a request cannot make the daemon compare
+        // or name anything else from its environment.
+        for &k in DAEMON_SCOPED_ENV {
+            if let Some(v) = env.get(k).and_then(Value::as_str) {
+                if daemon_env(k).as_deref() != Some(v) {
+                    differ.push(k.to_string());
+                }
+            }
+        }
+    }
+    if differ.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "refused: this command's settings differ from the running daemon's — {}. Nothing was run. \
+         The daemon keeps the settings it was started with: run 'bladebro stop' and retry to \
+         restart it with this command's, or add --no-daemon to run just this command in its own \
+         browser.",
+        differ.join(", ")
+    ))
+}
+
+/// Why this daemon must not serve `req` ([`settings_mismatch`]), judged
+/// against the lane it would serve it in — `BLADE_LANE`, else the `rb`
+/// config, so an `rb on|off` since the last command counts. That lane is
+/// computed here, never switched: the lane flag describes the browser that
+/// is RUNNING, and the login snapshots (periodic, idle, shutdown) and the
+/// idle hum consult it until a served command relaunches. A refusal that
+/// switched it relabelled a live real-lane session as agent, so the
+/// `bladebro stop` the refusal recommends snapshotted the user's own
+/// cookies into the agent's logins.json.
+#[cfg(unix)]
+fn refusal(req: &Value) -> Option<String> {
+    let serving_lane = crate::realbrowser::lane_from(
+        std::env::var("BLADE_LANE").ok().as_deref(),
+        crate::realbrowser::config().enabled,
+    );
+    settings_mismatch(req, serving_lane, |k| std::env::var(k).ok())
 }
 
 // ── Daemon lifecycle helpers ───────────────────────────────────────────
@@ -559,55 +752,84 @@ fn looks_like_bladebro(pid: i32) -> bool {
     }
 }
 
+/// How long `stop` waits for the daemon to answer before terminating it.
+/// The daemon serves one connection at a time, so the stop request queues
+/// behind whatever it is running; this lets a short command finish first.
+#[cfg(unix)]
+const STOP_ANSWER_SECS: u64 = 10;
+
 /// Stop the daemon: graceful over the socket; idempotent when nothing runs.
 ///
 /// Reliability: if the socket is gone but the pid file says a daemon is
 /// alive (wedged, or SIGKILLed mid-cleanup), terminate it — otherwise
 /// `stop` would lie "not running" while an orphan Chrome kept running.
+/// A daemon that is still bound but does not answer within
+/// `STOP_ANSWER_SECS` (busy with a long command, or wedged) gets the same
+/// SIGTERM: the daemon cancels the command in flight and still tears down
+/// gracefully.
 #[cfg(unix)]
 pub async fn stop_daemon() -> Result<String> {
     use std::io::{Read, Write};
     use std::os::unix::net::UnixStream;
 
     let path = socket_path();
+    let mut unanswered = false;
 
     // Graceful path: a live daemon answers the stop command itself
     // (it flushes logins + knowledge before acknowledging).
     if let Ok(mut stream) = UnixStream::connect(&path) {
-        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(STOP_ANSWER_SECS)));
         writeln!(stream, "{{\"tool\":\"stop\"}}")?;
         stream.flush()?;
         let mut resp = String::new();
-        stream.read_to_string(&mut resp)?;
-        let response: Value = serde_json::from_str(resp.trim())?;
-        if response.get("ok").and_then(Value::as_bool) != Some(true) {
-            return Err(BladeError::Other(
-                "daemon did not acknowledge shutdown".into(),
-            ));
-        }
-        // Wait for the daemon to finish teardown — it removes the socket
-        // file last. Without this, an immediate second `stop` could connect
-        // to the dying daemon's still-bound socket and report "stopped"
-        // again instead of "not running".
-        for _ in 0..50 {
-            if !path.exists() {
-                break;
+        match stream.read_to_string(&mut resp) {
+            Ok(_) => {
+                let response: Value = serde_json::from_str(resp.trim())?;
+                if response.get("ok").and_then(Value::as_bool) != Some(true) {
+                    return Err(BladeError::Other(
+                        "daemon did not acknowledge shutdown".into(),
+                    ));
+                }
+                // Wait for the daemon to finish teardown — it removes the socket
+                // file last. Without this, an immediate second `stop` could connect
+                // to the dying daemon's still-bound socket and report "stopped"
+                // again instead of "not running".
+                // Browser close can use two 2s CDP deadlines, a 1s ownership check,
+                // and a 3s process grace; allow time for the profile copy as well
+                // and, with a recording active, its bounded finalize (fork hook, 16 s).
+                for _ in 0..300 {
+                    if !path.exists() {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                if path.exists() {
+                    return Err(BladeError::Other("daemon acknowledged stop but cleanup is still running; check again before restarting".into()));
+                }
+                return Ok("daemon stopped".into());
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            // No answer in time: the request is still queued behind the
+            // daemon's current one, or the daemon is wedged. Bubbling the
+            // read timeout up failed `stop` with "Resource temporarily
+            // unavailable" while the queued stop fired later anyway.
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                unanswered = true;
+            }
+            Err(e) => return Err(e.into()),
         }
-        if path.exists() {
-            return Err(BladeError::Other("daemon acknowledged stop but cleanup is still running; check again before restarting".into()));
-        }
-        return Ok("daemon stopped".into());
     }
 
-    // No socket. A daemon process may still linger — check the pid file.
+    // No socket, or no answer: a daemon process may still linger — check
+    // the pid file.
     if let Some(pid) = read_pid_file() {
         if process_alive(pid) && looks_like_bladebro(pid) {
             unsafe {
                 libc::kill(pid, libc::SIGTERM);
             }
-            for _ in 0..50 {
+            for _ in 0..100 {
                 if !process_alive(pid) {
                     break;
                 }
@@ -621,11 +843,26 @@ pub async fn stop_daemon() -> Result<String> {
             }
             let _ = std::fs::remove_file(pid_path());
             let _ = std::fs::remove_file(&path);
+            if unanswered {
+                return Ok(format!("daemon (pid {pid}) did not answer within {STOP_ANSWER_SECS}s (busy or wedged) — terminated; any command it was running was cancelled, outcome unknown"));
+            }
             return Ok(format!("daemon (pid {pid}) was unresponsive — terminated"));
         }
-        let _ = std::fs::remove_file(pid_path());
-        let _ = std::fs::remove_file(&path);
-        return Ok("daemon not running".into());
+        if !unanswered {
+            let _ = std::fs::remove_file(pid_path());
+            let _ = std::fs::remove_file(&path);
+            return Ok("daemon not running".into());
+        }
+    }
+
+    // Something live holds the socket (it accepted our request) but no
+    // live bladebro is on record: never unlink a live socket or claim
+    // "not running".
+    if unanswered {
+        return Err(BladeError::Other(format!(
+            "the daemon on {} did not answer within {STOP_ANSWER_SECS}s and the pid file names no live bladebro process, so it was left running — find it with `pgrep -ax bladebro`, terminate it, then run `bladebro stop` again",
+            path.display()
+        )));
     }
 
     let _ = std::fs::remove_file(&path);
@@ -635,4 +872,117 @@ pub async fn stop_daemon() -> Result<String> {
 #[cfg(not(unix))]
 pub async fn stop_daemon() -> Result<String> {
     Ok("daemon mode is Unix-only — commands run one-shot on this platform".into())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_mismatch_refuses_another_lane_and_differing_explicit_settings() {
+        let daemon_env = |k: &str| (k == "BLADE_PROXY").then(|| "http://127.0.0.1:9".to_string());
+        let check = |req: Value, real: bool| settings_mismatch(&req, real, daemon_env);
+
+        // Same lane, nothing set: served.
+        assert_eq!(check(json!({"lane": "agent", "env": {}}), false), None);
+        // BLADE_LANE=agent against a real-lane daemon (`rb on`), and back.
+        let why = check(json!({"lane": "agent", "env": {}}), true).unwrap();
+        assert!(
+            why.contains("lane (this command: agent, daemon: real)"),
+            "{why}"
+        );
+        assert!(
+            why.contains("bladebro stop") && why.contains("--no-daemon"),
+            "{why}"
+        );
+        assert!(check(json!({"lane": "real", "env": {}}), false).is_some());
+        // Same value: served. Another value, or one the daemon lacks:
+        // refused by name — the value itself is never echoed.
+        assert_eq!(
+            check(
+                json!({"lane": "agent", "env": {"BLADE_PROXY": "http://127.0.0.1:9"}}),
+                false
+            ),
+            None
+        );
+        let why = check(
+            json!({"lane": "agent", "env": {"BLADE_PROXY": "http://u:SECRET@h:1"}}),
+            false,
+        )
+        .unwrap();
+        assert!(
+            why.contains("BLADE_PROXY") && !why.contains("SECRET"),
+            "{why}"
+        );
+        let why = check(
+            json!({"lane": "agent", "env": {"CHROME_PATH": "/x"}}),
+            false,
+        )
+        .unwrap();
+        assert!(why.contains("CHROME_PATH"), "{why}");
+        // Unlisted names are not the daemon's business.
+        assert_eq!(
+            check(
+                json!({"lane": "agent", "env": {"BLADE_HOME": "/x", "PATH": "/y"}}),
+                false
+            ),
+            None
+        );
+        // An older CLI's request (no lane/env fields) is served as before.
+        assert_eq!(check(json!({"tool": "see", "args": {}}), true), None);
+    }
+
+    #[test]
+    fn a_refused_request_leaves_the_lane_flag_alone() {
+        // The lane flag and BLADE_HOME are process-global (other tests read
+        // the flag through `hum_enabled`), so the check runs in a child copy
+        // of this test binary with its own scratch home.
+        const CHILD: &str = "BLADE_DAEMON_REFUSAL_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            // A daemon whose browser was launched on the agent lane; the rb
+            // config has since been switched on without a daemon restart (a
+            // hand edit, a racing toggle). A command that resolved the agent
+            // lane would now be served on the real one: refused.
+            crate::realbrowser::set_real_lane(false);
+            let why = refusal(&json!({"tool": "see", "lane": "agent", "env": {}}))
+                .expect("a command from the other lane must be refused");
+            assert!(why.contains("daemon: real"), "{why}");
+            // The flag still describes the browser that is running — the
+            // login snapshots and the idle hum consult it until the next
+            // served command relaunches. A refusal that switched it let
+            // `bladebro stop` snapshot a real-lane session's cookies into
+            // the agent's logins.json (lane_from is symmetric; this is the
+            // direction that never sets the real lane in a test).
+            assert!(
+                !crate::realbrowser::real_lane(),
+                "a refused request switched the daemon's lane"
+            );
+            return;
+        }
+        let home = std::env::temp_dir().join(format!("blade-refusal-lane-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("realbrowser.json"), br#"{"enabled":true}"#).unwrap();
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "cli::daemon::tests::a_refused_request_leaves_the_lane_flag_alone",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("BLADE_HOME", &home)
+            .env_remove("BLADE_LANE")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&home);
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(out.status.success(), "child check failed:\n{report}");
+        // The child must have run the check, not filtered it away.
+        assert!(report.contains("1 passed"), "child ran no test:\n{report}");
+    }
 }

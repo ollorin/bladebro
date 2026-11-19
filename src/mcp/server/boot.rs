@@ -111,7 +111,7 @@ pub(super) async fn launch_browser(
             Ok(page) => Ok((page, browser)),
             Err(e) => {
                 if let Some(b) = browser {
-                    let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+                    b.shutdown_gracefully().await;
                 }
                 Err(e)
             }
@@ -133,7 +133,7 @@ pub(super) async fn launch_browser(
                     return Ok((page, Some(browser)));
                 }
                 Err(e) => {
-                    let _ = tokio::task::spawn_blocking(move || browser.shutdown()).await;
+                    browser.shutdown_gracefully().await;
                     return Err(e);
                 }
             }
@@ -161,7 +161,7 @@ pub(super) async fn launch_browser(
             Ok(page) => Ok((page, Some(browser))),
             Err(e) => {
                 // Clean up the browser we just launched.
-                let _ = tokio::task::spawn_blocking(move || browser.shutdown()).await;
+                browser.shutdown_gracefully().await;
                 Err(e)
             }
         }
@@ -176,38 +176,11 @@ pub(super) async fn launch_browser(
     }
 }
 
-/// Shut down Chrome without blocking the async executor:
-/// Browser::drop sends SIGTERM and waits up to 3s
-/// synchronously — on the executor thread that stalls every
-/// other task. Offload to a blocking thread.
+/// Close owned Chrome through CDP, then offload bounded process/profile cleanup.
 pub(super) async fn shutdown_browser(b: crate::browser::Browser) {
     // fork hook (record): see .planning/HOOKS.md
     crate::record::hub::finish_best_effort().await;
-    let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
-}
-
-/// Wait for a termination signal (SIGTERM/SIGINT/SIGHUP on
-/// Unix, Ctrl+C on Windows). Returns when the process should
-/// shut down gracefully. OpenCode and other harnesses kill
-/// MCP servers with SIGTERM — without this, Chrome + Xvfb
-/// are orphaned every time a session ends.
-pub(super) async fn wait_for_shutdown_signal() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut term = signal(SignalKind::terminate()).ok();
-        let mut int = signal(SignalKind::interrupt()).ok();
-        let mut hup = signal(SignalKind::hangup()).ok();
-        tokio::select! {
-            _ = async { if let Some(s) = &mut term { s.recv().await } else { std::future::pending().await } } => {}
-            _ = async { if let Some(s) = &mut int { s.recv().await } else { std::future::pending().await } } => {}
-            _ = async { if let Some(s) = &mut hup { s.recv().await } else { std::future::pending().await } } => {}
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tokio::signal::ctrl_c().await;
-    }
+    b.shutdown_gracefully().await;
 }
 
 /// Warm the profile on first run: navigate to a few top sites to seed

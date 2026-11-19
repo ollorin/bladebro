@@ -94,9 +94,10 @@ const DAEMON: &str = include_str!("../cli/daemon.rs");
 
 #[test]
 fn cli_tags_daemon_requests_and_daemon_guards_after_lane_refresh() {
-    // Two uses: the pre-daemon validation and the per-request tag.
-    assert_eq!(CLI.matches("crate::launch_mode::request_tag()").count(), 2);
-    assert_eq!(CLI.matches("\"launch\":").count(), 1);
+    // One use: `daemon_request_line` validates and tags every request, and
+    // it runs before any daemon is auto-started.
+    assert_eq!(CLI.matches("crate::launch_mode::request_tag()").count(), 1);
+    assert_eq!(CLI.matches("request[\"launch\"]").count(), 1);
     assert_eq!(
         DAEMON
             .matches("crate::launch_mode::daemon_mismatch(&req)")
@@ -115,14 +116,14 @@ fn cli_tags_daemon_requests_and_daemon_guards_after_lane_refresh() {
 fn run_tool_validates_before_auto_starting_a_daemon() {
     let a = CLI.find("async fn run_tool(").unwrap();
     let body = &CLI[a..];
-    let validate = body.find("crate::launch_mode::request_tag()").unwrap();
+    let validate = body.find("daemon_request_line(tool, args)?").unwrap();
     let start = body.find("auto_start_daemon()?").unwrap();
     assert!(
         validate < start,
         "an invalid setting must never start a daemon"
     );
     // Validation also precedes the first send to an existing daemon.
-    assert!(validate < body.find("send_to_daemon(tool, args)").unwrap());
+    assert!(validate < body.find("send_to_daemon(&req)").unwrap());
 }
 
 #[test]

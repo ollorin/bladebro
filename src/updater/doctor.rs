@@ -59,6 +59,11 @@ pub async fn run() -> Result<()> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     checks.push(check_xvfb());
 
+    // 4b. Window manager for the virtual display (no WM = no decorations, an
+    // Xvfb signature); only meaningful where Xvfb is the lane.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    checks.push(check_window_manager());
+
     // 5. Profile directory
     checks.push(check_profile_dir());
 
@@ -211,6 +216,19 @@ fn check_data_dir() -> Check {
 }
 
 fn check_browser_mode() -> Check {
+    // Every launch parses BLADE_CHROME_FLAGS first, and so does the incognito
+    // policy: a malformed value is its own failure with its own fix, never a
+    // BLADE_INCOGNITO problem.
+    if let Err(error) = crate::browser::env_chrome_flags() {
+        return Check {
+            name: "Chrome flags",
+            status: Status::Fail,
+            detail: error.to_string(),
+            fix: Some(
+                "Fix or unset BLADE_CHROME_FLAGS; every browser launch fails until then".into(),
+            ),
+        };
+    }
     match crate::browser::incognito_policy() {
         Ok(true) => Check {
             name: "Agent browser mode",
@@ -358,6 +376,43 @@ fn check_xvfb() -> Check {
     }
 }
 
+/// The window manager the virtual display starts. Xvfb alone is not the
+/// headful lane: with no WM the screen has no decorations at all —
+/// `outerWidth == innerWidth`, `screen.availHeight == screen.height` — which
+/// is an Xvfb signature only `bladebro audit` otherwise catches. The binary
+/// lookup is the lane's own (`browser::display::window_manager`), so doctor
+/// cannot pass a machine on which the lane would silently degrade.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn check_window_manager() -> Check {
+    wm_check(crate::browser::display::window_manager())
+}
+
+/// The report for a found (or missing) window manager. Pure, so the missing
+/// branch is tested without a machine that lacks xfwm4.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn wm_check(found: Option<String>) -> Check {
+    match found {
+        Some(path) => Check {
+            name: "Window manager (headful geometry)",
+            status: Status::Pass,
+            detail: format!("{path} (real decorations, coherent outer/inner geometry)"),
+            fix: None,
+        },
+        None => Check {
+            name: "Window manager (headful geometry)",
+            status: Status::Warn,
+            detail:
+                "xfwm4 not found — Xvfb runs headful with no decorations or frame extents \
+                     (outerWidth == innerWidth, availHeight == height); pages see an Xvfb signature"
+                    .into(),
+            fix: Some(
+                "Install xfwm4: sudo pacman -S xfwm4 (Arch) / sudo apt install xfwm4 (Debian)"
+                    .into(),
+            ),
+        },
+    }
+}
+
 fn check_profile_dir() -> Check {
     // Honor BLADE_PROFILE_DIR: the effective profile root, not just the
     // template inside the data dir.
@@ -458,25 +513,24 @@ fn check_login_sidecar() -> Check {
 }
 
 fn check_profile_hygiene() -> Check {
-    let dir = crate::platform::blade_dir();
-    // Count per-process profile dirs: every `sess-*` dir whose owning pid is
-    // dead. The reaper clears these on next launch; doctor reports them so
-    // disk isn't silently eaten between runs.
+    profile_hygiene_at(&crate::platform::blade_dir())
+}
+
+fn profile_hygiene_at(dir: &std::path::Path) -> Check {
+    // Count exactly what the reaper reaps — dead-owner `sess-*` dirs in the
+    // agent lane and every real-lane root, by the reaper's own ownership
+    // rule — so "auto-reaped on next launch" is a promise the next launch
+    // keeps. doctor reports them so disk isn't silently eaten between runs.
     let mut orphans = Vec::new();
     let mut total_orphan_bytes: u64 = 0;
-    if let Ok(entries) = std::fs::read_dir(dir.join("profiles")) {
+    for root in crate::session_profile::session_roots(dir) {
+        let Ok(entries) = std::fs::read_dir(root.join("profiles")) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            let pid = name
-                .strip_prefix("sess-")
-                .or_else(|| name.strip_prefix("pid-"))
-                .and_then(|p| p.split('-').next())
-                .and_then(|p| p.parse::<u32>().ok());
-            let dead = pid
-                .map(|p| !crate::platform::process_alive(p))
-                .unwrap_or(true);
-            if dead {
+            if crate::session_profile::session_owner_dead(&path) {
                 // size (best effort, bounded)
                 let mut size: u64 = 0;
                 if let Ok(it) = fs_items(&path) {
@@ -529,11 +583,85 @@ fn fs_items(dir: &std::path::Path) -> std::io::Result<Vec<std::fs::Metadata>> {
 }
 
 fn check_stale_locks() -> Check {
-    let dir = std::env::var("BLADE_PROFILE_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| crate::platform::blade_dir().join("profile"));
+    // Same rule as SessionProfile::create: an empty override is no override.
+    let custom = std::env::var("BLADE_PROFILE_DIR")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from);
+    profile_locks_at(&crate::platform::blade_dir(), custom.as_deref())
+}
+
+/// Chrome holds `SingletonLock` only in the dir it runs on: the operator's
+/// BLADE_PROFILE_DIR, otherwise each session's `profiles/sess-*` dir. The
+/// template (`profile/`) is never run and its copies skip the lock, so it
+/// can never show one.
+fn profile_locks_at(blade_dir: &std::path::Path, custom: Option<&std::path::Path>) -> Check {
+    if let Some(dir) = custom {
+        return custom_profile_lock(dir);
+    }
+    // A live session's lock is its own browser's business; a dead one's is
+    // what the reaper must clear — unless a browser still runs on it.
+    let mut running = Vec::new();
+    let mut stale = Vec::new();
+    for root in crate::session_profile::session_roots(blade_dir) {
+        let Ok(entries) = std::fs::read_dir(root.join("profiles")) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !crate::session_profile::session_owner_dead(&dir) {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let lock = dir.join("SingletonLock");
+            if crate::session_profile::profile_in_use(&dir) {
+                running.push(name);
+            } else if std::fs::symlink_metadata(&lock).is_ok() {
+                match read_lock_pid(&lock) {
+                    Some(p) => stale.push(format!("{name} from dead PID {p}")),
+                    None => stale.push(name),
+                }
+            }
+        }
+    }
+    if !running.is_empty() {
+        return Check {
+            name: "Profile locks",
+            status: Status::Warn,
+            detail: format!(
+                "a process (browser or launcher) still runs on dead session {}",
+                running.join(", ")
+            ),
+            fix: Some(
+                "The next launch stops a browser on it before reaping; stop any other process started with its --user-data-dir yourself".into(),
+            ),
+        };
+    }
+    if !stale.is_empty() {
+        return Check {
+            name: "Profile locks",
+            status: Status::Warn,
+            detail: format!(
+                "stale lock in {} (auto-cleared on next launch)",
+                stale.join(", ")
+            ),
+            fix: None,
+        };
+    }
+    Check {
+        name: "Profile locks",
+        status: Status::Pass,
+        detail: "no stale locks".into(),
+        fix: None,
+    }
+}
+
+/// BLADE_PROFILE_DIR is run directly, so any lock in it matters.
+fn custom_profile_lock(dir: &std::path::Path) -> Check {
     let lock = dir.join("SingletonLock");
-    if !lock.exists() {
+    // symlink_metadata, not exists(): on Unix the lock is a `host-pid`
+    // symlink to nothing, and exists() follows it to "not found".
+    if std::fs::symlink_metadata(&lock).is_err() {
         return Check {
             name: "Profile locks",
             status: Status::Pass,
@@ -763,7 +891,9 @@ fn find_chrome_path() -> Option<String> {
 
 fn chrome_install_hint() -> String {
     if cfg!(target_os = "linux") {
-        "Install: sudo pacman -S chromium (Arch) / sudo apt install chromium-browser (Debian) / nix-shell -p chromium (Nix)".into()
+        // Read-only roots (SteamOS, Bazzite, Silverblue) cannot take a
+        // package-manager install; Flatpak exports are discovered.
+        "Install: sudo pacman -S chromium (Arch) / sudo apt install chromium-browser (Debian) / nix-shell -p chromium (Nix) / flatpak install flathub org.chromium.Chromium (SteamOS, Bazzite, Silverblue: found automatically), or set CHROME_PATH".into()
     } else if cfg!(target_os = "macos") {
         "Install: brew install --cask google-chrome".into()
     } else if cfg!(windows) {
@@ -788,5 +918,111 @@ fn read_lock_pid(lock: &std::path::Path) -> Option<u32> {
     {
         let content = std::fs::read_to_string(lock).ok()?;
         content.trim().parse::<u32>().ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    fn scratch(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("blade-doctor-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn session(root: &Path, name: &str, owner: u32) -> PathBuf {
+        let dir = root.join("profiles").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".blade-owner"), owner.to_string()).unwrap();
+        dir
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[test]
+    fn a_missing_window_manager_is_reported_with_its_install_hint() {
+        let missing = wm_check(None);
+        assert!(matches!(missing.status, Status::Warn));
+        assert!(
+            missing.detail.contains("outerWidth == innerWidth"),
+            "{}",
+            missing.detail
+        );
+        assert!(missing
+            .fix
+            .unwrap_or_default()
+            .contains("sudo pacman -S xfwm4"));
+        let found = wm_check(Some("/usr/bin/xfwm4".into()));
+        assert!(matches!(found.status, Status::Pass));
+        assert!(found.detail.contains("/usr/bin/xfwm4"));
+    }
+
+    #[test]
+    fn hygiene_counts_exactly_what_the_reaper_reaps() {
+        let root = scratch("hygiene");
+        let me = std::process::id();
+        session(&root, "sess-999999998", 999_999_998); // dead: reaped
+        session(&root, &format!("sess-{me}"), me); // live: kept
+
+        // Never created by bladebro and never reaped: promising otherwise
+        // is a warning that never clears.
+        std::fs::create_dir_all(root.join("profiles/pid-999999996")).unwrap();
+        std::fs::create_dir_all(root.join("profiles/junk")).unwrap();
+        // The reaper also visits real-lane roots.
+        let real = root.join("realbrowser/chrome");
+        session(&real, "sess-999999997", 999_999_997);
+        let check = profile_hygiene_at(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(check.status == Status::Warn);
+        assert!(
+            check.detail.starts_with("2 orphaned profile dirs"),
+            "got: {}",
+            check.detail
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn profile_locks_see_dangling_singleton_symlinks_in_live_dirs() {
+        // SingletonLock is a `host-pid` symlink to nothing: exists() follows
+        // it and always answers false.
+        let custom = scratch("locks-custom");
+        std::os::unix::fs::symlink("host-999999999", custom.join("SingletonLock")).unwrap();
+        let custom_check = profile_locks_at(Path::new("/nonexistent-blade"), Some(&custom));
+
+        // No Chrome ever runs on the template; session dirs are where locks live.
+        let root = scratch("locks-sessions");
+        let me = std::process::id();
+        let dead = session(&root, "sess-999999998", 999_999_998);
+        std::os::unix::fs::symlink("host-999999999", dead.join("SingletonLock")).unwrap();
+        let sessions_check = profile_locks_at(&root, None);
+
+        let live_root = scratch("locks-live");
+        let live = session(&live_root, &format!("sess-{me}"), me);
+        std::os::unix::fs::symlink(format!("host-{me}"), live.join("SingletonLock")).unwrap();
+        let live_check = profile_locks_at(&live_root, None);
+
+        for dir in [&custom, &root, &live_root] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        assert!(
+            custom_check.status == Status::Warn
+                && custom_check.detail.contains("dead PID 999999999"),
+            "custom dir: {}",
+            custom_check.detail
+        );
+        assert!(
+            sessions_check.status == Status::Warn
+                && sessions_check.detail.contains("sess-999999998"),
+            "session dirs: {}",
+            sessions_check.detail
+        );
+        assert!(
+            live_check.status == Status::Pass,
+            "a live session's own lock is normal: {}",
+            live_check.detail
+        );
     }
 }

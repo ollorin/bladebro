@@ -57,7 +57,7 @@ impl Browser {
         for (i, stage) in stages.iter().enumerate() {
             if let Some((b, c)) = last.take() {
                 drop(c);
-                let _ = tokio::task::spawn_blocking(move || b.shutdown()).await;
+                b.shutdown_gracefully().await;
             }
             let (browser, client, probe) =
                 Self::launch_pipe_inner_stage(no_sandbox, *stage).await?;
@@ -118,6 +118,20 @@ impl Browser {
         use std::os::unix::process::CommandExt;
         use tokio::net::unix::pipe;
 
+        // M18: Proxy support via BLADE_PROXY env var. Validated + redacted
+        // exactly like the WS lane (first, before any profile, display or
+        // process exists) — same failure mode, same log guarantee.
+        let proxy = match crate::browser::proxy::env_browser_proxy() {
+            Ok(p) => p,
+            Err(reason) => {
+                return Err(BladeError::Other(format!(
+                    "invalid BLADE_PROXY value: {reason} (value redacted)"
+                )));
+            }
+        };
+        if let Some(spec) = &proxy {
+            eprintln!("[bladebro] using proxy: {}", spec.display);
+        }
         let chrome_path = find_chrome()?;
         let extra = super::compat::agent_extra_flags()?;
         let profile = crate::session_profile::SessionProfile::create()?;
@@ -149,24 +163,15 @@ impl Browser {
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
         let headful = plan.native_headful;
 
+        // From here on every failure path tears down whatever this attempt
+        // started and removes its profile (same guard as the WS lane).
+        let mut guard = super::LaunchGuard::new(profile);
+
         // After both bindings: the recording must compile on every target.
         set_launched_headless(!headful);
         crate::launch_mode::note_launch(&mode, headful);
         set_launched_no_sandbox(no_sandbox);
 
-        // M18: Proxy support via BLADE_PROXY env var. Validated + redacted
-        // exactly like the WS lane — same failure mode, same log guarantee.
-        let proxy = match crate::browser::proxy::env_blade_proxy() {
-            Ok(p) => p,
-            Err(reason) => {
-                return Err(BladeError::Other(format!(
-                    "invalid BLADE_PROXY value: {reason} (value redacted)"
-                )));
-            }
-        };
-        if let Some(spec) = &proxy {
-            eprintln!("[bladebro] using proxy: {}", spec.display);
-        }
         // Power-user escape hatch (same as the WS path — this used to be
         // WS-only, another quiet lane divergence).
         set_launched_pipe(true);
@@ -212,7 +217,7 @@ impl Browser {
         let mode_str = if headful { "headful" } else { "headless" };
         eprintln!("[bladebro] launching Chrome from {chrome_path} on CDP pipe ({mode_str})");
 
-        let mut cmd = Command::new(&chrome_path);
+        let mut cmd = super::launch::browser_command(&chrome_path, &user_data_dir);
         browser_temp_env(&mut cmd);
         // G11: bounded startup-stderr capture (shared with the WS lane) —
         // a failed launch must be diagnosable instead of guessed at.
@@ -246,8 +251,8 @@ impl Browser {
         }
 
         platform::isolate_owned_child(&mut cmd);
-        let mut child = cmd
-            .spawn()
+        let child = guard
+            .spawn(&mut cmd)
             .map_err(|e| BladeError::Other(format!("failed to launch Chrome: {e}")))?;
 
         let client = crate::cdp::CdpClient::from_pipe(in_rx, out_tx)?;
@@ -265,12 +270,9 @@ impl Browser {
                         .and_then(|p| p.as_str())
                         .unwrap_or("unknown");
                     eprintln!("[bladebro] Chrome ready: {product} (pipe transport)");
-                    if let Err(error) = super::compat::prepare_incognito(&client).await {
-                        platform::shutdown_child(&mut child);
-                        profile.cleanup();
-                        return Err(error);
-                    }
+                    super::compat::prepare_incognito(&client).await?;
                     let probe = probe_gl_pipe(&client).await;
+                    let (child, profile) = guard.finish()?;
                     return Ok((
                         Self {
                             child,
@@ -278,6 +280,8 @@ impl Browser {
                             xvfb,
                             port: 0,
                             profile,
+                            shutdown_connection: Some(ShutdownConnection::Pipe(client.clone())),
+                            close_requested: false,
                         },
                         client,
                         probe,
@@ -286,6 +290,9 @@ impl Browser {
                 Err(_) => {
                     match child.try_wait() {
                         Ok(Some(status)) => {
+                            // Same as the WS lane: a sandboxed helper can
+                            // outlive the launcher (Flatpak portal spawns);
+                            // the guard sweeps the profile on return.
                             return Err(BladeError::Other(format!(
                                 "Chrome exited during startup: {status}{}",
                                 super::launch::chrome_stderr_tail()
@@ -299,7 +306,6 @@ impl Browser {
                         }
                     }
                     if Instant::now() >= deadline {
-                        platform::kill_child_tree(&mut child);
                         return Err(BladeError::Other(format!(
                             "Chrome pipe not responding after 20s{}",
                             super::launch::chrome_stderr_tail()

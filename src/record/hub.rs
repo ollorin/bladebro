@@ -357,6 +357,6 @@ mod popup_hook_tests {
     fn upstream_line_is_the_only_hook() {
         let src = include_str!("../page/mod.rs");
         assert_eq!(src.matches("activate_opener(self)").count(), 1);
-        assert!(src.contains("self.activate().await?;"));
+        assert!(src.contains("self.activate_if_needed().await?;"));
     }
 }

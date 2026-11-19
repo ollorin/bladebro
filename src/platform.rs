@@ -3,16 +3,21 @@
 //! Every OS-specific operation lives here. The rest of the codebase
 //! calls these helpers — no `#[cfg]` outside this module (except for
 //! transport-level differences that can't be abstracted).
-//! `windows_job` owns kernel cleanup of the driver's browser descendants.
+//! `windows_job` owns kernel cleanup of the driver's browser descendants;
+//! `signals` owns the long-lived servers' termination-signal listeners.
 
 use std::path::PathBuf;
 use std::process::Child;
+mod signals;
 #[cfg(windows)]
 mod windows_job;
+pub(crate) use signals::ShutdownSignals;
 #[cfg(unix)]
 use std::time::Duration;
 #[cfg(windows)]
 pub(crate) use windows_job::guard_browser_process_tree;
+
+use std::sync::atomic::{AtomicI32, Ordering};
 
 /// The user's home directory.
 pub fn home_dir() -> PathBuf {
@@ -81,6 +86,13 @@ pub fn blade_dir() -> PathBuf {
         dir_has_state(&legacy),
         local_state_creatable(&home),
     )
+}
+
+/// Where the browser saves downloads (`Page.setDownloadBehavior`). A
+/// sandboxed launch (Flatpak) shares this exact dir into the sandbox, so
+/// both sides take it from here.
+pub fn downloads_dir() -> PathBuf {
+    blade_dir().join("downloads")
 }
 
 /// Can `$HOME/.local/state/blade` be created? True when the parent exists
@@ -241,6 +253,22 @@ fn plain_spelling(path: &std::path::Path) -> String {
     s.replace('\\', "/")
 }
 
+/// Resolve `.` and `..` by spelling alone, without touching the filesystem
+/// (the path need not exist, and symlinks are not followed).
+fn lexically_normalized(path: &std::path::Path) -> std::path::PathBuf {
+    let mut normalized = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
+}
+
 /// Validate a file write path to prevent writing to system directories.
 /// SECURITY: Blocks path traversal attacks that could overwrite critical
 /// system files (e.g., /etc/cron.d, /usr/bin, /boot) via prompt injection,
@@ -256,16 +284,7 @@ pub fn validate_write_path(path: &std::path::Path) -> Result<(), String> {
     };
 
     // Normalize the path (resolve . and .. without requiring the file to exist).
-    let mut normalized = std::path::PathBuf::new();
-    for component in canonical.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                normalized.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => normalized.push(other.as_os_str()),
-        }
-    }
+    let normalized = lexically_normalized(&canonical);
     // Symlink resolution: canonicalize the deepest EXISTING ancestor and
     // re-append the untouched tail. A path spelled through a symlink
     // (~/drop → /etc) must not pass on its harmless-looking spelling — the
@@ -473,6 +492,42 @@ pub fn validate_upload_path(path: &std::path::Path) -> Result<(), String> {
     validate_upload_path_at(path, &blade_dir())
 }
 
+/// The system directory an upload source lies in, if any. Both spellings
+/// must be checked, as the write guard does: what the caller wrote and what
+/// it resolves to. On NixOS most of /etc is symlinks into /nix/store, so the
+/// resolved spelling alone let `/etc/hostname` through. The platform's own
+/// spelling of each directory counts too (macOS /etc is /private/etc).
+#[cfg(unix)]
+fn upload_system_prefix(spelled: &str, resolved: &str) -> Option<&'static str> {
+    const BLOCKED: &[&str] = &[
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/boot",
+        "/dev",
+        "/proc",
+        "/sys",
+        "/var/log",
+        "/var/spool",
+        "/root",
+        "/lib",
+        "/lib64",
+        "/run",
+        "/snap",
+    ];
+    BLOCKED.iter().copied().find(|prefix| {
+        let real_prefix = std::fs::canonicalize(prefix)
+            .ok()
+            .map(|p| plain_spelling(&p));
+        resolved.starts_with(prefix)
+            || spelled.starts_with(prefix)
+            || real_prefix
+                .as_deref()
+                .is_some_and(|r| resolved.starts_with(r))
+    })
+}
+
 /// [`validate_upload_path`] with the data dir injected (tests pass a
 /// scratch root instead of mutating global env).
 pub fn validate_upload_path_at(
@@ -499,38 +554,12 @@ pub fn validate_upload_path_at(
     let path_str = plain_spelling(&resolved);
 
     #[cfg(unix)]
+    if let Some(prefix) =
+        upload_system_prefix(&plain_spelling(&lexically_normalized(path)), &path_str)
     {
-        let blocked_prefixes: &[&str] = &[
-            "/etc",
-            "/usr",
-            "/bin",
-            "/sbin",
-            "/boot",
-            "/dev",
-            "/proc",
-            "/sys",
-            "/var/log",
-            "/var/spool",
-            "/root",
-            "/lib",
-            "/lib64",
-            "/run",
-            "/snap",
-        ];
-        for prefix in blocked_prefixes {
-            let resolved_prefix = std::fs::canonicalize(prefix)
-                .ok()
-                .map(|p| plain_spelling(&p));
-            if path_str.starts_with(prefix)
-                || resolved_prefix
-                    .as_deref()
-                    .is_some_and(|r| path_str.starts_with(r))
-            {
-                return Err(format!(
-                    "blocked: uploading from a system location ({prefix}) is not allowed"
-                ));
-            }
-        }
+        return Err(format!(
+            "blocked: uploading from a system location ({prefix}) is not allowed"
+        ));
     }
 
     #[cfg(windows)]
@@ -827,44 +856,83 @@ pub fn process_alive(pid: u32) -> bool {
     }
 }
 
-/// Is this process a Chrome/Chromium process?
+/// Is this executable file name a Chromium-family browser? Case and a
+/// `.exe` suffix are ignored, and spaces read as dashes so macOS bundle names
+/// (`Google Chrome`, `Brave Browser`, `Microsoft Edge`) match the Linux
+/// package names. A `-suffix` covers channels and wrappers
+/// (`google-chrome-beta`, `vivaldi-bin`, `Google Chrome for Testing`).
+pub fn exe_name_is_chromium(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    let name = lower
+        .strip_suffix(".exe")
+        .unwrap_or(&lower)
+        .replace(' ', "-");
+    [
+        "chrome",
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "chrome_crashpad_handler",
+        "brave",
+        "brave-browser",
+        "helium",
+        "microsoft-edge",
+        "msedge",
+        "vivaldi",
+        "opera",
+    ]
+    .iter()
+    .any(|f| name == *f || name.starts_with(&format!("{f}-")))
+}
+
+/// Is this `/proc/<pid>/cmdline` image a Chromium-family browser process?
+///
+/// Two readings of argv[0], because Chromium rewrites its own argv block
+/// into ONE space-joined string early in startup (measured live: Flatpak
+/// Chromium's browser process reads `/app/chromium/chrome --enable-…
+/// --user-data-dir=…` plus a single trailing NUL), so the NUL-separated
+/// first entry is the whole command line; the first NUL-or-space token is
+/// the executable then. The NUL entry alone still covers an install path
+/// with spaces in the kernel's normal form. A file name containing a space
+/// is never an executable here — it is the tail of a rewritten line.
+pub fn cmdline_is_chromium(cmdline: &[u8]) -> bool {
+    let first_arg = cmdline.split(|b| *b == 0).next().unwrap_or_default();
+    let first_token = cmdline
+        .split(|b| *b == 0 || *b == b' ')
+        .find(|tok| !tok.is_empty())
+        .unwrap_or_default();
+    [first_arg, first_token].iter().any(|exe| {
+        let exe = String::from_utf8_lossy(exe);
+        std::path::Path::new(exe.as_ref())
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| !n.contains(' ') && exe_name_is_chromium(n))
+    })
+}
+
+/// Is this process a Chrome/Chromium-family browser process?
 pub fn process_is_chrome(pid: u32) -> bool {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         std::fs::read(format!("/proc/{pid}/cmdline"))
-            .ok()
-            .and_then(|bytes| {
-                bytes
-                    .split(|b| *b == 0)
-                    .next()
-                    .map(|b| String::from_utf8_lossy(b).into_owned())
-            })
-            .is_some_and(|exe| {
-                std::path::Path::new(&exe)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|name| {
-                        matches!(
-                            name,
-                            "chrome"
-                                | "chromium"
-                                | "chromium-browser"
-                                | "google-chrome"
-                                | "google-chrome-stable"
-                                | "chrome_crashpad_handler"
-                        )
-                    })
-            })
+            .is_ok_and(|cmdline| cmdline_is_chromium(&cmdline))
     }
     #[cfg(target_os = "macos")]
     {
+        // `comm` is the executable path; the substring test is kept so
+        // nothing recognised before is lost, the name list adds Brave/Edge/…
         std::process::Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "comm="])
             .output()
             .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .to_lowercase()
-                    .contains("chrom")
+                let comm = String::from_utf8_lossy(&o.stdout);
+                let comm = comm.trim();
+                comm.to_lowercase().contains("chrom")
+                    || std::path::Path::new(comm)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(exe_name_is_chromium)
             })
             .unwrap_or(false)
     }
@@ -935,10 +1003,16 @@ pub fn kill_process_force(pid: u32) {
 /// leave the browser running after `stop`. Signal the whole group, and keep
 /// the direct kill as a fallback for any child that was not isolated.
 pub fn shutdown_child(child: &mut Child) {
+    finish_child_shutdown(child, false);
+}
+
+/// After Browser.close, wait before signalling: Chrome needs its child
+/// storage services alive until the browser has flushed and exited.
+pub(crate) fn finish_child_shutdown(child: &mut Child, close_requested: bool) {
     #[cfg(unix)]
     {
         let pgid = (child.id() <= i32::MAX as u32).then(|| child.id() as i32);
-        if let Some(pgid) = pgid {
+        if let Some(pgid) = pgid.filter(|_| !close_requested) {
             unsafe {
                 libc::kill(-pgid, libc::SIGTERM);
             }
@@ -963,10 +1037,143 @@ pub fn shutdown_child(child: &mut Child) {
     }
     #[cfg(windows)]
     {
+        if close_requested {
+            for _ in 0..30 {
+                if child.try_wait().is_ok_and(|s| s.is_some()) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
         // Windows: no graceful signal. TerminateProcess is the only option.
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+/// Validate the browser process reported by CDP against our owned tree before
+/// closing it. A recycled/debug-port race must not close a borrowed browser.
+/// `user_data_dir` is the profile the owned browser was launched on.
+pub(crate) fn owns_browser_process(
+    child: u32,
+    browser: u32,
+    user_data_dir: &std::path::Path,
+) -> bool {
+    #[cfg(unix)]
+    {
+        if !(child > 1 && child <= i32::MAX as u32 && browser > 1 && browser <= i32::MAX as u32) {
+            return false;
+        }
+        if unsafe { libc::getpgid(browser as i32) == child as i32 } {
+            return true;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            namespaced_pid_owned(child, browser, user_data_dir)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = user_data_dir;
+            false
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = (child, user_data_dir);
+        windows_job::owns_browser_process(browser)
+    }
+}
+
+/// Flatpak runs the browser inside bubblewrap's own pid namespace, so CDP
+/// reports the browser's pid as seen in the sandbox (2 under Flatpak) — on
+/// the host that number is an unrelated process. Accept it only when a
+/// process we launched is namespaced and carries exactly that pid in its
+/// innermost namespace (`NSpid:` lists outermost first). "We launched" is
+/// our owned group or, because Flatpak moves bwrap into a group of its own
+/// when a wrapper script starts it, our process tree — the same subtree the
+/// launch gate requires to hold the debug endpoint. The process must also run
+/// on our `--user-data-dir`: a sandbox numbers its own processes from 1, so
+/// the bare number could name any namespaced process we started (the
+/// sandbox's init, a wrapper) rather than the browser.
+#[cfg(target_os = "linux")]
+fn namespaced_pid_owned(child: u32, ns_pid: u32, user_data_dir: &std::path::Path) -> bool {
+    let needle = format!("--user-data-dir={}", user_data_dir.display()).into_bytes();
+    let Ok(procs) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    procs.flatten().any(|entry| {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<i32>() else {
+            return false;
+        };
+        // The NSpid match is cheap and rare, so it filters before any walk.
+        pid > 1
+            && std::fs::read_to_string(format!("/proc/{pid}/status"))
+                .ok()
+                .and_then(|status| {
+                    let ids: Vec<u32> = status
+                        .lines()
+                        .find_map(|l| l.strip_prefix("NSpid:"))?
+                        .split_whitespace()
+                        .filter_map(|v| v.parse().ok())
+                        .collect();
+                    // One entry = our own namespace: the direct check covers it.
+                    (ids.len() > 1).then(|| ids[ids.len() - 1])
+                })
+                == Some(ns_pid)
+            && std::fs::read(format!("/proc/{pid}/cmdline"))
+                .is_ok_and(|cmdline| cmdline_has_token(&cmdline, &needle))
+            && (unsafe { libc::getpgid(pid) } == child as i32
+                || pid_within_process_tree(pid as u32, child))
+    })
+}
+
+/// `needle` as a whole argument. Chromium rewrites its argv into one
+/// space-joined string (see `browser::discover::looks_like_chromium`), so a
+/// space separates arguments as well as the kernel's NUL.
+#[cfg(target_os = "linux")]
+pub(crate) fn cmdline_has_token(cmdline: &[u8], needle: &[u8]) -> bool {
+    let sep = |b: Option<&u8>| matches!(b, None | Some(0) | Some(b' '));
+    cmdline
+        .windows(needle.len())
+        .enumerate()
+        .any(|(at, window)| {
+            window == needle
+                && (at == 0 || sep(cmdline.get(at - 1)))
+                && sep(cmdline.get(at + needle.len()))
+        })
+}
+
+/// True when `pid` is `root` or a direct/indirect child of it, walking
+/// /proc's parent links. Bounded so a corrupt or racing chain cannot loop;
+/// an unreadable parent fails closed.
+#[cfg(target_os = "linux")]
+pub(crate) fn pid_within_process_tree(mut pid: u32, root: u32) -> bool {
+    // Real launch chains are short (AppRun → wrapper → browser → helper;
+    // Flatpak: export → bwrap → sandbox init → browser). A deeper chain is
+    // not evidence of ownership.
+    for _ in 0..64 {
+        if pid == root {
+            return true;
+        }
+        if pid <= 1 {
+            return false;
+        }
+        pid = proc_ppid(pid);
+    }
+    false
+}
+
+/// Parent pid of a process (0 when /proc is unreadable or unparseable).
+#[cfg(target_os = "linux")]
+fn proc_ppid(pid: u32) -> u32 {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+    // Format: pid (comm) state ppid ... — comm can contain spaces/parens,
+    // so parse after the last ')'.
+    stat.rsplit(')')
+        .next()
+        .and_then(|rest| rest.split_whitespace().nth(1))
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(0)
 }
 
 /// Force-kill an owned browser's whole process group without a graceful
@@ -1004,6 +1211,254 @@ pub fn isolate_owned_child(cmd: &mut std::process::Command) {
     #[cfg(windows)]
     {
         let _ = cmd;
+    }
+}
+
+/// Spawn a helper this process owns for its whole life (the virtual display
+/// and its window manager) in its own process group, SIGKILLed by the kernel
+/// when this process dies, whatever kills it.
+///
+/// Both halves are needed. Out of our group, the terminal's Ctrl-C to the
+/// foreground job no longer kills Xvfb while bladebro is still closing the
+/// browser (Chrome lost its display first, so the graceful close that lets it
+/// flush storage never happened). But out of our group a SIGKILL to it
+/// (`timeout -s KILL`, a harness's killpg, a cancelled CI job) no longer
+/// reaches the helper either, and nothing of ours runs to stop it:
+/// PR_SET_PDEATHSIG covers that.
+///
+/// The parent-death signal fires when the THREAD that forked the child exits,
+/// not the process: a child spawned from a tokio worker or blocking-pool
+/// thread is killed when the runtime retires that thread. Every such child is
+/// therefore spawned by one dedicated thread that is never asked to stop: it
+/// ends only with the process.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub fn spawn_tied_to_process(
+    mut cmd: std::process::Command,
+) -> std::io::Result<std::process::Child> {
+    use std::os::unix::process::CommandExt;
+    use std::sync::mpsc;
+    type Job = (
+        std::process::Command,
+        mpsc::SyncSender<std::io::Result<Child>>,
+    );
+    // Never dropped (a static): the spawner's receive loop never ends.
+    static SPAWNER: std::sync::Mutex<Option<mpsc::Sender<Job>>> = std::sync::Mutex::new(None);
+
+    let parent = std::process::id() as libc::pid_t;
+    cmd.process_group(0);
+    // SAFETY: prctl(2) and getppid(2) are async-signal-safe; the closure
+    // touches nothing but its copied pid.
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            // We died between fork and prctl: the signal is already missed
+            // and the child was reparented. Do not exec an orphan.
+            if libc::getppid() != parent {
+                return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Ok(())
+        });
+    }
+    let (reply, result) = mpsc::sync_channel(1);
+    {
+        let mut spawner = SPAWNER.lock().unwrap_or_else(|e| e.into_inner());
+        if spawner.is_none() {
+            let (jobs, queue) = mpsc::channel::<Job>();
+            std::thread::Builder::new()
+                .name("bladebro-spawner".into())
+                .spawn(move || {
+                    for (mut cmd, reply) in queue {
+                        let _ = reply.send(cmd.spawn());
+                    }
+                })?;
+            *spawner = Some(jobs);
+        }
+        if let Some(jobs) = spawner.as_ref() {
+            jobs.send((cmd, reply))
+                .map_err(|_| std::io::Error::other("bladebro spawner thread is gone"))?;
+        }
+    }
+    result
+        .recv()
+        .map_err(|_| std::io::Error::other("bladebro spawner thread is gone"))?
+}
+
+/// Termination signals for a process that owns its browser in-process (the
+/// one-shot CLI, `probe`/`targets`/`audit`): SIGTERM, SIGINT and SIGHUP on
+/// Unix, Ctrl+C on Windows — the set the MCP server shuts down on. Without
+/// a handler the default action ended bladebro without ever closing the
+/// browser, which runs in its own process group (`isolate_owned_child`): a
+/// `timeout` SIGTERM orphaned it and Xvfb, and a Ctrl-C to the job's group
+/// took Xvfb down with bladebro and left Chrome to die on losing its display,
+/// unflushed (or orphaned it where there is no Xvfb).
+///
+/// Listening starts in [`TerminationSignal::listen`]. From then on these
+/// signals no longer end the process by themselves, and one that arrives
+/// before [`TerminationSignal::recv`] is awaited (mid-launch, say) is kept.
+/// One that ends the command still ends the process, once the browser is
+/// closed: [`reraise_termination_signal`].
+///
+/// A signal the process inherited as ignored stays ignored and is not
+/// listened for: `nohup` hands down SIGHUP that way, and a non-interactive
+/// shell's `cmd &` does the same for SIGINT. Installing a handler would
+/// replace SIG_IGN, and such a run would then be aborted by a hangup or an
+/// interrupt it was started to survive.
+pub struct TerminationSignal {
+    #[cfg(unix)]
+    streams: Vec<(libc::c_int, tokio::signal::unix::Signal)>,
+    #[cfg(windows)]
+    ctrl_c: Option<tokio::signal::windows::CtrlC>,
+}
+
+impl TerminationSignal {
+    /// Start listening. Must run inside the tokio runtime. A signal whose
+    /// handler cannot be installed keeps its default action.
+    pub fn listen() -> Self {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            Self {
+                streams: [libc::SIGTERM, libc::SIGINT, libc::SIGHUP]
+                    .into_iter()
+                    .filter(|&sig| !signal_ignored(sig))
+                    .filter_map(|sig| Some((sig, signal(SignalKind::from_raw(sig)).ok()?)))
+                    .collect(),
+            }
+        }
+        #[cfg(windows)]
+        {
+            Self {
+                ctrl_c: tokio::signal::windows::ctrl_c().ok(),
+            }
+        }
+    }
+
+    /// Resolves once a termination signal has arrived since `listen` (at
+    /// once if one already did), and records which one for
+    /// [`reraise_termination_signal`] and [`termination_requested`].
+    pub async fn recv(&mut self) {
+        if termination_requested() {
+            return;
+        }
+        #[cfg(unix)]
+        {
+            let streams = &mut self.streams;
+            let sig = std::future::poll_fn(|cx| {
+                for (sig, stream) in streams.iter_mut() {
+                    if stream.poll_recv(cx).is_ready() {
+                        return std::task::Poll::Ready(*sig);
+                    }
+                }
+                std::task::Poll::Pending
+            })
+            .await;
+            TERMINATED_BY.store(sig, Ordering::SeqCst);
+        }
+        #[cfg(windows)]
+        {
+            match &mut self.ctrl_c {
+                Some(ctrl_c) => {
+                    ctrl_c.recv().await;
+                    TERMINATED_BY.store(libc::SIGINT, Ordering::SeqCst);
+                }
+                None => std::future::pending().await,
+            }
+        }
+    }
+
+    /// Await `launch` to the end while listening. A launch is not safe to
+    /// drop half-way (the real lane polls a bare `Child`), so a signal that
+    /// lands meanwhile is recorded: the launch stops starting fresh browsers
+    /// for its retries and GL stages ([`termination_requested`]), the
+    /// [`interruptible`](Self::interruptible) run that follows fails at once,
+    /// and a launch that fails anyway still ends in death by the signal.
+    pub async fn during_launch<T>(&mut self, launch: impl std::future::Future<Output = T>) -> T {
+        let mut launch = std::pin::pin!(launch);
+        tokio::select! {
+            biased;
+            out = &mut launch => return out,
+            _ = self.recv() => {}
+        }
+        launch.await
+    }
+
+    /// Run `work` unless a termination signal arrives first (or already
+    /// arrived since `listen`): `work` is then dropped and the command fails
+    /// as interrupted. Closing the browser, then dying of the signal
+    /// ([`reraise_termination_signal`]), stays with the caller.
+    pub async fn interruptible<T>(
+        &mut self,
+        work: impl std::future::Future<Output = crate::error::Result<T>>,
+    ) -> crate::error::Result<T> {
+        tokio::select! {
+            biased;
+            _ = self.recv() => Err(crate::error::BladeError::Other(
+                "interrupted by a termination signal before the command finished (outcome unverified)".into(),
+            )),
+            result = work => result,
+        }
+    }
+}
+
+/// The termination signal a [`TerminationSignal`] received (0: none yet).
+/// Process-wide, like the signal: the final exit reads it.
+static TERMINATED_BY: AtomicI32 = AtomicI32::new(0);
+
+/// True once a [`TerminationSignal`] received a termination signal: the
+/// command is over, so a launch still in flight stops retrying — another
+/// browser would only be started to be closed again.
+pub fn termination_requested() -> bool {
+    TERMINATED_BY.load(Ordering::SeqCst) != 0
+}
+
+/// Once the browser of a command a termination signal interrupted is closed,
+/// end the process the way that signal would have: reset it to its default
+/// action and raise it. A shell tells by death-by-signal, not by an exit
+/// code, that its own job was interrupted: bash went on with a `for` loop of
+/// one-shot commands after Ctrl-C because the interrupted child exited 1, as
+/// if it had handled the signal. Returns `None` when no signal interrupted
+/// the command, and always on Windows, which keeps its exit code; otherwise
+/// `128 + signal`, the shell's code for that death, should the raise not end
+/// the process.
+pub fn reraise_termination_signal() -> Option<i32> {
+    #[cfg(unix)]
+    {
+        let sig = TERMINATED_BY.load(Ordering::SeqCst);
+        if sig == 0 {
+            return None;
+        }
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        // SAFETY: `sig` is one of the catchable signals `listen` registered;
+        // `set` is zero-initialised, then set up by sigemptyset(3).
+        unsafe {
+            libc::signal(sig, libc::SIG_DFL);
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            libc::sigaddset(&mut set, sig);
+            libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
+            libc::raise(sig);
+        }
+        Some(128 + sig)
+    }
+    #[cfg(windows)]
+    {
+        None
+    }
+}
+
+/// True when `sig`'s current disposition is SIG_IGN (read-only query).
+#[cfg(unix)]
+fn signal_ignored(sig: libc::c_int) -> bool {
+    // SAFETY: a null new action makes sigaction(2) only report the current
+    // one into `current`, a valid, zero-initialised struct.
+    unsafe {
+        let mut current: libc::sigaction = std::mem::zeroed();
+        libc::sigaction(sig, std::ptr::null(), &mut current) == 0
+            && current.sa_sigaction == libc::SIG_IGN
     }
 }
 
@@ -1073,6 +1528,229 @@ pub fn stale_binary() -> bool {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[cfg(unix)]
+    #[test]
+    fn requested_browser_close_preserves_pending_storage_flush() {
+        use std::os::unix::process::CommandExt;
+        let marker = std::env::temp_dir().join(format!(
+            "blade-flush-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut child = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "trap 'exit 23' TERM; sleep 0.15; printf flushed > \"$BLADE_TEST_FLUSH\"",
+            ])
+            .env("BLADE_TEST_FLUSH", &marker)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let profile = std::path::Path::new("/unused/sess-1");
+        assert!(owns_browser_process(child.id(), child.id(), profile));
+        assert!(!owns_browser_process(
+            child.id(),
+            std::process::id(),
+            profile
+        ));
+        finish_child_shutdown(&mut child, true);
+        let flushed = std::fs::read_to_string(&marker).ok();
+        let _ = std::fs::remove_file(marker);
+        assert_eq!(
+            flushed.as_deref(),
+            Some("flushed"),
+            "a requested close must finish its storage flush before the group is signalled"
+        );
+    }
+
+    /// The parent-death signal fires when the thread that forked the child
+    /// exits. A tied helper must therefore outlive the (tokio worker, blocking
+    /// pool) thread that asked for it, and must be out of our process group.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[test]
+    fn tied_helper_outlives_the_thread_that_spawned_it_in_its_own_group() {
+        let mut child = std::thread::spawn(|| {
+            let mut cmd = std::process::Command::new("sleep");
+            cmd.arg("30");
+            spawn_tied_to_process(cmd).unwrap()
+        })
+        .join()
+        .unwrap();
+        // The asking thread is gone; a signal tied to it lands at once.
+        std::thread::sleep(Duration::from_millis(300));
+        let alive = child.try_wait().unwrap().is_none();
+        let pgid = unsafe { libc::getpgid(child.id() as libc::pid_t) };
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            alive,
+            "the helper died with the thread that asked for it, not with the process"
+        );
+        assert_eq!(
+            pgid,
+            child.id() as libc::pid_t,
+            "helper not in its own group"
+        );
+    }
+
+    /// Flatpak runs the browser inside bubblewrap's own pid namespace, so CDP's
+    /// SystemInfo.getProcessInfo reports the sandbox pid (2 under Flatpak),
+    /// which names an unrelated host process. The ownership check must map it
+    /// back to the namespaced process in the group we spawned, or graceful
+    /// Browser.close is skipped and the storage flush is lost — and only to a
+    /// process running on our own profile, not any namespaced process of ours
+    /// that happens to carry that number.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn browser_pid_reported_from_a_sandbox_pid_namespace_is_owned() {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        // `unshare --fork` mirrors bwrap's layout: launcher → namespace init
+        // (pid 1) → the "browser" (pid 2 inside the namespace), a long-lived
+        // shell whose own argv carries the profile flag.
+        let profile = std::env::temp_dir().join(format!("blade-ns-{}/sess-1", std::process::id()));
+        let flag = format!("--user-data-dir={}", profile.display());
+        let spawned = Command::new("unshare")
+            .args(["--user", "--map-root-user", "--pid", "--fork"])
+            .args([
+                "sh",
+                "-c",
+                "sh -c 'while :; do sleep 0.2; done' browser \"$1\" & echo $!; wait",
+                "sandbox",
+                &flag,
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn();
+        let Ok(mut sandbox) = spawned else {
+            eprintln!("unshare unavailable; skipping pid-namespace ownership test");
+            return;
+        };
+        let mut line = String::new();
+        let _ = BufReader::new(sandbox.stdout.take().expect("sandbox stdout")).read_line(&mut line);
+        let Ok(ns_pid) = line.trim().parse::<u32>() else {
+            // Unprivileged user namespaces are disabled here (e.g. Ubuntu's
+            // AppArmor restriction on CI runners).
+            shutdown_child(&mut sandbox);
+            eprintln!("unprivileged pid namespaces unavailable; skipping");
+            return;
+        };
+        let mut unrelated = Command::new("sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("spawn unrelated process");
+
+        let owned = owns_browser_process(sandbox.id(), ns_pid, &profile);
+        let foreign = owns_browser_process(unrelated.id(), ns_pid, &profile);
+        let other_profile =
+            owns_browser_process(sandbox.id(), ns_pid, &profile.with_file_name("sess-2"));
+        shutdown_child(&mut sandbox);
+        shutdown_child(&mut unrelated);
+
+        assert!(
+            owned,
+            "the sandbox pid {ns_pid} reported by CDP belongs to the namespaced browser we spawned"
+        );
+        assert!(
+            !foreign,
+            "a namespaced pid outside the spawned process group must not count as ours"
+        );
+        assert!(
+            !other_profile,
+            "a namespaced process of ours that does not run on our profile is not the browser"
+        );
+    }
+
+    /// A forking launcher (a shell wrapper around a Flatpak export) leads our
+    /// group, but Flatpak moves bwrap into a process group of its own
+    /// (measured: wrapper pgid N, bwrap and the browser pgid N+1). The
+    /// browser is still in the process tree we spawned — the same proof the
+    /// launch gate accepts — so its sandbox pid must still count as ours.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn sandbox_pid_in_a_regrouped_descendant_of_the_launcher_is_owned() {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        // setsid regroups the namespace launcher while it stays the wrapper's
+        // child; both shells report a pid so the test can clean up and check.
+        let profile = std::env::temp_dir().join(format!("blade-ns-wrap-{}", std::process::id()));
+        let flag = format!("--user-data-dir={}", profile.display());
+        let script = "setsid unshare --user --map-root-user --pid --fork \
+                      sh -c 'sh -c \"while :; do sleep 0.2; done\" browser \"$1\" & echo ns $!; wait' \
+                      sandbox \"$1\" & echo host $!; wait";
+        let Ok(mut wrapper) = Command::new("sh")
+            .args(["-c", script, "wrapper", &flag])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+        else {
+            eprintln!("sh unavailable; skipping regrouped-launcher ownership test");
+            return;
+        };
+        let (mut ns_pid, mut host_pid) = (None, None);
+        let mut lines = BufReader::new(wrapper.stdout.take().expect("wrapper stdout")).lines();
+        for line in lines.by_ref().take(2).map_while(|l| l.ok()) {
+            match line.split_once(' ') {
+                Some(("ns", pid)) => ns_pid = pid.trim().parse::<u32>().ok(),
+                Some(("host", pid)) => host_pid = pid.trim().parse::<i32>().ok(),
+                _ => {}
+            }
+        }
+        let cleanup = |wrapper: &mut Child| {
+            if let Some(group) = host_pid.filter(|p| *p > 1) {
+                unsafe {
+                    libc::kill(-group, libc::SIGKILL);
+                }
+            }
+            shutdown_child(wrapper);
+        };
+        let Some(ns_pid) = ns_pid else {
+            cleanup(&mut wrapper);
+            eprintln!("unprivileged pid namespaces or setsid unavailable; skipping");
+            return;
+        };
+
+        let mut unrelated = Command::new("sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("spawn unrelated process");
+
+        let owned = owns_browser_process(wrapper.id(), ns_pid, &profile);
+        let foreign = owns_browser_process(unrelated.id(), ns_pid, &profile);
+        cleanup(&mut wrapper);
+        shutdown_child(&mut unrelated);
+
+        assert!(
+            owned,
+            "a namespaced browser regrouped below our launcher is still ours"
+        );
+        assert!(
+            !foreign,
+            "a launcher that did not start the namespaced browser must not claim it"
+        );
+    }
 
     #[test]
     fn stale_binary_is_false_for_a_normally_launched_process() {
@@ -1257,6 +1935,26 @@ mod security_hardening_tests {
 
     #[cfg(unix)]
     #[test]
+    fn upload_guard_checks_the_spelled_path_as_well_as_the_resolved_one() {
+        // NixOS: /etc/hostname is a symlink to /nix/store/…-hostname. The
+        // resolved path lies outside every blocked dir; the spelling does not.
+        assert_eq!(
+            upload_system_prefix("/etc/hostname", "/nix/store/abc-hostname"),
+            Some("/etc")
+        );
+        // A harmless spelling that resolves into a system dir stays refused.
+        assert_eq!(
+            upload_system_prefix("/home/u/notes.txt", "/etc/shadow"),
+            Some("/etc")
+        );
+        assert_eq!(
+            upload_system_prefix("/home/u/report.pdf", "/home/u/report.pdf"),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn upload_path_blocks_credentials_and_data_dir_but_allows_artifacts() {
         let base = std::env::temp_dir().join(format!("blade-upload-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -1427,6 +2125,112 @@ mod security_hardening_tests {
 #[cfg(test)]
 mod persistence_reliability_tests {
     use super::*;
+
+    /// A live process whose first /proc cmdline entry is `argv0` — with
+    /// spaces, the shape Chromium leaves after rewriting its argv into one
+    /// space-joined string (measured on Flatpak Chromium's browser process).
+    /// `sh` + a blocking builtin: multi-call binaries (coreutils on NixOS)
+    /// dispatch on argv[0] and would exit at once.
+    /// spawn() returns once the child is inside execve, before the kernel
+    /// has published its new argv: /proc/<pid>/cmdline reads empty for a
+    /// moment, so wait for it.
+    #[cfg(target_os = "linux")]
+    fn process_with_argv0(argv0: &str) -> std::process::Child {
+        use std::os::unix::process::CommandExt;
+        let child = std::process::Command::new("sh")
+            .arg0(argv0)
+            .args(["-c", "read -r _"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn sh");
+        let cmdline = format!("/proc/{}/cmdline", child.id());
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !std::fs::read(&cmdline).is_ok_and(|c| c.starts_with(argv0.as_bytes())) {
+            assert!(std::time::Instant::now() < deadline, "argv never published");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        child
+    }
+
+    #[test]
+    fn chromium_family_is_recognised_in_both_cmdline_shapes() {
+        let cases: &[(&[u8], bool)] = &[
+            // Chromium's rewritten argv: one space-joined string + one NUL.
+            (
+                b"/app/chromium/chrome --enable-features=Foo --user-data-dir=/x/sess-1\0",
+                true,
+            ),
+            (b"/opt/google/chrome/chrome --type=renderer --lang=en", true),
+            // The kernel's normal NUL-separated form, incl. a spaced path.
+            (b"/usr/lib/chromium/chromium\0--user-data-dir=/x\0", true),
+            (b"/opt/My Apps/chrome\0--user-data-dir=/x\0", true),
+            (b"/opt/brave.com/brave/brave\0", true),
+            (b"/opt/microsoft/msedge/msedge\0", true),
+            (b"/opt/vivaldi/vivaldi-bin\0", true),
+            (b"/usr/bin/cat\0", false),
+            (b"/opt/chrome-tools/notchrome --user-data-dir=/x\0", false),
+            // A rewritten line whose last path component looks like a name.
+            (b"/usr/bin/foo --dir=/srv/chrome stuff\0", false),
+            (b"", false),
+        ];
+        for &(cmdline, expected) in cases {
+            assert_eq!(
+                cmdline_is_chromium(cmdline),
+                expected,
+                "{:?}",
+                String::from_utf8_lossy(cmdline)
+            );
+        }
+        for name in [
+            "Google Chrome",
+            "Brave Browser",
+            "Microsoft Edge",
+            "Chromium",
+            "Google Chrome for Testing",
+            "msedge.exe",
+        ] {
+            assert!(exe_name_is_chromium(name), "{name}");
+        }
+        assert!(!exe_name_is_chromium("Safari"));
+        assert!(!exe_name_is_chromium("chromedriver"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rewritten_and_non_google_chromium_processes_are_recognised() {
+        let cases = [
+            (
+                "/app/chromium/chrome --enable-features=Foo --user-data-dir=/x/sess-1",
+                true,
+            ),
+            ("/opt/brave.com/brave/brave", true),
+            ("/opt/microsoft/msedge/msedge --type=renderer", true),
+            ("/usr/bin/cat", false),
+            ("/opt/chrome-tools/notchrome --user-data-dir=/x", false),
+        ];
+        let mut seen = Vec::new();
+        for (argv0, expected) in cases {
+            let mut child = process_with_argv0(argv0);
+            let observed = std::fs::read(format!("/proc/{}/cmdline", child.id()));
+            seen.push((
+                argv0,
+                process_is_chrome(child.id()),
+                expected,
+                observed.map(|c| String::from_utf8_lossy(&c).into_owned()),
+            ));
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        for (argv0, got, expected, observed) in seen {
+            assert_eq!(
+                got, expected,
+                "process_is_chrome for argv0 {argv0:?} (read {observed:?})"
+            );
+        }
+    }
+
     #[test]
     fn invalid_pids_are_never_process_groups() {
         assert!(!process_alive(0));

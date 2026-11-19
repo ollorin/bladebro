@@ -45,6 +45,8 @@ use self::args::{
     extract_endpoint, parse_act_args, parse_nav_args, parse_run_args, parse_see_args,
     parse_state_args, parse_vision_args,
 };
+#[cfg(unix)]
+use self::daemon::{daemon_request, MAX_REQUEST_BYTES};
 use self::daemon::{run_daemon, stop_daemon};
 pub use self::help::{command_help_text, help_json, help_text, suggest_command};
 use self::rb::run_rb;
@@ -125,7 +127,10 @@ fn peer_uid_matches_self(fd: std::os::fd::RawFd) -> bool {
 /// Result of a tool dispatch — shared between CLI and daemon.
 pub struct ToolResult {
     pub text: String,
+    /// Base64 PNG (vision) for the client to save.
     pub image: Option<String>,
+    /// PNG the vision handler already saved (oversized captures).
+    pub image_path: Option<String>,
     pub is_error: bool,
 }
 
@@ -136,46 +141,17 @@ pub async fn dispatch(
     args: &Value,
     page: &mut Page,
 ) -> std::result::Result<ToolResult, BladeError> {
-    // For see with URL: navigate first, then read. Any non-flag token is a
-    // URL; the shared navigate adds the missing scheme.
-    if tool == "see" {
-        if let Some(url) = args.get("url").and_then(|u| u.as_str()) {
-            if !url.is_empty() && !url.starts_with("--") {
-                // Manual-control pause: a see with a url navigates first.
-                if crate::realbrowser::input_paused() {
-                    return Err(crate::realbrowser::paused_error());
-                }
-                page.navigate(url).await?;
-            }
-        }
-    }
-
-    // Vision is special — returns a JSON-RPC response with image data.
+    // Vision is special — an image instead of (only) text. Taken from the
+    // capture directly, not re-parsed out of the MCP response: an oversized
+    // screenshot is saved by the handler and comes back as a path, which
+    // the response only mentions in prose (`--json` printed no image_path).
     if tool == "vision" {
-        let result = server::handle_vision(None, args, page).await?;
-        let content = result
-            .get("result")
-            .and_then(|r| r.get("content"))
-            .and_then(|c| c.as_array());
-        let text = content
-            .and_then(|c| c.first())
-            .and_then(|t| t.get("text"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
-        let is_error = result
-            .get("result")
-            .and_then(|r| r.get("isError"))
-            .and_then(|e| e.as_bool())
-            .unwrap_or(false);
-        let image = content
-            .and_then(|c| c.get(1))
-            .and_then(|i| i.get("data"))
-            .and_then(|d| d.as_str())
-            .map(String::from);
+        let shot = server::capture_vision(args, page).await?;
         return Ok(ToolResult {
-            text: text.to_string(),
-            image,
-            is_error,
+            text: shot.text,
+            image: shot.image,
+            image_path: shot.image_path,
+            is_error: shot.is_error,
         });
     }
 
@@ -183,7 +159,9 @@ pub async fn dispatch(
     let tl = crate::record::timeline::begin(tool, args);
     let result = match tool {
         "act" => server::handle_act(args, page).await,
-        "see" => server::handle_see(args, page).await,
+        // see url= navigates first (shared with MCP); the shared navigate
+        // adds a missing scheme.
+        "see" => server::handle_see_tool(args, page).await,
         "state" => server::handle_state(args, page).await,
         "run" => server::handle_run(args, page).await,
         _ => return Err(BladeError::Other(format!("unknown tool: {tool}"))),
@@ -222,6 +200,7 @@ pub async fn dispatch(
             Ok(ToolResult {
                 text,
                 image: None,
+                image_path: None,
                 is_error: false,
             })
         }
@@ -253,6 +232,7 @@ pub async fn dispatch(
             Ok(ToolResult {
                 text,
                 image: None,
+                image_path: None,
                 is_error: true,
             })
         }
@@ -325,14 +305,61 @@ fn daemon_running() -> bool {
     }
 }
 
-/// Send a tool call to the daemon over Unix socket.
+/// How a daemon call failed. The split decides what the CLI may do next, so
+/// it comes from WHERE the call failed — never from error text: a live
+/// daemon's reply can quote any OS error ("failed to launch Chrome: No such
+/// file or directory"), and reading that as "daemon dead" used to unlink
+/// the live daemon's socket and orphan it.
+#[cfg(unix)]
+enum DaemonCallError {
+    /// The connect failed: nothing accepted the request, so it was never
+    /// delivered. Starting a daemon (or running elsewhere) is safe.
+    Unreachable(std::io::Error),
+    /// The daemon was reached. It may have run — or still be running — the
+    /// command: never restart it or run the command again.
+    Failed(BladeError),
+}
+
+#[cfg(unix)]
+impl From<BladeError> for DaemonCallError {
+    fn from(e: BladeError) -> Self {
+        DaemonCallError::Failed(e)
+    }
+}
+
+/// The framed request line for one tool call, checked against the daemon's
+/// request limit BEFORE any daemon is reached or started. The daemon drops
+/// an oversized request mid-read, which surfaced here as a bare "I/O error:
+/// Broken pipe (os error 32)" — after auto-starting a daemon for nothing.
+#[cfg(unix)]
+fn daemon_request_line(tool: &str, args: &Value) -> Result<String> {
+    // Fork hook (.planning/HOOKS.md): the daemon refuses a launch-mode mismatch (HEAD-03). The tag
+    // is also the client-side validation: this runs BEFORE any daemon is auto-started.
+    let launch = crate::launch_mode::request_tag().map_err(BladeError::Other)?;
+    let mut request = daemon_request(tool, args);
+    request["launch"] = launch;
+    let req = serde_json::to_string(&request)?;
+    // +1: the newline that frames the request counts against the limit.
+    if req.len() + 1 > MAX_REQUEST_BYTES {
+        return Err(BladeError::Other(format!(
+            "this command is {:.1} MiB; the daemon accepts at most {} MiB per command — nothing \
+             was sent. Shrink the payload (e.g. split the steps across calls), or add --no-daemon \
+             to run it one-shot in a fresh browser.",
+            req.len() as f64 / (1024.0 * 1024.0),
+            MAX_REQUEST_BYTES / (1024 * 1024)
+        )));
+    }
+    Ok(req)
+}
+
+/// Send a tool call (a [`daemon_request_line`]) to the daemon over Unix socket.
 ///
 /// Hardening: the read has a timeout (`BLADE_CMD_TIMEOUT` seconds, default
 /// 300). Before this, a wedged daemon left the client blocking forever —
 /// an agent's shell call hung until its harness killed it, with no output
 /// and no way to tell "still working" from "dead".
 #[cfg(unix)]
-fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
+fn send_to_daemon(req: &str) -> std::result::Result<ToolResult, DaemonCallError> {
     use std::io::{Read, Write};
     use std::os::unix::net::UnixStream;
 
@@ -342,22 +369,19 @@ fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
         .filter(|&s| s > 0)
         .unwrap_or(300);
 
-    let mut stream = UnixStream::connect(socket_path())
-        .map_err(|e| BladeError::Other(format!("daemon not running: {e}")))?;
+    let mut stream = UnixStream::connect(socket_path()).map_err(DaemonCallError::Unreachable)?;
     {
         use std::os::fd::AsRawFd;
         if !peer_uid_matches_self(stream.as_raw_fd()) {
             return Err(BladeError::Other(
                 "refusing the daemon channel: the socket peer is not this user".into(),
-            ));
+            )
+            .into());
         }
     }
 
-    // Fork hook (.planning/HOOKS.md): the daemon refuses a launch-mode mismatch (HEAD-03).
-    let launch = crate::launch_mode::request_tag().map_err(BladeError::Other)?;
-    let req = serde_json::to_string(&json!({ "tool": tool, "args": args, "launch": launch }))?;
-    writeln!(stream, "{req}")?;
-    stream.flush()?;
+    writeln!(stream, "{req}").map_err(BladeError::from)?;
+    stream.flush().map_err(BladeError::from)?;
 
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs)));
 
@@ -369,18 +393,29 @@ fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
                 || e.kind() == std::io::ErrorKind::TimedOut =>
         {
             return Err(BladeError::Other(format!(
-                "no daemon response after {timeout_secs}s — the command may still be running.\n\
-                 Check with 'bladebro state tabs', cancel with 'bladebro stop', or raise the\n\
-                 client limit with BLADE_CMD_TIMEOUT=<seconds>."
-            )));
+                "no daemon response after {timeout_secs}s — the command may still be running\n\
+                 (the daemon runs one command at a time; others queue behind it). Raise the\n\
+                 client limit with BLADE_CMD_TIMEOUT=<seconds>, or cancel it with 'bladebro stop'\n\
+                 (terminates the daemon; Chrome restarts on the next command, page state reset)."
+            ))
+            .into());
         }
         Err(e) => {
-            return Err(BladeError::Other(format!(
-                "failed to read daemon response: {e}"
-            )));
+            return Err(BladeError::Other(format!("failed to read daemon response: {e}")).into());
         }
     }
 
+    // EOF without a reply: the daemon died (crash, OOM kill) after taking
+    // the request — the command may have run, and the agent must look
+    // before repeating it, not get a JSON parse error.
+    if resp.trim().is_empty() {
+        return Err(BladeError::Other(
+            "the daemon closed the connection without replying — the command may have run.\n\
+             Check with 'bladebro state tabs' before repeating it."
+                .into(),
+        )
+        .into());
+    }
     let v: Value = serde_json::from_str(&resp)
         .map_err(|e| BladeError::Other(format!("invalid daemon response: {e}")))?;
 
@@ -390,7 +425,7 @@ fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
             .get("error")
             .and_then(|e| e.as_str())
             .unwrap_or("unknown error");
-        return Err(BladeError::Other(err.to_string()));
+        return Err(BladeError::Other(err.to_string()).into());
     }
 
     let text = v
@@ -399,10 +434,15 @@ fn send_to_daemon(tool: &str, args: &Value) -> Result<ToolResult> {
         .unwrap_or("")
         .to_string();
     let image = v.get("image").and_then(|i| i.as_str()).map(String::from);
+    let image_path = v
+        .get("image_path")
+        .and_then(|i| i.as_str())
+        .map(String::from);
     let is_error = v.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
     Ok(ToolResult {
         text,
         image,
+        image_path,
         is_error,
     })
 }
@@ -463,8 +503,16 @@ async fn run_cli_inner(
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("help");
     let rest = &args[1.min(args.len())..];
 
-    // `--help`/`-h` anywhere in a command's args → that command's help.
+    // `--help`/`-h` anywhere in a command's args → that command's help,
+    // never the command itself (main.rs leaves the flag here once a command
+    // has been named). --json gets the machine form, like `help <cmd> --json`.
     if cmd != "help" && rest.iter().any(|a| a == "--help" || a == "-h") {
+        if json_mode {
+            if let Ok(j) = help_json(Some(cmd)) {
+                print!("{j}");
+                return Ok(());
+            }
+        }
         if let Some(text) = command_help_text(cmd) {
             print!("{text}");
             return Ok(());
@@ -483,6 +531,7 @@ async fn run_cli_inner(
                 &ToolResult {
                     text,
                     image: None,
+                    image_path: None,
                     is_error: false,
                 },
                 json_mode,
@@ -515,6 +564,12 @@ async fn run_cli_inner(
             run_tool("vision", &parsed, json_mode, no_daemon, external).await
         }
         "help" => {
+            // `help --help` / `help act -h` are still requests for help.
+            let rest: Vec<String> = rest
+                .iter()
+                .filter(|a| *a != "--help" && *a != "-h")
+                .cloned()
+                .collect();
             if json_mode {
                 print!("{}", help_json(rest.first().map(|s| s.as_str()))?);
             } else if rest.is_empty() {
@@ -545,11 +600,12 @@ async fn run_cli_inner(
 /// exits 1 — the old CLI exited 0 on tool errors, so scripts and agents
 /// could not tell a failed click from a successful one.
 ///
-/// Failure handling is deliberately two-tiered:
+/// Failure handling is deliberately two-tiered, keyed on [`DaemonCallError`]
+/// (where the call failed, never what the error text says):
 /// - the socket connect fails → the daemon is dead; restart it and retry;
-/// - the socket connect succeeds but the call fails (e.g. client timeout) →
-///   the daemon is alive and may still be running the command; never kill
-///   or bypass it, surface the error instead.
+/// - the socket connect succeeds but the call fails (e.g. client timeout, or
+///   any tool error the daemon reports) → the daemon is alive and may still
+///   be running the command; never kill or bypass it, surface the error.
 async fn run_tool(
     tool: &str,
     args: &Value,
@@ -571,13 +627,11 @@ async fn run_tool(
     if !no_daemon {
         #[cfg(unix)]
         {
-            // Fork hook (.planning/HOOKS.md): refuse an invalid launch setting BEFORE any
-            // daemon starts; a daemon inherits the env and would stay poisoned.
-            crate::launch_mode::request_tag().map_err(BladeError::Other)?;
+            let req = daemon_request_line(tool, args)?;
 
             // Try the running daemon first.
             if daemon_running() {
-                match send_to_daemon(tool, args) {
+                match send_to_daemon(&req) {
                     Ok(result) => {
                         let code = print_result(&result, json_mode, args);
                         if code != 0 {
@@ -585,20 +639,16 @@ async fn run_tool(
                         }
                         return Ok(());
                     }
-                    Err(e) => {
-                        let msg = e.to_string();
-                        let unreachable = msg.contains("Connection refused")
-                            || msg.contains("No such file")
-                            || msg.contains("daemon not running");
-                        if unreachable {
-                            eprintln!("[bladebro] daemon unreachable ({msg}) — restarting it");
-                            // A dead daemon can leave a stale socket file behind.
-                            let _ = std::fs::remove_file(socket_path());
-                        } else {
-                            // Alive but the call failed: do not kill or bypass.
-                            return Err(e);
-                        }
+                    Err(DaemonCallError::Unreachable(e)) => {
+                        // Died between the liveness probe and the call. No
+                        // unlink of the socket here: the daemon started
+                        // below clears a stale one itself, under its lock —
+                        // an unlink from this unlocked client could hit a
+                        // live daemon's socket and orphan it.
+                        eprintln!("[bladebro] daemon unreachable ({e}) — restarting it");
                     }
+                    // Alive but the call failed: do not kill or bypass.
+                    Err(DaemonCallError::Failed(e)) => return Err(e),
                 }
             }
 
@@ -621,7 +671,7 @@ async fn run_tool(
                 if let Some(note) = crate::launch_mode::daemon_start_note() {
                     eprintln!("{note}");
                 }
-                match send_to_daemon(tool, args) {
+                match send_to_daemon(&req) {
                     Ok(result) => {
                         let code = print_result(&result, json_mode, args);
                         if code != 0 {
@@ -629,9 +679,15 @@ async fn run_tool(
                         }
                         return Ok(());
                     }
-                    Err(e) => eprintln!(
-                        "[bladebro] daemon failed after auto-start ({e}), falling back to one-shot"
+                    // Never delivered: running it one-shot is its first run.
+                    Err(DaemonCallError::Unreachable(e)) => eprintln!(
+                        "[bladebro] daemon unreachable after auto-start ({e}), falling back to one-shot"
                     ),
+                    // Delivered: the daemon may have acted (a click that
+                    // landed before "outcome UNKNOWN", a command still
+                    // running past BLADE_CMD_TIMEOUT). A one-shot fallback
+                    // here would run it a second time.
+                    Err(DaemonCallError::Failed(e)) => return Err(e),
                 }
             } else {
                 eprintln!(
@@ -645,16 +701,31 @@ async fn run_tool(
     // One-shot: launch (or attach to) the lane's browser, run, exit.
     // Use a guard to ensure a browser WE OWN is ALWAYS shut down, even on
     // error. The real lane's attach mechanism owns nothing — nothing to shut.
-    let (browser, base) = crate::browser::launch_lane().await?;
+    // That includes Ctrl-C, a harness's or `timeout`'s SIGTERM and a closed
+    // terminal's SIGHUP: caught from before the launch on, they end the run,
+    // not the process, which would never close Chrome (it runs in its own
+    // process group); bladebro dies of the signal only once Chrome is closed
+    // (`platform::reraise_termination_signal`, at exit). One that lands
+    // mid-launch lets the launch finish (the launch paths are not all safe
+    // to drop half-way) but stops its retries.
+    let mut signal = crate::platform::TerminationSignal::listen();
+    let (browser, base) = signal.during_launch(crate::browser::launch_lane()).await?;
 
     // `external = real_lane`: on the real browser we never restore saved
     // logins, warm the profile, or snapshot cookies — it is not ours.
-    let result = run_connected(tool, args, &base, crate::realbrowser::real_lane()).await;
+    let result = signal
+        .interruptible(run_connected(
+            tool,
+            args,
+            &base,
+            crate::realbrowser::real_lane(),
+        ))
+        .await;
 
     // ALWAYS shut down Chrome, even if the above failed.
     // Without this, any error between launch and shutdown orphans Chrome + Xvfb.
     if let Some(browser) = browser {
-        let _ = tokio::task::spawn_blocking(move || browser.shutdown()).await;
+        browser.shutdown_gracefully().await;
     }
 
     let result = result?;
@@ -705,22 +776,41 @@ async fn run_connected(tool: &str, args: &Value, base: &str, external: bool) -> 
 
 /// Print a tool result and return the process exit code (0 ok, 1 error).
 fn print_result(result: &ToolResult, json_mode: bool, args: &Value) -> i32 {
-    let code = if result.is_error { 1 } else { 0 };
+    let (out, code) = render_result(result, json_mode, args);
+    println!("{out}");
+    code
+}
 
+/// The stdout text for a tool result, and its exit code (0 ok, 1 error).
+fn render_result(result: &ToolResult, json_mode: bool, args: &Value) -> (String, i32) {
     // Vision: always persist the PNG and hand back a PATH. The old --json
     // inlined the full base64 (1-2MB for a screenshot) — one vision call
     // could blow an agent's context. The file is the CLI-native artifact;
     // MCP keeps the inline image because the protocol has image content.
-    let image_path = result.image.as_deref().and_then(|img| {
-        base64_decode(img)
-            .and_then(|data| crate::artifacts::write_artifact_bytes(&data, "png").ok())
-    });
+    // An oversized capture arrives already saved (image_path). A PNG that
+    // cannot be decoded or written fails the call: it used to be dropped
+    // silently, reporting ok with no image_path at all.
+    let mut is_error = result.is_error;
+    let mut text = std::borrow::Cow::Borrowed(result.text.as_str());
+    let image_path = match (&result.image_path, &result.image) {
+        (Some(p), _) => Some(p.clone()),
+        (None, Some(img)) => match save_png(img) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                is_error = true;
+                text = format!("{text}\n\u{2717} error: screenshot not saved: {e}").into();
+                None
+            }
+        },
+        (None, None) => None,
+    };
+    let code = if is_error { 1 } else { 0 };
 
-    if json_mode {
+    let out = if json_mode {
         let mut v = json!({
-            "ok": !result.is_error,
-            "is_error": result.is_error,
-            "text": result.text,
+            "ok": !is_error,
+            "is_error": is_error,
+            "text": text,
         });
         if let Some(p) = &image_path {
             v["image_path"] = json!(p);
@@ -733,13 +823,20 @@ fn print_result(result: &ToolResult, json_mode: bool, args: &Value) -> i32 {
                 v["data"] = data;
             }
         }
-        println!("{v}");
+        v.to_string()
     } else if let Some(p) = &image_path {
-        println!("{}\nsaved: {}", crate::ui::style_report(&result.text), p);
+        format!("{}\nsaved: {}", crate::ui::style_report(&text), p)
     } else {
-        println!("{}", crate::ui::style_report(&result.text));
-    }
-    code
+        crate::ui::style_report(&text)
+    };
+    (out, code)
+}
+
+/// Decode a base64 PNG and write it as an artifact; the path on success.
+fn save_png(b64: &str) -> Result<String> {
+    let data = base64_decode(b64)
+        .ok_or_else(|| BladeError::Other("the PNG data is not valid base64".into()))?;
+    crate::artifacts::write_artifact_bytes(&data, "png")
 }
 
 /// Exit the process with `code` after flushing the std streams.
@@ -812,6 +909,69 @@ async fn warm_profile(page: &mut Page) {
         eprintln!(
             "[bladebro] profile warmed ({ok}/{} sites visited)",
             sites.len()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vision(image: Option<&str>, image_path: Option<&str>) -> ToolResult {
+        ToolResult {
+            text: "screenshot".into(),
+            image: image.map(String::from),
+            image_path: image_path.map(String::from),
+            is_error: false,
+        }
+    }
+
+    /// An oversized capture is saved by the handler and arrives as a path;
+    /// `vision --json | jq -r .image_path` read null for exactly those.
+    #[test]
+    fn vision_json_reports_a_handler_saved_path() {
+        let (out, code) =
+            render_result(&vision(None, Some("/x/blade-1-0001.png")), true, &json!({}));
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["image_path"], "/x/blade-1-0001.png");
+        let (out, _) = render_result(
+            &vision(None, Some("/x/blade-1-0001.png")),
+            false,
+            &json!({}),
+        );
+        assert!(out.ends_with("\nsaved: /x/blade-1-0001.png"), "{out}");
+    }
+
+    #[test]
+    fn vision_inline_png_is_saved_to_a_file() {
+        let (out, code) = render_result(&vision(Some("iVBORw0KGgo="), None), true, &json!({}));
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(code, 0);
+        let path = v["image_path"].as_str().expect("image_path");
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// A PNG that cannot be saved is a failed call, never `ok` without a path.
+    #[test]
+    fn vision_save_failure_fails_the_call() {
+        let (out, code) = render_result(&vision(Some("not base64!"), None), true, &json!({}));
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(code, 1);
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["is_error"], true);
+        assert!(v.get("image_path").is_none());
+        assert!(
+            v["text"]
+                .as_str()
+                .unwrap()
+                .contains("screenshot not saved: the PNG data is not valid base64"),
+            "{v}"
         );
     }
 }

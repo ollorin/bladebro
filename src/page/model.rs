@@ -38,7 +38,8 @@ pub struct PageDelta {
     pub changed: Vec<(String, StateChange)>,
     /// Refs kept via structural fingerprint rebind (D48 re-render immunity).
     /// Each `(ref_id, new_sig)` means the ref survived a re-render that
-    /// changed its sig but preserved the structural fingerprint. The agent
+    /// changed its sig but preserved the structural fingerprint and its
+    /// role+name (a renamed element is removed + added instead). The agent
     /// sees "re-render survived" instead of "ref died" — the key UX win.
     pub rebound: Vec<(String, String)>,
     /// Previous title — set when the title changed between captures.
@@ -47,6 +48,10 @@ pub struct PageDelta {
     /// mutation watcher installed before an action). Detects effects on
     /// non-actionable content — text swaps, counters, live regions.
     pub content_changed: bool,
+    /// The page did not answer this read ([`PageCapture::unanswered`]):
+    /// nothing was observed and the model kept its previous state. An
+    /// effect after an action is unverified - never "no change".
+    pub unanswered: bool,
 }
 
 impl PageDelta {
@@ -89,10 +94,16 @@ pub struct LivePageModel {
     url: String,
     title: String,
     phase: String,
+    /// The latest read went unanswered: the elements are the last answered
+    /// state, not a fresh observation. Rendered as a note on every view.
+    unanswered: bool,
 }
 
 /// Max remembered dead-ref identities.
 const GRAVEYARD_CAP: usize = 64;
+
+/// Shown under the page line while the latest read went unanswered.
+const UNANSWERED_NOTE: &str = "(page did not answer this read - busy or mid-navigation; showing the last answered state, refs kept - observe again)\n";
 
 impl Default for LivePageModel {
     fn default() -> Self {
@@ -106,6 +117,7 @@ impl Default for LivePageModel {
             url: String::new(),
             title: String::new(),
             phase: String::new(),
+            unanswered: false,
         }
     }
 }
@@ -126,6 +138,11 @@ impl LivePageModel {
     /// Current phase (`loading` / `ready` / …).
     pub fn phase(&self) -> &str {
         &self.phase
+    }
+    /// The latest read went unanswered: `url()` and the elements are the last
+    /// answered state, not necessarily what the tab shows now.
+    pub fn read_unanswered(&self) -> bool {
+        self.unanswered
     }
     /// Number of actionable elements currently modeled.
     pub fn actionables(&self) -> usize {
@@ -170,6 +187,36 @@ impl LivePageModel {
         name: &str,
         frame: &[usize],
     ) -> String {
+        // One sig, one ref. The healed element may meanwhile be live under
+        // another ref (it left the capture window, e5 died, it came back as
+        // e9, then the agent acted on e5). Two live refs on one sig made the
+        // next ingest keep one of them in HashMap order and report the other
+        // `- eN (gone)` while the element was still on the page — sometimes
+        // the very ref the agent had just acted through. The ref being
+        // adopted is the one the agent is using, so it wins; the other is
+        // retired to the graveyard, where it still heals to the same element
+        // by its exact sig.
+        if self
+            .elements
+            .iter()
+            .any(|e| e.ref_id != id && e.raw.sig == sig)
+        {
+            let (retired, kept): (Vec<PageElement>, Vec<PageElement>) =
+                std::mem::take(&mut self.elements)
+                    .into_iter()
+                    .partition(|e| e.ref_id != id && e.raw.sig == sig);
+            self.elements = kept;
+            self.by_ref = self
+                .elements
+                .iter()
+                .enumerate()
+                .map(|(i, e)| (e.ref_id.clone(), i))
+                .collect();
+            for e in retired {
+                self.prev_state.remove(&e.ref_id);
+                self.bury(e.ref_id, e.raw.sig, e.raw.role, e.raw.name);
+            }
+        }
         let raw = crate::page::perception::RawElement {
             tag: String::new(),
             role: role.to_string(),
@@ -217,6 +264,19 @@ impl LivePageModel {
         id.to_string()
     }
 
+    /// Remember a dead ref's identity for self-healing. Latest wins: a ref
+    /// that was healed onto another element (a different sig) must heal to
+    /// THAT element when it dies again, not to the one it named before the
+    /// heal.
+    fn bury(&mut self, id: String, sig: String, role: String, name: String) {
+        self.graveyard.retain(|(g, _, _, _)| *g != id);
+        self.graveyard.push((id, sig, role, name));
+        if self.graveyard.len() > GRAVEYARD_CAP {
+            let excess = self.graveyard.len() - GRAVEYARD_CAP;
+            self.graveyard.drain(..excess);
+        }
+    }
+
     /// Look up a dead ref's last-known identity: (sig, role, name).
     /// Returns None if the ref was never seen or already forgotten.
     pub fn graveyard_lookup(&self, ref_id: &str) -> Option<(String, String, String)> {
@@ -231,6 +291,22 @@ impl LivePageModel {
     ///
     /// This is the core mutation. Returns the delta to surface to the agent.
     pub fn ingest(&mut self, cap: PageCapture) -> PageDelta {
+        // An unanswered read observed nothing. Ingested as a page it reported
+        // a navigation to "" with 0 actionable, sent every ref to the
+        // graveyard, and made the next good capture mint new refs for the
+        // same elements. Keep the last answered state; the phase and the
+        // `unanswered` flag say the page is busy.
+        if cap.is_unanswered() {
+            self.phase = cap.phase().to_string();
+            self.unanswered = true;
+            return PageDelta {
+                url: self.url.clone(),
+                title: self.title.clone(),
+                phase: self.phase.clone(),
+                unanswered: true,
+                ..PageDelta::default()
+            };
+        }
         let navigated = self.initialized && self.url != cap.url;
         let title_changed = self.initialized && self.title != cap.title;
         let phase = cap.phase().to_string();
@@ -286,16 +362,8 @@ impl LivePageModel {
         // Move dead refs' identities into the graveyard for self-healing.
         // The agent may still hold e5; when it acts on e5 we re-resolve
         // what e5 used to be (role+name) against the live page.
-        for r in &stab.removed {
-            // Skip if the same ref id is somehow already recorded.
-            if !self.graveyard.iter().any(|(id, _, _, _)| id == &r.id) {
-                self.graveyard
-                    .push((r.id.clone(), r.sig.clone(), r.role.clone(), r.name.clone()));
-            }
-        }
-        if self.graveyard.len() > GRAVEYARD_CAP {
-            let excess = self.graveyard.len() - GRAVEYARD_CAP;
-            self.graveyard.drain(..excess);
+        for r in stab.removed {
+            self.bury(r.id, r.sig, r.role, r.name);
         }
 
         let delta = PageDelta {
@@ -309,6 +377,7 @@ impl LivePageModel {
             rebound: stab.rebound,
             title_changed,
             content_changed: cap.muts > 0,
+            unanswered: false,
         };
 
         self.elements = elements;
@@ -318,6 +387,7 @@ impl LivePageModel {
         self.title = cap.title;
         self.phase = phase;
         self.initialized = true;
+        self.unanswered = false;
 
         delta
     }
@@ -356,6 +426,9 @@ impl LivePageModel {
         ));
         if !self.title.is_empty() {
             out.push_str(&format!("title: {}\n", truncate(&self.title, 80)));
+        }
+        if self.unanswered {
+            out.push_str(UNANSWERED_NOTE);
         }
 
         let mut folded_done: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -444,6 +517,9 @@ impl LivePageModel {
         if !self.title.is_empty() {
             out.push_str(&format!("title: {}\n", truncate(&self.title, 80)));
         }
+        if self.unanswered {
+            out.push_str(UNANSWERED_NOTE);
+        }
         for (printed, el) in matching.iter().enumerate() {
             let mut line = format_element(el);
             if !el.raw.ctx.is_empty() {
@@ -492,6 +568,11 @@ impl LivePageModel {
         if !d.navigated && !self.title.is_empty() {
             out.push_str(&format!("title: {}\n", truncate(&self.title, 80)));
         }
+        // Nothing was observed: no element list, and never "(no change)".
+        if d.unanswered {
+            out.push_str(UNANSWERED_NOTE);
+            return out;
+        }
 
         // For small pages, show the full element list with change markers.
         // This makes the delta self-sufficient — no `see` call needed to
@@ -504,7 +585,7 @@ impl LivePageModel {
             let removed_refs: std::collections::HashSet<&str> =
                 d.removed.iter().map(|r| r.as_str()).collect();
 
-            for el in &self.elements {
+            for (idx, el) in self.elements.iter().enumerate() {
                 let prefix = if added_refs.contains(el.ref_id.as_str()) {
                     "+ "
                 } else if changed_refs.contains(el.ref_id.as_str()) {
@@ -514,10 +595,11 @@ impl LivePageModel {
                 };
                 let line = format!("{}{}\n", prefix, format_element(el));
                 if out.len() + line.len() > budget {
-                    out.push_str(&format!(
-                        "…({} more)\n",
-                        self.elements.len() - out.lines().count() + 1
-                    ));
+                    // Count the elements not printed, never lines: `out`
+                    // also holds one to three header lines, and deriving
+                    // the count from them was off by the title lines and
+                    // underflowed when only the headers fit.
+                    out.push_str(&format!("…({} more)\n", self.elements.len() - idx));
                     break;
                 }
                 out.push_str(&line);
@@ -557,12 +639,14 @@ impl LivePageModel {
         }
 
         // For large pages or navigation, show the diff.
-        for el in &d.added {
+        for (idx, el) in d.added.iter().enumerate() {
             let line = format!("+ {}\n", format_element(el));
             if out.len() + line.len() > budget {
+                // Unprinted added entries plus the removals still to come,
+                // counted directly (see the small-page branch above).
                 out.push_str(&format!(
                     "…({} more)\n",
-                    d.added.len() + d.removed.len() - out.lines().count() + 1
+                    d.added.len() - idx + d.removed.len()
                 ));
                 break;
             }

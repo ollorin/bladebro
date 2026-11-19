@@ -23,6 +23,7 @@ const DAEMON: &str = include_str!("../cli/daemon.rs");
 const BOOT: &str = include_str!("../mcp/server/boot.rs");
 const SERVE: &str = include_str!("../mcp/server/serve.rs");
 const CLI: &str = include_str!("../cli.rs");
+const SIGNALS: &str = include_str!("../platform/signals.rs");
 const THIS: &str = include_str!("exit_tests.rs");
 const GUARD_TESTS: &str = include_str!("hub/guard_tests.rs");
 const ORPHAN_TESTS: &str = include_str!("orphans_tests.rs");
@@ -74,7 +75,7 @@ fn hooks_present_in_daemon() {
     let sites: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter(|(_, l)| l.contains("move || b.shutdown()"))
+        .filter(|(_, l)| l.contains("b.shutdown_gracefully().await"))
         .map(|(i, _)| i)
         .collect();
     assert_eq!(sites.len(), 5, "{sites:?}");
@@ -148,16 +149,20 @@ async fn row_stdin_eof_mcp() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn row_signal_mcp() {
-    assert!(BOOT.contains("SignalKind::terminate()") && BOOT.contains("SignalKind::interrupt()"));
-    assert!(SERVE.contains("wait_for_shutdown_signal"));
+    assert!(
+        SIGNALS.contains("SignalKind::terminate()") && SIGNALS.contains("SignalKind::interrupt()")
+    );
+    assert!(SIGNALS.contains("SignalKind::hangup()"));
+    assert!(SERVE.contains("ShutdownSignals::new(true)"));
     orphan_cycle("sig-mcp").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn row_signal_daemon() {
     assert!(
-        DAEMON.contains("SignalKind::terminate()") && DAEMON.contains("SignalKind::interrupt()")
+        SIGNALS.contains("SignalKind::terminate()") && SIGNALS.contains("SignalKind::interrupt()")
     );
+    assert!(DAEMON.contains("ShutdownSignals::new(false)"));
     orphan_cycle("sig-d").await;
 }
 
@@ -213,9 +218,11 @@ async fn row_relaunch_daemon_dead_source() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn row_bladebro_stop_daemon() {
-    // Client wait (daemon.rs stop read timeout) must exceed the finish bound:
-    // FINISH_TIMEOUT 10 s + kill reap 5 s + stderr drain 1 s.
-    assert!(DAEMON.contains("set_read_timeout(Some(std::time::Duration::from_secs(30)))"));
+    // The daemon acknowledges `stop`, then finalizes the recording and closes
+    // Chrome; the client's wait for the socket to disappear (300 x 100 ms =
+    // 30 s) must exceed the finish bound: FINISH_TIMEOUT 10 s + kill reap 5 s
+    // + stderr drain 1 s.
+    assert!(DAEMON.contains("for _ in 0..300 {"));
     let worst = crate::record::encoder::FINISH_TIMEOUT.as_secs() + 5 + 1;
     assert!(worst < 30, "{worst}");
     // The bound really holds: an encoder that ignores EOF is killed and

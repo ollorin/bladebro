@@ -26,7 +26,7 @@ mod gl;
 mod route;
 
 pub use self::logs::{NetEntry, XhrEntry};
-pub(crate) use self::navigate::with_scheme;
+pub(crate) use self::navigate::{validate_nav_url, with_scheme};
 pub use self::route::{RouteEpoch, RouteSettle, ROUTE_BUDGET};
 
 use std::time::Duration;
@@ -213,6 +213,10 @@ pub struct Page {
     stealth_script_id: Option<crate::stealth::ScriptId>,
     /// Locale the current injection bakes in (None = no override).
     active_locale: Option<String>,
+    /// Timezone/locale currently overridden over CDP (S11): a per-domain
+    /// profile's values are reverted by the next domain that does not set
+    /// them, so this is what the next navigation diffs against.
+    emulation: navigate::Emulation,
     /// Request-interception state shared with the Fetch task
     /// (block-class bitmask + page domain for third-party checks).
     intercept: intercept::InterceptState,
@@ -253,6 +257,40 @@ impl std::fmt::Debug for Page {
             .field("cdp", &self.cdp)
             .field("lpm", &self.lpm)
             .finish_non_exhaustive()
+    }
+}
+
+/// S4+S5: an action in flight. The idle hum stays silent while `is_busy` is
+/// set; dropping the guard clears it and stamps the completion time pacing
+/// and the hum's idle threshold measure from. A drop guard, not manual
+/// resets: an early `?` (a failed heal) or a cancelled future (a timeout
+/// around `navigate`) used to leave the flag set, silencing the hum until
+/// the next successful action.
+struct BusyGuard {
+    is_busy: Arc<AtomicBool>,
+    last_action_epoch: Arc<AtomicU64>,
+}
+
+impl BusyGuard {
+    fn new(is_busy: &Arc<AtomicBool>, last_action_epoch: &Arc<AtomicU64>) -> Self {
+        is_busy.store(true, std::sync::atomic::Ordering::Relaxed);
+        Self {
+            is_busy: is_busy.clone(),
+            last_action_epoch: last_action_epoch.clone(),
+        }
+    }
+}
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.is_busy
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.last_action_epoch
+            .store(now, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -346,22 +384,7 @@ impl Page {
         } else {
             intercept::InterceptState::parse_classes(spec)
         };
-        let was = self.intercept.rules();
-        self.intercept.set_rules(mask);
-        if mask != 0 && was == 0 {
-            // Enable interception: pause every request so we can decide.
-            self.cdp
-                .send(
-                    "Fetch.enable",
-                    Some(serde_json::json!({ "patterns": [{ "urlPattern": "*" }] })),
-                )
-                .await?;
-        } else if mask == 0 && was != 0 {
-            // Drain anything still paused, then stop intercepting.
-            self.intercept.drain_pending_requests(&self.cdp).await;
-            self.cdp.send("Fetch.disable", None).await?;
-        }
-        Ok(mask)
+        self.intercept.apply_rules(&self.cdp, mask).await
     }
 
     /// Persist the agent's explicit resource-block choice for the domain of
@@ -524,13 +547,15 @@ impl Page {
         };
         // Chrome can foreground a popup while our model still belongs to the
         // opener. Activate before input; never replay an input after timeout.
+        // Only when the target is not already its window's active tab: on
+        // macOS Page.bringToFront raises the window over every other app (#89).
         if action.injects_input() {
-            self.activate().await?;
+            self.activate_if_needed().await?;
         }
         // S5: pacing governor — realistic inter-action gaps.
         self.pace(&action).await;
-        self.is_busy
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        // S4+S5: hum pauses until this returns, on every path.
+        let _busy = BusyGuard::new(&self.is_busy, &self.last_action_epoch);
         // M5: For clicks, detect new tabs (target=_blank opens a new page).
         let is_click = matches!(
             action,
@@ -572,19 +597,13 @@ impl Page {
                         .await?
                     }
                     None => {
-                        self.is_busy
-                            .store(false, std::sync::atomic::Ordering::Relaxed);
                         return Err(BladeError::ElementNotFound(format!(
                             "{ref_id} not in the live DOM and cannot be re-resolved"
                         )));
                     }
                 }
             }
-            Err(e) => {
-                self.is_busy
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
-                return Err(e);
-            }
+            Err(e) => return Err(e),
         };
         let mut verdict = match heal_note {
             Some(note) => format!("{verdict} [{note}]"),
@@ -621,15 +640,7 @@ impl Page {
                 }
             }
         }
-        // S4+S5: mark action complete — hum resumes, next action paces.
-        self.is_busy
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        self.last_action_epoch
-            .store(now, std::sync::atomic::Ordering::Relaxed);
+        // S4+S5: `_busy` drops here — hum resumes, next action paces.
         Ok((delta, verdict))
     }
 }
@@ -704,6 +715,57 @@ impl Drop for Page {
 #[cfg(test)]
 mod tests {
     use super::navigate::with_scheme;
+    use super::BusyGuard;
+    use crate::error::BladeError;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
+    use std::sync::Arc;
+
+    fn stale_ref() -> crate::error::Result<()> {
+        Err(BladeError::StaleRef("e4 gone from the current page".into()))
+    }
+
+    /// P-busy: `act`'s heal path returned through `?` with the busy flag
+    /// still set, and the idle hum stayed silent until the next successful
+    /// action. Every exit path must clear it.
+    #[test]
+    fn busy_flag_clears_when_an_action_fails_early() {
+        let busy = Arc::new(AtomicBool::new(false));
+        let last = Arc::new(AtomicU64::new(0));
+        let act = || -> crate::error::Result<()> {
+            let _busy = BusyGuard::new(&busy, &last);
+            assert!(busy.load(Relaxed), "busy while the action runs");
+            stale_ref()?;
+            Ok(())
+        };
+        assert!(act().is_err());
+        assert!(
+            !busy.load(Relaxed),
+            "a failed action must not pause the hum"
+        );
+        assert!(
+            last.load(Relaxed) > 0,
+            "the failed action is the last action"
+        );
+    }
+
+    /// A caller's timeout drops the action future mid-flight (profile
+    /// warming wraps `navigate` in one): the flag must clear then too.
+    #[tokio::test]
+    async fn busy_flag_clears_when_the_action_future_is_dropped() {
+        let busy = Arc::new(AtomicBool::new(false));
+        let last = Arc::new(AtomicU64::new(0));
+        let (b, l) = (busy.clone(), last.clone());
+        let action = async move {
+            let _busy = BusyGuard::new(&b, &l);
+            std::future::pending::<()>().await
+        };
+        let timed_out = tokio::time::timeout(std::time::Duration::from_millis(20), action).await;
+        assert!(timed_out.is_err());
+        assert!(
+            !busy.load(Relaxed),
+            "a dropped action must not pause the hum"
+        );
+    }
 
     #[test]
     fn with_scheme_handles_all_forms() {

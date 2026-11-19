@@ -39,6 +39,8 @@ EXPECTED = [
     (r"^glMaxCombined$", "pinned to the real GPU's value (llvmpipe reports a different cap)"),
     (r"^glPrecM$|^glPrecL$|^glPrecI$", "precision remapped to HIGH-class (i915 answers every level alike)"),
     (r"^gl2MaxSamples$", "pinned to the real GPU's value (llvmpipe reports a different cap)"),
+    (r"^glMaxTex$",
+     "capped at what the device's own backend answers: SwiftShader/Linux-EGL serves 8192 while the baseline's llvmpipe path serves 16384, and the mask never reports a ceiling above its own backend (issue #85 item 10)"),
     (r"^gl2ExtCount$|^gl2HasOvr$", "webgl2 extension list filtered to the real GPU's set"),
     (r"^workerGl$", "worker GL contexts carry the same identity as the page"),
     (r"^iframeGl$", "same-origin iframe contexts carry the same identity as the page"),
@@ -57,17 +59,46 @@ def fail(msg: str, code: int = 2) -> NoReturn:
     sys.exit(code)
 
 
-def find_chrome(explicit):
-    if explicit:
-        return explicit
+class StockLaunchError(RuntimeError):
+    """A candidate browser never opened its debugging endpoint."""
+
+
+def _launchable(path):
+    """A snap transitional stub (or any wrapper script) exits before Chrome
+    starts, so its debug port never opens. Distro images ship
+    /usr/bin/chromium as such a stub; the stock baseline must resolve to a
+    real browser binary."""
+    if os.path.realpath(path).startswith("/snap/"):
+        return False
+    try:
+        with open(path, "rb") as f:
+            return f.read(2) != b"#!"
+    except OSError:
+        return False
+
+
+def chrome_candidates(explicit):
+    """Stock browser candidates, most likely to work first: an explicit path
+    or CHROME_PATH, then the packaged binaries ahead of /usr/bin/chromium
+    (which a distro may point at a snap stub). A stub stays as the last
+    resort so an explicit request is still honoured."""
     env = os.environ.get("CHROME_PATH")
-    if env and os.path.exists(env):
-        return env
-    for name in ("chromium", "google-chrome", "google-chrome-stable", "chromium-browser"):
-        p = shutil.which(name)
-        if p:
-            return p
-    fail("no Chrome/Chromium found (set CHROME_PATH)")
+    ordered = [explicit, env if env and os.path.exists(env) else None]
+    for name in ("google-chrome-stable", "google-chrome", "chromium", "chromium-browser"):
+        ordered.append(shutil.which(name))
+    seen, unique = set(), []
+    for p in ordered:
+        if not p or not os.path.exists(p):
+            continue
+        real = os.path.realpath(p)
+        if real in seen:
+            continue
+        seen.add(real)
+        unique.append(p)
+    if not unique:
+        fail("no Chrome/Chromium found (set CHROME_PATH)")
+    return ([p for p in unique if _launchable(p)]
+            + [p for p in unique if not _launchable(p)])
 
 
 def find_xvfb():
@@ -205,10 +236,19 @@ def pristine_probe(chrome, port, display, url, battery, lane="agent"):
             *gl_enablers,
             "--ozone-platform=x11",
         ]
-    proc = subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
         if not wait_http(port):
-            fail("stock Chrome debug endpoint did not come up")
+            detail = ""
+            try:
+                proc.terminate()
+                _, err = proc.communicate(timeout=5)
+                tail = [l for l in err.decode(errors="replace").splitlines() if l.strip()][-3:]
+                if tail:
+                    detail = " — " + " | ".join(tail)
+            except Exception:
+                pass
+            raise StockLaunchError(f"{chrome} did not open its debug endpoint{detail}")
         targets = [t for t in http_json(port, "/json") if t.get("type") == "page"]
         if not targets:
             http_json(port, "/json/new?about:blank", "PUT")
@@ -250,6 +290,21 @@ def pristine_probe(chrome, port, display, url, battery, lane="agent"):
         except subprocess.TimeoutExpired:
             proc.kill()
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probe_stock(candidates, display, url, battery, lane):
+    """Try each stock candidate in turn; the first that opens its debugging
+    endpoint wins. An installed browser can be a stub that dies instantly, so
+    the oracle must not be wedded to a single path."""
+    errors = []
+    for i, chrome in enumerate(candidates):
+        if i:
+            print(f"[oracle] stock fallback: {chrome}", file=sys.stderr)
+        try:
+            return pristine_probe(chrome, free_port(), display, url, battery, lane=lane), chrome
+        except StockLaunchError as e:
+            errors.append(str(e))
+    fail("stock Chrome debug endpoint did not come up — " + " ; ".join(errors))
 
 
 def parse_bladebro_eval(out):
@@ -356,7 +411,8 @@ def main():
         fail("bladebro binary not found (set BLADEBRO)")
     if args.lane == "real":
         require_real_lane_support(bladebro)
-    chrome = find_chrome(args.chrome)
+    candidates = chrome_candidates(args.chrome)
+    chrome = candidates[0]
 
     xvfb_proc, display, wm_proc = None, None, None
     if sys.platform.startswith("linux"):
@@ -408,7 +464,7 @@ def main():
 
     try:
         print(f"[oracle] baseline: stock {chrome} on :{display}")
-        stock = pristine_probe(chrome, free_port(), display, args.url, battery, lane=args.lane)
+        stock, chrome = probe_stock(candidates, display, args.url, battery, lane=args.lane)
 
         print(f"[oracle] subject: {bladebro} (lane={args.lane})")
         if args.lane == "real":

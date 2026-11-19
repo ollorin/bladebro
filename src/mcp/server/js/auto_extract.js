@@ -20,7 +20,10 @@ if(/\d+\s+(point|comment|vote|reply|reaction)/i.test(t))return true;
 return false;
 }
 function bestLink(item,title){
-const lnks=links(item).filter(a=>!isActionLink(a)&&a.offsetParent!==null);
+// SVG <a> also matches a[href], but its .href is an SVGAnimatedString and
+// its offsetParent is undefined: it passed the visibility filter and became
+// the item url "/[object SVGAnimatedString]".
+const lnks=links(item).filter(a=>typeof a.href==='string'&&!isActionLink(a)&&a.offsetParent!==null);
 if(lnks.length===0)return null;
 const ext=lnks.find(a=>a.hostname&&a.hostname!==HOST);
 if(ext)return ext;
@@ -68,7 +71,10 @@ function ghStarsToday(el){const t=txt(el);const m=t.match(/(\d[\d.,]*[KkMm]?)\s*
 function ghLabels(el){const ls=el.querySelectorAll('a[href*="label%3A"],a[data-name],.IssueLabel,.Label,.labels a');const r=[];for(const l of ls){const n=(l.getAttribute('data-name')||((l.innerText||'').split('\n')[0]||'')).trim();if(n&&n.length>1&&!r.includes(n))r.push(n);}return r;}
 function ghNumber(el){const a=el.querySelector('a[data-testid="issue-pr-title-link"],a[href*="/issues/"],a[href*="/pull/"]');if(a){const m=(a.getAttribute('href')||'').match(/\/(?:issues|pull)\/(\d+)/);if(m)return parseInt(m[1],10);}const t=txt(el);const m=t.match(/#(\d+)/);if(m)return parseInt(m[1],10);return null;}
 function ghStatus(el){const oc=el.querySelector('svg[class*="octicon-issue-open"]');if(oc)return 'open';const occ=el.querySelector('svg[class*="octicon-issue-closed"],svg[class*="octicon-skip"]');if(occ)return 'closed';const t=txt(el);const m=t.match(/Status:\s*(\w+)/i);if(m)return m[1].toLowerCase();if(el.querySelector('[data-testid="open-issue"],[class*="open-issue"],[aria-label*="open"]'))return 'open';if(el.querySelector('[data-testid="closed-issue"],[class*="closed-issue"],[aria-label*="closed"]'))return 'closed';return null;}
-function isProductPage(){const b=document.body;if(!b)return false;const t=(b.innerText||'').toLowerCase();const hp=/[$€£¥₹]\s?\d/.test(t);const cb=document.querySelector('#add-to-cart-button,#buy-now-button,[data-testid*="add-to-cart"],[data-testid*="buy-now"],button[name*="cart"],input[name*="cart"],#add-to-cart,#buy-now');const hc=/add to cart|buy now|add to basket|add to bag|in winkelwagen|au panier/i.test(t);const u=location.href.toLowerCase();const pu=PROD_URL.test(u);const h1=document.querySelector('h1');const hh=h1&&h1.innerText.trim().length>5;return hp&&hh&&(pu||cb||hc);}
+// A price + h1 under a /p/-style URL is also every newsletter post that
+// mentions "$5" (Substack serves every post at /p/<slug>): the URL never
+// makes a product page on its own; a cart/buy control or cart wording must.
+function isProductPage(){const b=document.body;if(!b)return false;const t=(b.innerText||'').toLowerCase();const hp=/[$€£¥₹]\s?\d/.test(t);const cb=document.querySelector('#add-to-cart-button,#buy-now-button,[data-testid*="add-to-cart"],[data-testid*="buy-now"],button[name*="cart"],input[name*="cart"],#add-to-cart,#buy-now');const hc=/add to cart|buy now|add to basket|add to bag|in winkelwagen|au panier/i.test(t);const h1=document.querySelector('h1');const hh=h1&&h1.innerText.trim().length>5;return hp&&hh&&(cb||hc);}
 function offerBox(){const b=document.querySelector('#add-to-cart-button,#buy-now-button,[data-testid*="add-to-cart"],[data-testid*="buy-now"],button[name*="cart"],input[name*="cart"],#add-to-cart,#buy-now');if(!b)return null;let p=b;for(let i=0;i<7&&p&&p!==document.body;i++){p=p.parentElement;if(!p)break;const t=txt(p);if(t.length<4000&&PRICE.test(t))return p;}return b.closest('form,section,main,[role="main"]');}
 function desc(el){if(!el||!el.tagName)return '';let s=el.tagName.toLowerCase();try{const id=el.getAttribute&&el.getAttribute('id');if(id&&id.length<=30)return s+'#'+id;const cl=(typeof el.className==='string'&&el.className.trim())?el.className.trim().split(/\s+/)[0]:'';if(cl&&cl.length<=24)s+='.'+cl;}catch(e){}return s;}
 function selVariant(){const out=[];try{for(const op of document.querySelectorAll('option:checked')){const t=txt(op);if(t&&t.length<=120)out.push(t);}}catch(e){}try{for(const e of document.querySelectorAll('[aria-selected="true"],[aria-checked="true"],[data-selected="true"]')){if(e.tagName==='OPTION')continue;if(e.closest('nav,[role="tablist"],header'))continue;const t=txt(e);if(t&&t.length>=2&&t.length<=120)out.push(t);}}catch(e){}return out;}
@@ -199,8 +205,10 @@ if(score>bestScore){bestScore=score;best=c;bestSig=s;}
 if(!best){if(IS_GITHUB&&isRepoPage()){const r=extractRepo();if(Object.keys(r).length>1)return JSON.stringify({container:'github-repo',count:1,items:[r]});}return JSON.stringify({error:'no repeated list found',items:[]});}
 // Field extraction: clean, typed, deduplicated. No 'text' field.
 // P1 counters: redirect unwraps and paid placements are reported in the
-// envelope instead of silently reshaping the payload.
-let unwrapped=0,sponsored=0,unresolved=0;
+// envelope instead of silently reshaping the payload. They are counted below
+// over the items RETURNED (after dedupe and the limit), never over every
+// child: "10 of 5 items are paid placements" contradicted the payload.
+const unwrappedSet=new WeakSet();
 const items=[...best.children].filter(k=>k.nodeType===1&&sig(k)===bestSig).map(item=>{
 if(item.tagName==='SHREDDIT-AD-POST'||item.querySelector('shreddit-ad-post'))return {};
 const fullText=vtxt(item);const o={};
@@ -215,7 +223,7 @@ if(title&&/^\s*[\d.,]+\s*(units?|beds?|baths?|ba|bd|mi|miles?|sq\.?\s?ft|sqft|ac
 // A price glued into the title (listing-card text) is a field, not a name.
 if(title){const pi=title.search(PRICE);if(pi>=10)title=title.slice(0,pi).trim();}
 if(title)o.title=title.slice(0,200);
-if(link){const cu=canonicalURL(link.href);if(cu!==link.href)unwrapped++;o.url=cu;if(wrappedURL(cu)){o.url_wrapped=true;unresolved++;}}
+if(link){const cu=canonicalURL(link.href);if(cu!==link.href)unwrappedSet.add(o);o.url=cu;if(wrappedURL(cu))o.url_wrapped=true;}
 // Image.
 const img=item.querySelector('img[src]');
 if(img){o.image=img.src;if(img.alt)o.image_alt=img.alt.slice(0,100);}
@@ -236,14 +244,18 @@ if(description&&description.length>15){const dn=norm(description),tn=norm(title|
 // Site-specific fields.
 if(IS_REDDIT){var sp=item.tagName==='SHREDDIT-POST'?item:item.querySelector('shreddit-post');var sc0=item.tagName==='SHREDDIT-COMMENT'?item:item.querySelector('shreddit-comment');if(sp){var sps=sp.getAttribute('score');if(sps)o.fuzzed_score=parseInt(sps,10);var spc=sp.getAttribute('comment-count');if(spc)o.comments=parseInt(spc,10);var spa=sp.getAttribute('author');if(spa)o.author='u/'+spa;var spsub=sp.getAttribute('subreddit-prefixed-name');if(spsub)o.subreddit=spsub;var spt=sp.getAttribute('post-title');if(spt)o.title=spt.slice(0,200);var spl=sp.getAttribute('permalink');if(spl)o.url='https://www.reddit.com'+(spl.charAt(0)==='/'?spl:'/'+spl);var spts=sp.getAttribute('created-timestamp');if(spts)o.date=spts.slice(0,16).replace('T',' ');}else if(sc0){var sca=sc0.getAttribute('author');if(sca)o.author='u/'+sca;var scs=sc0.getAttribute('score');if(scs!=='')o.fuzzed_score=parseInt(scs,10);var scd=sc0.getAttribute('depth');if(scd!=='')o.depth=parseInt(scd,10);var scb=sc0.querySelector('[slot="comment"]');var sct=scb?vtxt(scb).slice(0,400):'';if(sct)o.text=sct;}else if(item.classList&&item.classList.contains('thing')){var g2=n=>item.getAttribute(n)||'';var gs2=g2('data-score');if(gs2)o.score=parseInt(gs2,10);var gc2=g2('data-comments-count');if(gc2)o.comments=parseInt(gc2,10);var ga2=g2('data-author');if(ga2)o.author='u/'+ga2;var gsb2=g2('data-subreddit');if(gsb2)o.subreddit='r/'+gsb2;var gp2=g2('data-permalink');if(gp2)o.url='https://www.reddit.com'+gp2;var gtl=item.querySelector('a.title');if(gtl)o.title=vtxt(gtl).slice(0,200);}else{var rsc=rdScore(item);if(rsc!==null)o.fuzzed_score=rsc;var rcm=rdComments(item);if(rcm!==null)o.comments=rcm;var rau=rdAuthor(item);if(rau)o.author=rau;var rsu=rdSub(item);if(rsu)o.subreddit=rsu;var rcl=item.querySelector('a[href*="/comments/"]');if(rcl){o.url=rcl.href;var rclt=vtxt(rcl);if(rclt&&rclt.length>5&&rclt.length<300)o.title=rclt.slice(0,200);}}}
 else if(IS_GITHUB){const st=ghStars(item);if(st!==null)o.stars=st;const fk=ghForks(item);if(fk!==null)o.forks=fk;const sd=ghStarsToday(item);if(sd!==null)o.stars_today=sd;const lb=ghLabels(item);if(lb.length>0)o.labels=lb;const nm=ghNumber(item);if(nm!==null)o.number=nm;const gs=ghStatus(item);if(gs)o.status=gs;}
-else{const rt=rating(item);if(rt!==null)o.rating=rt;const rv=reviews(item);if(rv!==null)o.reviews=rv;const av=avail(item);if(av)o.availability=av;const op=origPrice(item);if(op)o.original_price=op;if(isSponsored(item)){o.sponsored=true;sponsored++;}}
+else{const rt=rating(item);if(rt!==null)o.rating=rt;const rv=reviews(item);if(rv!==null)o.reviews=rv;const av=avail(item);if(av)o.availability=av;const op=origPrice(item);if(op)o.original_price=op;if(isSponsored(item))o.sponsored=true;}
 return o;
-}).filter(o=>Object.keys(o).length>0).slice(0,__LIMIT__);
-// Dedupe: the same item is common on listing pages (variant cards, an ad
-// resurfacing an organic result). Key by canonical URL, else by normalized
-// title; keyless items stay (they have nothing to collide with).
-const uniq=[];const seen=new Set();let dupes=0;
-for(const it of items){const key=it.url?it.url.split('#')[0]:(it.title?'t:'+norm(it.title):'i:'+uniq.length);if(key&&seen.has(key)){dupes++;continue;}if(key)seen.add(key);uniq.push(it);}
+}).filter(o=>Object.keys(o).length>0);
+// Dedupe, THEN apply the limit (deduping only the first `limit` rows came
+// back short of the cap while more items remained): the same item is common
+// on listing pages (variant cards, an ad resurfacing an organic result). Key
+// by canonical URL, else by normalized title; keyless items stay (they have
+// nothing to collide with).
+const uniq=[];const seen=new Set();let dupes=0,keyless=0;
+for(const it of items){const key=it.url?it.url.split('#')[0]:(it.title?'t:'+norm(it.title):'i:'+(keyless++));if(key&&seen.has(key)){dupes++;continue;}if(uniq.length>=__LIMIT__)break;if(key)seen.add(key);uniq.push(it);}
+let sponsored=0,unwrapped=0,unresolved=0;
+for(const it of uniq){if(it.sponsored)sponsored++;if(unwrappedSet.has(it))unwrapped++;if(it.url_wrapped)unresolved++;}
 const lowConf=uniq.length>0&&uniq.every(o=>!o.url)&&(uniq.reduce((a,o)=>a+(o.title||'').length,0)/uniq.length)<25;
 const out={container:best.tagName.toLowerCase(),count:uniq.length,items:uniq};
 if(sponsored>0)out.sponsored=sponsored;

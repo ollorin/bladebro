@@ -51,6 +51,12 @@ mod reap;
 use self::copy::copy_profile;
 pub(crate) use self::copy::copy_profile_ex;
 pub use self::reap::reap_orphans;
+pub(crate) use self::reap::{profile_in_use, session_owner_dead, session_roots};
+
+/// Import-generation marker at the top of a real-lane clone template. Every
+/// import writes a fresh value; session copies carry it, and a sync-back only
+/// replaces a template of the SAME generation (see `sync_back_impl`).
+pub(crate) const IMPORT_MARKER: &str = ".blade-import";
 
 /// A per-process session profile. Cleaned up by [`cleanup`]
 /// after Chrome has exited (never while Chrome holds it).
@@ -275,20 +281,7 @@ impl SessionProfile {
             create_ephemeral_profile_dir()?
         };
 
-        // SECURITY: 0700 — the profile contains cookies and localStorage.
-        // Plain create_dir_all gave umask perms (755 on default setups).
-        create_private_profile_dir(&dir)?;
-
-        if seasoned {
-            // Copy the seasoned template in (returning-visitor
-            // trust). Best-effort: locked/missing files skip.
-            let template = platform::blade_dir().join("profile");
-            if template.is_dir() {
-                copy_profile(&template, &dir);
-            }
-        }
-        std::fs::write(dir.join(".blade-owner"), std::process::id().to_string())
-            .map_err(|e| BladeError::Other(format!("cannot mark profile ownership: {e}")))?;
+        Self::prepare_owned_dir(&platform::blade_dir(), &dir, seasoned)?;
 
         Ok(Self {
             dir,
@@ -296,6 +289,34 @@ impl SessionProfile {
             seasoned,
             real_root: None,
         })
+    }
+
+    /// Make `dir` this process's private profile under the agent-lane data
+    /// root `root`: seeded from `root/profile` when seasoned, then marked
+    /// with our pid. `root` is passed in, not re-resolved (see
+    /// [`Self::sync_back_only_at`]).
+    fn prepare_owned_dir(root: &Path, dir: &Path, seasoned: bool) -> Result<()> {
+        // Only our own `sess-<pid>` can be an earlier same-pid process's
+        // leftover; an ephemeral dir was created exclusively a moment ago.
+        if dir == own_session_dir(root) {
+            rescue_same_pid_leftover(root, dir, None)?;
+        }
+        // SECURITY: 0700 — the profile contains cookies and localStorage.
+        // Plain create_dir_all gave umask perms (755 on default setups).
+        create_private_profile_dir(dir)?;
+        note_created_here(dir);
+
+        if seasoned {
+            // Copy the seasoned template in (returning-visitor
+            // trust). Best-effort: locked/missing files skip.
+            let template = root.join("profile");
+            if template.is_dir() {
+                copy_profile(&template, dir);
+            }
+        }
+        std::fs::write(dir.join(".blade-owner"), std::process::id().to_string())
+            .map_err(|e| BladeError::Other(format!("cannot mark profile ownership: {e}")))?;
+        Ok(())
     }
 
     /// Create a real-lane session profile (clone mechanism): copy the
@@ -306,16 +327,16 @@ impl SessionProfile {
     /// still ages through the sole-survivor sync-back.
     pub fn create_real(root: &Path) -> Result<Self> {
         reap_orphans();
-        let dir = root
-            .join("profiles")
-            .join(format!("sess-{}", std::process::id()));
+        let dir = own_session_dir(root);
+        rescue_same_pid_leftover(root, &dir, Some(root))?;
         if dir.exists() {
-            // PID reuse after a crash: never copy on top of a stale dir.
+            // An earlier session of this same process: never copy on top.
             create_private_profile_dir(&dir)?;
             std::fs::remove_dir_all(&dir)
                 .map_err(|e| BladeError::Other(format!("cannot replace stale profile: {e}")))?;
         }
         create_private_profile_dir(&dir)?;
+        note_created_here(&dir);
         let template = root.join("template");
         if template.is_dir() {
             copy_profile(&template, &dir);
@@ -351,6 +372,25 @@ impl SessionProfile {
 
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// A session dir bladebro created for its own agent-lane browser (not an
+    /// operator's BLADE_PROFILE_DIR, an adopted user profile or a real-lane
+    /// clone): only such a dir proves a process running on it is ours.
+    pub(crate) fn is_owned_agent_session(&self) -> bool {
+        self.owned && self.real_root.is_none()
+    }
+
+    /// An owned agent-lane session at `dir`, without the template copy or
+    /// reaper run that `create` performs against the process-global data dir.
+    #[cfg(all(test, target_os = "linux"))]
+    pub(crate) fn owned_for_test(dir: &Path) -> Self {
+        Self {
+            dir: dir.to_path_buf(),
+            owned: true,
+            seasoned: false,
+            real_root: None,
+        }
     }
 
     /// Called AFTER Chrome has fully exited. Copies the session
@@ -405,7 +445,7 @@ impl SessionProfile {
         }
         let marker = root.join(".template.lock");
         if marker.exists() {
-            if !template_lock_stale(&marker) {
+            if !template_lock_stale(&marker) && !marker_superseded_by_guard(&marker) {
                 return None;
             }
             std::fs::remove_file(&marker).ok()?;
@@ -576,15 +616,88 @@ impl SessionProfile {
             let Some(_lock) = Self::acquire_lock_at(root) else {
                 return;
             };
-            let tmp = root.join(tmp_name);
-            let _ = std::fs::remove_dir_all(&tmp);
-            copy_profile(dir, &tmp);
-            if tmp.is_dir() {
-                Self::swap_into_template(&tmp, &root.join(template_name), &root.join(old_name));
+            let template = root.join(template_name);
+            // Checked under the lock the importer holds: a session cloned
+            // from an earlier import (`rb refresh`, a re-import for another
+            // profile root) would otherwise swap its stale copy back over
+            // the fresh template on exit — or via the reaper if it died.
+            // Templates without the marker (agent lane) match sessions
+            // without one, so their sync-back is unchanged.
+            if import_generation(dir) != import_generation(&template) {
+                eprintln!(
+                    "[bladebro] the clone was re-imported while session {} ran — its copy \
+                     is discarded instead of overwriting the new import",
+                    dir.display()
+                );
+            } else {
+                let tmp = root.join(tmp_name);
+                let _ = std::fs::remove_dir_all(&tmp);
+                copy_profile(dir, &tmp);
+                if tmp.is_dir() {
+                    Self::swap_into_template(&tmp, &template, &root.join(old_name));
+                }
             }
         }
         let _ = std::fs::remove_dir_all(dir);
     }
+}
+
+/// How long one template copy may plausibly hold the lock marker.
+const TEMPLATE_LOCK_GRACE_SECS: u64 = 120;
+
+/// Called with the OS guard held, which no 4.1+ holder can share: a marker
+/// naming a live pid can then only be a pre-4.1 copier (marker only, no OS
+/// lock) mid-copy. A marker naming THIS pid is not that — this process holds
+/// no other guard, so it is an earlier incarnation's corpse (pid reuse: a
+/// container entrypoint gets the same pid every boot). Nor is one older than
+/// a copy takes: the live pid behind it was reused. Either way, left alone
+/// it fails every sync-back (logins stop persisting) and every `rb import`.
+fn marker_superseded_by_guard(marker: &Path) -> bool {
+    let text = std::fs::read_to_string(marker).unwrap_or_default();
+    let mut it = text.split_whitespace();
+    if it.next().and_then(|p| p.parse::<u32>().ok()) == Some(std::process::id()) {
+        return true;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    it.next()
+        .and_then(|ts| ts.parse::<u64>().ok())
+        .is_some_and(|ts| now.saturating_sub(ts) > TEMPLATE_LOCK_GRACE_SECS)
+}
+
+/// The import generation a profile tree carries (`IMPORT_MARKER`), if any.
+fn import_generation(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(dir.join(IMPORT_MARKER))
+        .ok()
+        .map(|s| s.trim().to_string())
+}
+
+/// Owner pids of live bladebro sessions under `profiles` (this process
+/// excluded) — what `rb refresh` / `rb forget` must not run under. A dir
+/// still being created has no `.blade-owner` yet; its `sess-<pid>` name
+/// stands in, as in the reaper.
+pub(crate) fn live_session_owners(profiles: &Path) -> Vec<u32> {
+    let my_pid = std::process::id();
+    let Ok(entries) = std::fs::read_dir(profiles) else {
+        return Vec::new();
+    };
+    let mut pids: Vec<u32> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let named = name.strip_prefix("sess-")?.parse::<u32>().ok();
+            std::fs::read_to_string(entry.path().join(".blade-owner"))
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .or(named)
+        })
+        .filter(|&pid| pid != my_pid && platform::process_alive(pid))
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
 }
 
 /// Is the template-copy lock stale (owner dead or older than a grace
@@ -603,7 +716,7 @@ fn template_lock_stale(lock: &Path) -> bool {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                return now.saturating_sub(ts) > 120;
+                return now.saturating_sub(ts) > TEMPLATE_LOCK_GRACE_SECS;
             }
             true
         }
@@ -614,7 +727,7 @@ fn template_lock_stale(lock: &Path) -> bool {
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| t.elapsed().ok())
-                .map(|age| age.as_secs() > 120)
+                .map(|age| age.as_secs() > TEMPLATE_LOCK_GRACE_SECS)
                 .unwrap_or(true)
         }
     }
@@ -622,9 +735,46 @@ fn template_lock_stale(lock: &Path) -> bool {
 
 /// This process's session profile dir.
 fn session_dir() -> PathBuf {
-    platform::blade_dir()
-        .join("profiles")
+    own_session_dir(&platform::blade_dir())
+}
+
+/// This process's session dir under a data root (`root/profiles/sess-<pid>`).
+fn own_session_dir(root: &Path) -> PathBuf {
+    root.join("profiles")
         .join(format!("sess-{}", std::process::id()))
+}
+
+/// Session dirs this process created. `sess-<pid>` is unique only among
+/// LIVE processes: our name on a dir that is not in here was left by an
+/// earlier process with the same pid.
+static CREATED_HERE: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+fn note_created_here(dir: &Path) {
+    let mut created = CREATED_HERE.lock().unwrap_or_else(|e| e.into_inner());
+    if !created.iter().any(|d| d == dir) {
+        created.push(dir.to_path_buf());
+    }
+}
+
+/// An earlier process with our pid crashed (a container restart reuses the
+/// entrypoint's pid; plain pid reuse does the rest) and left `dir`. The
+/// reaper skips our own pid, so this is the one chance to stop its browser
+/// and sync its state back before the new session replaces it — reusing it
+/// would copy the template over the crashed session's cookies.
+fn rescue_same_pid_leftover(root: &Path, dir: &Path, real_root: Option<&Path>) -> Result<()> {
+    let leftover = std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir())
+        && !CREATED_HERE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|d| d == dir);
+    if !leftover || reap::reap_dead_session(root, dir, real_root) {
+        return Ok(());
+    }
+    Err(BladeError::Other(format!(
+        "session profile {d} is still in use by a process (browser or launcher) that an earlier bladebro process with this pid left running; stop the process started with --user-data-dir={d}, then retry",
+        d = dir.display()
+    )))
 }
 
 /// Root of a real-lane session dir (`<root>/profiles/sess-<pid>` →
@@ -802,6 +952,50 @@ mod tests {
     }
 
     #[test]
+    fn copy_keeps_files_nested_deeper_than_six_levels() {
+        // A real profile's extension packages nest well past six levels
+        // (uBlock Origin ships lib/codemirror/addon/<group>/*.js); a clone
+        // that silently drops those files breaks the user's extensions.
+        let root = std::env::temp_dir().join(format!("bladebro-test-deep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (src, dst) = (root.join("src"), root.join("dst"));
+        let rel = "Default/Extensions/cjpalhdlnbpafiamejdnhcphjbkeiagm/1.62.0_0/lib/codemirror/addon/fold/foldcode.js";
+        std::fs::create_dir_all(src.join(rel).parent().unwrap()).unwrap();
+        std::fs::write(src.join(rel), b"// addon").unwrap();
+
+        copy_profile(&src, &dst);
+
+        let copied = dst.join(rel).is_file();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(copied, "{rel} must survive the profile copy");
+    }
+
+    #[test]
+    fn copy_reports_what_the_depth_bound_cuts() {
+        let root =
+            std::env::temp_dir().join(format!("bladebro-test-too-deep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (src, dst) = (root.join("src"), root.join("dst"));
+        let mut leaf = src.clone();
+        for i in 0..=super::copy::MAX_COPY_DEPTH {
+            leaf.push(format!("d{i}"));
+        }
+        std::fs::create_dir_all(&leaf).unwrap();
+        std::fs::write(leaf.join("deepest"), b"x").unwrap();
+        std::fs::write(src.join("shallow"), b"x").unwrap();
+
+        let cut = copy_profile(&src, &dst);
+
+        let shallow = dst.join("shallow").is_file();
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            cut, 1,
+            "the cut directory must be counted, not dropped silently"
+        );
+        assert!(shallow);
+    }
+
+    #[test]
     fn copy_tolerates_missing_src() {
         let src = std::env::temp_dir().join("bladebro-test-nonexistent");
         let dst = std::env::temp_dir().join("bladebro-test-copy-dst2");
@@ -852,6 +1046,118 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn unix_now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    }
+
+    /// Take a guard this test has just released. A test on another thread
+    /// may be spawning a child at that moment: between fork and exec the
+    /// child holds a copy of every open descriptor (close-on-exec only fires
+    /// at exec), our dropped `.template.guard` included, so its flock
+    /// outlives our drop briefly. Retry for up to 1 s instead of failing on
+    /// that; a lock that is really still held keeps returning None.
+    fn acquire_after_release(root: &Path) -> Option<TemplateLock> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            let lock = SessionProfile::acquire_lock_at(root);
+            if lock.is_some() || std::time::Instant::now() >= deadline {
+                return lock;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn template_guard_supersedes_a_leftover_marker_naming_this_pid() {
+        // A holder crashed mid-copy and left its marker; the restart reused
+        // its pid (a container entrypoint gets the same pid every boot).
+        // Holding the OS guard proves no 4.1+ process holds the lock, and
+        // this process holds no other guard: the marker is a corpse.
+        let root =
+            std::env::temp_dir().join(format!("blade-template-ownpid-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join(".template.lock"),
+            format!("{} {}\n", std::process::id(), unix_now()),
+        )
+        .unwrap();
+        let lock = SessionProfile::acquire_lock_at(&root);
+        let acquired = lock.is_some();
+        drop(lock);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            acquired,
+            "a marker naming this pid must not wedge sync-back forever"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn template_guard_bounds_a_live_foreign_marker_to_the_copy_grace() {
+        // pid reuse: the marker names a pid that a later, unrelated process
+        // now holds. A pre-4.1 copier (marker only, no OS lock) mid-copy
+        // still wins; one that old was never a copy in progress.
+        let root =
+            std::env::temp_dir().join(format!("blade-template-reused-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        // Our parent (the test runner) is a live process that is not us.
+        // Spawning a stand-in would hand a copy of other tests' held guards
+        // to the child until its exec (see `acquire_after_release`).
+        let unrelated = std::os::unix::process::parent_id();
+        let marker = root.join(".template.lock");
+        std::fs::write(&marker, format!("{unrelated} {}\n", unix_now())).unwrap();
+        let fresh = SessionProfile::acquire_lock_at(&root).is_some();
+        std::fs::write(&marker, format!("{unrelated} {}\n", unix_now() - 3600)).unwrap();
+        let old = acquire_after_release(&root);
+        let old_acquired = old.is_some();
+        drop(old);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(!fresh, "a fresh live marker is a pre-4.1 copy in progress");
+        assert!(
+            old_acquired,
+            "a live pid behind an hour-old marker is pid reuse, not a copier"
+        );
+    }
+
+    #[test]
+    fn crashed_session_with_this_pid_is_rescued_not_overwritten() {
+        // A fixed pid + persistent data dir: an earlier incarnation of THIS
+        // pid crashed and left `sess-<pid>`. The reaper skips our own pid,
+        // so preparing the new session is the only chance to rescue it.
+        let root = std::env::temp_dir().join(format!("blade-same-pid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("profile/Default")).unwrap();
+        std::fs::write(root.join("profile/Default/Cookies"), "template").unwrap();
+        let dir = root
+            .join("profiles")
+            .join(format!("sess-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("Default")).unwrap();
+        std::fs::write(dir.join(".blade-owner"), std::process::id().to_string()).unwrap();
+        std::fs::write(dir.join("Default/Cookies"), "crashed-session").unwrap();
+
+        SessionProfile::prepare_owned_dir(&root, &dir, true).unwrap();
+        let rescued = std::fs::read_to_string(root.join("profile/Default/Cookies")).unwrap();
+        let seeded = std::fs::read_to_string(dir.join("Default/Cookies")).unwrap();
+
+        // A second launch in the SAME process lifetime reuses its own dir:
+        // nothing of ours is synced or replaced mid-life.
+        std::fs::write(dir.join("Default/Cookies"), "this-lifetime").unwrap();
+        SessionProfile::prepare_owned_dir(&root, &dir, true).unwrap();
+        let template_after_reuse =
+            std::fs::read_to_string(root.join("profile/Default/Cookies")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(
+            rescued, "crashed-session",
+            "the crashed session's state must reach the template"
+        );
+        assert_eq!(seeded, "crashed-session");
+        assert_eq!(template_after_reuse, "crashed-session");
+    }
+
     #[test]
     fn template_guard_excludes_concurrent_handles_and_recovers_after_drop() {
         let root =
@@ -864,7 +1170,7 @@ mod tests {
             "missing marker must not bypass OS ownership"
         );
         drop(held);
-        let next = SessionProfile::acquire_lock_at(&root).expect("released lock must be reusable");
+        let next = acquire_after_release(&root).expect("released lock must be reusable");
         assert!(root.join(".template.lock").exists());
         drop(next);
         assert!(!root.join(".template.lock").exists());
@@ -879,12 +1185,11 @@ mod tests {
         std::fs::create_dir_all(root.join("profile")).unwrap();
         std::fs::write(root.join(".profile.sync/in-progress"), "copying").unwrap();
         std::fs::write(root.join(".profile.old/last-good"), "backup").unwrap();
-        std::fs::write(
-            root.join(".template.lock"),
-            format!("{} 1", std::process::id()),
-        )
-        .unwrap();
+        // Another live transaction holds the template lock (a separate
+        // handle: the OS guard excludes it like another process).
+        let held = SessionProfile::acquire_lock_at(&root).unwrap();
         reap_orphans_at(&root);
+        drop(held);
         let survived = root.join(".profile.sync/in-progress").exists()
             && root.join(".profile.old/last-good").exists();
         std::fs::remove_dir_all(root).unwrap();
@@ -943,6 +1248,59 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `rb refresh` (or a re-import for another profile root) replaces the
+    /// clone template while an older session may still run on a copy of the
+    /// previous import. That session's exit — or the reaper, if it died —
+    /// must not swap its stale copy back over the fresh import.
+    #[test]
+    fn real_sync_back_never_overwrites_a_newer_import() {
+        let home =
+            std::env::temp_dir().join(format!("bladebro-test-reimport-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let root = home.join("realbrowser/helium");
+        let template = root.join("template");
+        std::fs::create_dir_all(template.join("Default")).unwrap();
+        std::fs::write(template.join(IMPORT_MARKER), "import-2").unwrap();
+        std::fs::write(template.join("Default/Cookies"), b"fresh-import").unwrap();
+
+        // Graceful exit of a session cloned from the previous import.
+        let stale = root.join("profiles/sess-999999998");
+        std::fs::create_dir_all(stale.join("Default")).unwrap();
+        std::fs::write(stale.join(IMPORT_MARKER), "import-1").unwrap();
+        std::fs::write(stale.join("Default/Cookies"), b"stale-clone").unwrap();
+        SessionProfile::sync_back_real(&root, &stale);
+        let after_exit = std::fs::read(template.join("Default/Cookies")).unwrap();
+
+        // A dead session from the previous import, found by the reaper.
+        std::fs::create_dir_all(stale.join("Default")).unwrap();
+        std::fs::write(stale.join(".blade-owner"), "999999998").unwrap();
+        std::fs::write(stale.join(IMPORT_MARKER), "import-1").unwrap();
+        std::fs::write(stale.join("Default/Cookies"), b"stale-clone").unwrap();
+        reap_orphans_at(&home);
+        let reaped = !stale.exists();
+        let after_reap = std::fs::read(template.join("Default/Cookies")).unwrap();
+
+        // A session cloned from THIS import still syncs back as before.
+        let current = root.join("profiles/sess-999999997");
+        std::fs::create_dir_all(current.join("Default")).unwrap();
+        std::fs::write(current.join(IMPORT_MARKER), "import-2").unwrap();
+        std::fs::write(current.join("Default/Cookies"), b"aged-clone").unwrap();
+        SessionProfile::sync_back_real(&root, &current);
+        let after_current = std::fs::read(template.join("Default/Cookies")).unwrap();
+
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(
+            after_exit, b"fresh-import",
+            "stale session exit clobbered the import"
+        );
+        assert!(reaped, "the dead stale session must still be removed");
+        assert_eq!(after_reap, b"fresh-import", "reaper clobbered the import");
+        assert_eq!(
+            after_current, b"aged-clone",
+            "current session must still age the clone"
+        );
     }
 
     /// The reaper must not delete the template when a sync-swap was SIGKILLed

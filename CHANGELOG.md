@@ -15,6 +15,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `act eval` object/array results are also returned structured: CLI `--json` adds `data` beside the unchanged `text`; MCP adds `structuredContent`. Strings and scalars are unchanged.
 - `docs/qa-usage.md` (recommended QA environment, viewport/audit commands, a three-widths `run`), and `help state` / `help` / `docs/recording-and-launch-config.md` list the full env and ffmpeg prerequisites for a recorded QA run. The `BLADE_RECORD` gate is unchanged.
 
+## [4.6.10] - 2026-11-19
+
+### Added
+- `see logs=xhr` reports the deduplicated XHR/fetch API ring: method, status (or `PENDING`/the error), the full URL with its query and GraphQL variables intact, and the request's header *names* only — failures first, `format=json` for rows, `clear=true` to reset, and an artifact offload past 30 endpoints. Header values (`Authorization`, CSRF tokens) never leave the page.
+
+### Fixed
+- Body downloads (`body: true`) go direct when `BLADE_PROXY` is unset: an ambient `HTTP_PROXY`/`ALL_PROXY` no longer carries the request, and proxy scheme detection is case-insensitive (`SOCKS5:`, `QUIC:` are refused with the credential redacted).
+- `act download` validates the URL before any work: `javascript:`, `chrome:`, `devtools:`, `about:` and other unfetchable schemes are refused up front, a bare host gets its scheme, and a relative path resolves against the current page for the tab fallback while the in-page fetch keeps the page's own spelling.
+- A real-browser profile lock held by a sandbox pid (Flatpak's `steamdeck-2` colliding with host `[kthreadd]`, pid 1, a recycled pid) no longer reports the profile as in use: the lock must name a live Chromium process, a live host browser holding files inside the profile root, or a live `SingletonSocket`.
+- A CDP child session ends when Chrome detaches its target: `wait_for` returns `Closed` immediately instead of waiting out its deadline, so a closed tab or worker cannot stall the pipe lane.
+
+### Stealth
+- The console ring buffer lives only inside the injection closure — no window property, no window symbol (`Object.getOwnPropertySymbols(window)` is empty and `Symbol.for('q')` is gone) — read and cleared through a per-process secret `console.debug` receiver token; an ordinary `console.debug` call, foreign receiver included, logs normally and never returns it.
+- WebGL `getParameter` passes a native `null` straight through, so a lost context and extension-gated enums (`MAX_SAMPLES` on WebGL1, `UNMASKED_VENDOR_WEBGL`/`UNMASKED_RENDERER_WEBGL` before `WEBGL_debug_renderer_info`) answer exactly as stock instead of a fabricated cap; the differential oracle keys `winSyms`, `gl1UnenabledRenderer` and `gl1MaxSamples` to hold that line.
+- Xvfb runs at 96 DPI so Chromium derives `devicePixelRatio` 1 and a CSS screen that matches display pixels, instead of the 67/64 ratio its 100 DPI default produced (`innerWidth` above `screen.width`, `outerWidth` off by 25 px).
+
+### Build
+- The differential oracle resolves the stock baseline to a real browser binary and falls back candidate by candidate, so a distro's `/usr/bin/chromium` snap stub can no longer fail the nightly probe before Chrome starts; a launch failure quotes Chrome's own stderr instead of only "did not come up".
+- `actions/download-artifact` v7 → v8.
+
+## [4.6.9] - 2026-11-13
+
+### Added
+- `act upload` verifies delivery in the page — file count, name, size and the first byte — instead of trusting `DOM.setFileInputFiles`, and reports `not delivered: …` when the page cannot use the file. Under a Flatpak browser the file is copied into a per-process staging directory shared with the sandbox; native browsers still get the original path.
+- `BLADE_NO_ACTIVATE=1` never calls `Page.bringToFront`: clicks, navigation and vision act on the page without raising the browser window.
+
+### Fixed
+- macOS (and every OS): a click or navigation raised the browser window above whatever the person was working in. `Page.bringToFront` now runs only when the target is not already its window's active tab — a background tab still gets activated, so input after a foreground popup keeps landing (#89).
+- Stealth-injection page breakage: shared workers stay native (module workers, cross-tab sharing and relative `importScripts` work again; the mask does not reach SharedWorker globals, a documented gap), the RTC listener wrapper dedupes and removes like native, the SDP filter drops whole candidate lines, `addIceCandidate` stays native, `BLADE_LOCALE=en_US` is normalized to `en-US` in the page, workers, CDP override and per-domain profiles, `BLADE_NOISE` no longer locks a canvas to 2D or drifts audio samples, and the console capture no longer runs page getters or `toJSON` and is bounded.
+- The WebGL mask never reports a limit above what the backend can serve: MAX_TEXTURE_SIZE, renderbuffer/cube size, combined texture units, MAX_SAMPLES, viewport dims and the point/line ranges are capped at the native answer, so a page sizing a buffer from the mask gets no GL error and the differential oracle's `glMaxTex` key matches stock on software hosts.
+- Xvfb and its window manager run in their own process group with a parent-death signal: Ctrl-C to a one-shot run no longer takes the display away while Chrome is closing (the graceful close that flushes storage now happens), and a SIGKILL to bladebro alone takes the display and the browser down instead of orphaning them.
+- Linux discovery prefers a native Chrome/Chromium over a snap-confined one, which cannot read the hidden data root.
+- Amazon's consent banner: `#sp-cc-rejectall-link` is on the reject ladder, so the pre-seeded selector is actually replayed (and the cold ladder can reject it too).
+- An upload source is refused when its spelling names a system directory even if it resolves outside (NixOS `/etc` symlinks into `/nix/store`).
+- `bladebro doctor` checks the window manager the virtual display needs: Xvfb without `xfwm4` runs headful with no decorations (`outerWidth == innerWidth`, `availHeight == height`) and is now reported with the install hint, instead of only the audit catching it.
+
+### Changed
+- `bladebro audit` documentation and gates treat the suite's own, host-dependent total as the bar instead of a fixed 111.
+
+### Build
+- The release pipeline is tag-driven and runs in CI: `scripts/release-prep.sh X.Y.Z --push` writes versions, promotes this file and tags in under a second, then `release.yml` runs the gate and builds all five artifacts on native runners in parallel, publishes the 20 assets, the six npm packages (platforms before the launcher) and Latest last. `release.sh` is gone, the toolchain is pinned by `rust-toolchain.toml` so local and CI lint with the same compiler, and the browser instruments run in `probes.yml` (nightly, tag, manual) instead of inside every build.
+- `scripts/publish-npm.sh` failure messages print `npm view` instead of running it.
+- CI installs Chrome through a `signed-by` keyring: `apt-key` is gone on Ubuntu 25.04+ runners.
+- The display-readiness test's fake X server is a `sh` script (no python3 start latency).
+
+## [4.6.8] - 2026-11-06
+
+### Added
+- Flatpak Chromium-family browsers are discovered on Linux when no native install exists (SteamOS, Bazzite, Silverblue): six known app ids, the user installation before the system one, and a not-found error plus `doctor` hint naming `flatpak install flathub org.chromium.Chromium`. The agent lane launches the export through `flatpak run` with the session profile and the downloads dir shared into the sandbox, owns the browser across the sandbox pid, and stops leftover profile processes on teardown.
+
+### Fixed
+- Refs follow a re-render only onto the same element: the fingerprint rebind requires a unique fingerprint on both sides and the same role and name, and a healed ref never leaves two live refs on one element.
+- Session save and load count and skip expired and partitioned (CHIPS) cookies instead of failing; one saved login cookie Chrome rejects no longer blocks every later launch; `del-cookie` reads the store back, `state cookies --domain` applies its filter, and the login snapshot keeps real sites whose host starts with `chrome`.
+- The knowledge store deletes evicted domains and rewrites only changed ones; artifact names are claimed with `create_new`, so a reused pid never overwrites an earlier session's file.
+- The CDP transport keeps identity fields when it shrinks oversized events, accepts 64 MiB WebSocket messages, closes the event bus when the browser dies, and subscribes auto-attach before enabling it, so an auto-attached worker keeps the page's locale.
+- X and Reddit `extract=auto` report what they cut: a cap, a collapsed or hidden section, an unsignalled end or a failed later page produce `complete:false` with a note. X follows replaced and item-wrapped cursors, keeps the pinned post and whole retweet text; Reddit resolves stubs inside recovered subtrees and matches a rate limit by status, not by path text.
+- Pages with an SVG link capture again; inline SVG style and title text stay out of reads; a capture the page never answered reads as unverified instead of a navigation to a blank page; a `/p/` URL needs a cart signal to read as a product; `…(N more)` counts elements, not output lines.
+- The CLI never declares a live daemon dead from its reply text, never re-runs a command the daemon already received, refuses a command whose lane or browser settings differ from the running daemon's, and rejects a request over 8 MiB with a reason before sending it.
+- `act dialog` parses instead of panicking; `act paginate` accepts `--extract` and `--limit`; `<cmd> --help` shows that command's help; errors before dispatch keep the single-object `--json` contract; an oversized `vision` capture reports its `image_path`; terminal styling is decided by each stream's own TTY.
+- The orphan reaper recognizes Chromium's argv (NUL-separated or rewritten to spaces), finds an orphan through its exact `--user-data-dir`, and never syncs or deletes a profile a process still holds; a marker naming a reused pid no longer wedges the template lock; a crashed session wearing this process's pid is rescued rather than overwritten; `doctor` reports exactly what the reaper does.
+- A navigation that lands on Chrome's own error page is an error, not `navigated → chrome-error://chromewebdata/`; a bare host whose query carries a URL gets its scheme; query values are compared decoded; an iframe's `pushState` no longer arms the route guard; per-domain timezone and locale revert on domains that do not set them; a failed action clears the busy flag so the idle hum resumes.
+- Tracker blocking never fails the page's own top-level navigation; block state reports what interception is really doing after a failed toggle; host-level entries such as `ads.twitter.com` match; a bare Cloudflare Turnstile widget is detected as a wall.
+- Input and click actions land on the addressed element or refuse: type and clear adopt only the target's own editor and refuse a disabled or unfocused target, clicks reach the control itself instead of a nested one, offscreen targets scroll into view and click as trusted input, `select` refuses a disabled control and reads the choice back, hover reports a miss instead of a success, scroll reports both axes, Shift chords send the shifted glyph, and value readback compares whitespace exactly.
+- `bladebro mcp` and the daemon never lose a termination signal while busy: the in-flight call is cancelled with an explicit unknown outcome, a gone client tears down instead of erroring out, the post-crash and dead-tab retries contain a panic, and the idle-restart note appears only when the idle timer closed Chrome. `bladebro stop` stops a busy daemon.
+- MCP parameters are honoured or rejected before any effect: a `while` without an exit test, `upload label=`, `see extract=` combined with a read that drops it, and `act collect max` now match their documentation; ref eval survives `{candidate}` inside a page name and awaits a returned Promise; auto-extract counters describe the returned items; `see url=` navigates before reading; vision runtime errors return a tool error with page state.
+- `bladebro audit` fails closed when the vector suite never reports a score, and runs from npm and release installs from a built-in copy of the suite; the updater accepts only real `/releases/tag/<version>` redirects and removes its temp files on every exit path.
+- Real-browser clones track the selected profile: a profile selected in another user-data root is re-imported, an older session never overwrites a refreshed clone, deep profile trees copy past six levels with the cut reported, and a symlinked browser binary keeps the name it was found by.
+- Discovery reaches the DevTools endpoint directly instead of through `HTTP_PROXY`/`ALL_PROXY`; a `BLADE_PROXY` carrying embedded credentials is refused with the value redacted instead of reaching Chrome's argv; every failed launch attempt stops its process tree and profile; `BLADE_CHROME_FLAGS` splits shell-style and merges its feature lists with the built-ins; an in-process command closes the owned browser on Ctrl-C or SIGTERM and then dies of the signal.
+- The learned consent-selector fast path is valid JavaScript again and replays only under the policy that learned it, so an Accept selector can never be clicked under the default reject policy.
+- The npm launcher reports a binary's signal death as `128+N` instead of exit 0, and forwards SIGTERM/SIGINT/SIGHUP to the binary and waits for its shutdown.
+
+## [4.6.7] - 2026-11-05
+
+### Added
+- Agent control inspection: `act read format=json` returns live field values, checked/indeterminate and ARIA state, and select choices with selection/disabled state. Text reads use current textarea values. Large reads offload complete JSON; option lists disclose their 80-choice bound.
+- Native selects accept their displayed option labels even when those labels differ from inner text. Inspection reports disabled state inherited from a fieldset.
+- Optional `run format=json` reports completion, stopped step, per-step status and retained observations with recovery context. Nested observations remain text; individual read formats are explicit. Invalid formats fail before any effect.
+
+### Fixed
+- Browser startup errors retain the negotiated MCP result dialect and stay silent for notifications. New-protocol clients receive the actual startup failure instead of a missing-`resultType` protocol error; guidance confirms the tool was not dispatched.
+- Keep humanized pointer endpoints and tremors inside addressed controls, retaining fractional hitboxes. Unbounded click offsets could miss small checkboxes; input is still dispatched once without replay.
+- Run the native macOS CI job on the arm64 `macos-26` pool, and partition compiled build caches by CPU architecture. On the `macos-26-intel` image headful Chrome's main thread wedges in a synchronous IconServices XPC call, timing out `Input.*` for minutes, while the identical suite passes on arm64. darwin-x64 stays cross-built and architecture-checked, and both Mac distribution targets remain required.
+- Owned Chrome shutdown requests a confirmed-owned browser's graceful close before bounded process-tree cleanup, preserving localStorage across stop/MCP EOF while retaining forked-launcher cleanup.
+- Validate malformed calls and complete static plans before Chrome launch, navigation or input. Required fields, types, chords, waits, timeouts and plan bounds fail with actionable guidance.
+- Preserve run/batch reads, cookie/storage values and valid JSON when notices occur; honor nested optional failures and conditional navigation, and stop enclosing runs after failed batches.
+- Screenshot marks cannot remove page-owned elements. Log read-and-clear calls are never automatically replayed after disconnect.
+- Tool definitions expose supported inputs and current recovery contracts; npm Linux loader failures explain glibc requirements and source-build recovery.
+
 ## [4.6.6] - 2026-10-28
 
 ### Fixed
@@ -2144,7 +2232,11 @@ Pre-release. Hardening pass complete, CLI update pending.
 - Fill only handled text fields (auto-detect type)
 - Multi-tab hang (5s timeout on Input events, 3s on Target.getTargets)
 
-[Unreleased]: https://github.com/dondai44423/bladebro/compare/v4.6.6...HEAD
+[Unreleased]: https://github.com/dondai44423/bladebro/compare/v4.6.10...HEAD
+[4.6.10]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.10
+[4.6.9]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.9
+[4.6.8]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.8
+[4.6.7]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.7
 [4.6.6]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.6
 [4.6.5]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.5
 [4.6.4]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.4

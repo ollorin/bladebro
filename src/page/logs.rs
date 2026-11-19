@@ -30,8 +30,10 @@ pub struct XhrEntry {
     pub done: bool,
     /// Failure reason if the request failed.
     pub error: Option<String>,
-    /// Auth/content header subset (`authorization`, `x-csrf-token`,
-    /// `x-twitter-*`, `content-type`) — replayed verbatim by adapters.
+    /// Every request header except the transport ones the browser
+    /// regenerates itself (`cookie`, `host`, `user-agent`,
+    /// `content-length`, `accept-encoding`, `connection`, `sec-*`) —
+    /// replayed verbatim by adapters.
     pub headers: Vec<(String, String)>,
 }
 
@@ -139,6 +141,12 @@ impl Page {
             .unwrap_or_default()
     }
 
+    pub fn clear_xhr_log(&self) {
+        if let Ok(mut log) = self.xhr_log.lock() {
+            log.clear();
+        }
+    }
+
     /// V8: snapshot of the network request log (last 50).
     pub fn network_log(&self) -> Vec<NetEntry> {
         self.net_log
@@ -154,11 +162,20 @@ impl Page {
     }
 
     pub async fn clear_console_log(&self) -> Result<()> {
-        self.cdp.send("Runtime.evaluate", Some(json!({"expression":"(()=>{const q=window[Symbol.for('q')];if(Array.isArray(q))q.length=0})()"}))).await?;
+        let key = crate::stealth::console_secret();
+        self.cdp
+            .send(
+                "Runtime.evaluate",
+                Some(json!({
+                    "expression": format!("(()=>{{try{{console.debug.call('{key}',1);}}catch(e){{}}}})()"),
+                })),
+            )
+            .await?;
         Ok(())
     }
 
-    /// Recent XHR/fetch requests (last 24, start-observed, full URLs).
+    /// Recent XHR/fetch requests (ring of 128, one entry per endpoint,
+    /// start-observed, full URLs).
     pub fn xhr_log(&self) -> Vec<XhrEntry> {
         self.xhr_log
             .lock()
@@ -167,16 +184,17 @@ impl Page {
     }
 
     /// V8: read the console log captured by the injection hook.
-    /// Returns raw JSON (array of {l, m, t}). The ring buffer lives under
-    /// the same Symbol.for('q') slot the injection script defines — a
-    /// string-keyed window property was a page-readable detection marker.
+    /// Returns raw JSON (array of {l, m, t}). The ring buffer stays inside
+    /// the injection closure and is read via a per-process secret receiver
+    /// token so zero properties or symbols are placed on `window`.
     pub async fn console_log(&self) -> Result<serde_json::Value> {
+        let key = crate::stealth::console_secret();
         let res = self
             .cdp
             .send(
                 "Runtime.evaluate",
                 Some(serde_json::json!({
-                    "expression": "window[Symbol.for('q')]||[]",
+                    "expression": format!("(()=>{{try{{const q=console.debug.call('{key}',0);return Array.isArray(q)?q:[];}}catch(e){{return [];}}}})()"),
                     "returnByValue": true,
                 })),
             )

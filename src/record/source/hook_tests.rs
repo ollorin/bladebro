@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use super::fake_cdp::{FakeCdp, FakeOpts};
 use crate::cdp::client::MAX_SCREENCAST_EVENT_BYTES;
@@ -83,7 +83,9 @@ async fn frame_above_the_cap_is_still_stripped() {
     fake.push_raw(text);
     let ev = next_event(&mut rx).await;
     assert_eq!(ev.method, "Page.screencastFrame");
-    assert_eq!(ev.params, Value::Object(Default::default()));
+    // Upstream 4.6.8 shrink: strings clipped to 4096 bytes, never the 8 MiB frame.
+    assert!(ev.params["data"].as_str().map_or(0, str::len) <= 4096);
+    assert!(ev.params.to_string().len() <= 16 * 1024);
 }
 
 #[tokio::test]
@@ -95,7 +97,14 @@ async fn other_oversized_events_are_still_stripped() {
     .to_string();
     fake.push_raw(text);
     let ev = next_event(&mut rx).await;
-    assert_eq!(ev.params, Value::Object(Default::default()));
+    assert_eq!(ev.params["requestId"], "1");
+    assert!(
+        ev.params["response"]["payloadData"]
+            .as_str()
+            .map_or(0, str::len)
+            <= 4096
+    );
+    assert!(ev.params.to_string().len() <= 16 * 1024);
 }
 
 #[tokio::test]

@@ -48,10 +48,12 @@ pub(crate) fn find_chrome() -> Result<String> {
             "chromium-browser",
         ][..]
     };
-    for name in names {
-        if let Some(path) = find_in_path(name) {
-            return Ok(path);
-        }
+    let found: Vec<(String, String)> = names
+        .iter()
+        .filter_map(|name| find_in_path(name).map(|path| (name.to_string(), path)))
+        .collect();
+    if let Some(path) = pick_browser(found) {
+        return Ok(path);
     }
 
     let paths = common_paths();
@@ -70,18 +72,60 @@ pub(crate) fn find_chrome() -> Result<String> {
         }
     }
 
-    if std::path::Path::new("/nix/store").exists() {
+    let nix = std::path::Path::new("/nix/store").exists();
+    if nix {
         if let Some(path) = find_in_nix_store() {
             return Ok(path);
         }
+    }
+
+    // Flatpak exports come after every native install (SteamOS and other
+    // read-only-root distros have no other way to add a browser), but before
+    // nix-shell, which may build or download a whole Chromium.
+    #[cfg(target_os = "linux")]
+    if let Some(path) = super::flatpak::find_flatpak_browser(&|key| std::env::var(key).ok()) {
+        return Ok(path);
+    }
+
+    if nix {
         if let Some(path) = find_via_nix_shell() {
             return Ok(path);
         }
     }
 
-    Err(BladeError::Other(
-        "Chrome/Chromium not found. Set CHROME_PATH env var, add chromium to PATH, or install Chrome.".into(),
-    ))
+    Err(BladeError::Other(if cfg!(target_os = "linux") {
+        "Chrome/Chromium not found. Set CHROME_PATH env var, add chromium to PATH, or install Chrome (read-only systems such as SteamOS: `flatpak install flathub org.chromium.Chromium`).".into()
+    } else {
+        "Chrome/Chromium not found. Set CHROME_PATH env var, add chromium to PATH, or install Chrome.".into()
+    }))
+}
+
+/// The browser to use among the PATH candidates: the first install that is
+/// not snap-confined, else the first snap one. A snap-confined Chromium
+/// (`/snap/bin/chromium`, what Ubuntu actually ships when you `apt install
+/// chromium`) cannot read a hidden data root such as the default
+/// `~/.local/state/blade` — its home interface excludes dot-directories — so
+/// it is used only when no native install exists (issue #85 item 2). Within a
+/// tier the name order is unchanged, so nobody's engine changes for a reason
+/// other than the snap. Pure, so the ordering is tested without a PATH.
+fn pick_browser(candidates: Vec<(String, String)>) -> Option<String> {
+    let mut snap = None;
+    for (_name, path) in candidates {
+        if is_snap_confined(&path) {
+            if snap.is_none() {
+                snap = Some(path);
+            }
+        } else {
+            return Some(path);
+        }
+    }
+    snap
+}
+
+/// snapd's PATH entry point is `/snap/bin`; its payload lives under
+/// `/var/lib/snapd`. Both are confined away from hidden home directories.
+fn is_snap_confined(path: &str) -> bool {
+    path.starts_with("/snap/") || path.starts_with("/var/lib/snapd/")
 }
 
 fn common_paths() -> Vec<&'static str> {
@@ -133,20 +177,19 @@ pub(super) fn find_in_path(cmd: &str) -> Option<String> {
     None
 }
 
-fn is_executable(path: &std::path::Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
+pub(super) fn is_executable(path: &std::path::Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        path.metadata()
-            .map(|m| m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
+        path.is_file()
+            && path
+                .metadata()
+                .map(|m| m.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
-        true
+        path.is_file()
     }
 }
 
@@ -280,41 +323,9 @@ pub(crate) fn endpoint_owned_by_pid(port: u16, pid: u32) -> bool {
             return false;
         };
         candidate != pid
-            && pid_within_process_tree(candidate, pid)
+            && platform::pid_within_process_tree(candidate, pid)
             && pid_holds_socket(candidate, ino)
     })
-}
-
-/// True when `pid` is `root` or a direct/indirect child of it, walking
-/// /proc's parent links. Bounded so a corrupt or racing chain cannot loop;
-/// an unreadable parent fails closed.
-#[cfg(target_os = "linux")]
-fn pid_within_process_tree(mut pid: u32, root: u32) -> bool {
-    // Real launch chains are short (AppRun → wrapper → browser → helper).
-    // A deeper chain is not evidence of ownership.
-    for _ in 0..64 {
-        if pid == root {
-            return true;
-        }
-        if pid <= 1 {
-            return false;
-        }
-        pid = proc_ppid(pid);
-    }
-    false
-}
-
-/// Parent pid of a process (0 when /proc is unreadable or unparseable).
-#[cfg(target_os = "linux")]
-fn proc_ppid(pid: u32) -> u32 {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-    // Format: pid (comm) state ppid ... — comm can contain spaces/parens,
-    // so parse after the last ')'.
-    stat.rsplit(')')
-        .next()
-        .and_then(|rest| rest.split_whitespace().nth(1))
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(0)
 }
 
 /// True when ANY live process of this uid holds the loopback listener for
@@ -365,6 +376,31 @@ pub(crate) fn endpoint_owned_by_own_browser(port: u16) -> bool {
     false
 }
 
+/// Live processes of this user whose command line carries exactly
+/// `--user-data-dir=<dir>` (the spelling `flags` passes). Teardown uses it to
+/// reach browser processes that left the launcher's process group — Flatpak's
+/// portal spawns Chromium's zygote and utility sandboxes in its own session.
+/// A session dir is unique to one bladebro process, so a match is ours; the
+/// token must end at a separator so `sess-1` never matches `sess-10`.
+#[cfg(target_os = "linux")]
+pub(crate) fn processes_on_user_data_dir(dir: &std::path::Path) -> Vec<u32> {
+    let needle = format!("--user-data-dir={}", dir.display()).into_bytes();
+    let uid = unsafe { libc::getuid() };
+    let me = std::process::id();
+    let Ok(procs) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    procs
+        .flatten()
+        .filter_map(|e| e.file_name().to_string_lossy().parse::<u32>().ok())
+        .filter(|&pid| pid != me && process_uid(pid) == Some(uid))
+        .filter(|&pid| {
+            std::fs::read(format!("/proc/{pid}/cmdline"))
+                .is_ok_and(|cmdline| platform::cmdline_has_token(&cmdline, &needle))
+        })
+        .collect()
+}
+
 #[cfg(target_os = "linux")]
 fn pid_holds_socket(pid: u32, inode: u64) -> bool {
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
@@ -390,40 +426,10 @@ fn process_uid(pid: u32) -> Option<u32> {
 
 #[cfg(target_os = "linux")]
 fn looks_like_chromium(pid: u32) -> bool {
-    let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
-        return false;
-    };
-    // First token of the cmdline. The kernel's normal form separates argv
-    // entries with NULs, but Chromium rewrites its own argv block into one
-    // space-joined string early in startup (measured live: the browser
-    // process's /proc/<pid>/cmdline has no NUL bytes at all once rewritten),
-    // so splitting on NUL alone would yield the WHOLE command line as one
-    // token and every name check below would fail. Split on either byte.
-    let exe = cmdline
-        .split(|b| *b == 0 || *b == b' ')
-        .find(|tok| !tok.is_empty())
-        .unwrap_or_default();
-    let s = String::from_utf8_lossy(exe);
-    let name = std::path::Path::new(s.as_ref())
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    [
-        "chrome",
-        "chromium",
-        "chromium-browser",
-        "google-chrome",
-        "google-chrome-stable",
-        "brave",
-        "brave-browser",
-        "helium",
-        "microsoft-edge",
-        "msedge",
-        "vivaldi",
-        "opera",
-    ]
-    .iter()
-    .any(|f| name == *f || name.starts_with(&format!("{f}-")))
+    // Shared with the orphan reaper: both must read Chromium's rewritten
+    // (space-joined) argv the same way.
+    std::fs::read(format!("/proc/{pid}/cmdline"))
+        .is_ok_and(|cmdline| crate::platform::cmdline_is_chromium(&cmdline))
 }
 
 /// Non-Linux: no /proc, so the ownership checks are skipped (verification
@@ -441,6 +447,37 @@ pub(crate) fn endpoint_owned_by_own_browser(_port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue #85 item 2: a native Google Chrome must win over a snap-confined
+    /// Chromium, while a native Chromium still wins over Chrome and the name
+    /// order is untouched within each tier.
+    #[test]
+    fn snap_confined_chromium_yields_to_a_native_install() {
+        let c = |name: &str, path: &str| (name.to_string(), path.to_string());
+        assert_eq!(
+            pick_browser(vec![
+                c("chromium", "/snap/bin/chromium"),
+                c("google-chrome", "/usr/bin/google-chrome"),
+            ])
+            .as_deref(),
+            Some("/usr/bin/google-chrome")
+        );
+        assert_eq!(
+            pick_browser(vec![
+                c("chromium", "/usr/bin/chromium"),
+                c("google-chrome", "/usr/bin/google-chrome"),
+            ])
+            .as_deref(),
+            Some("/usr/bin/chromium"),
+            "a native chromium keeps its first place"
+        );
+        assert_eq!(
+            pick_browser(vec![c("chromium", "/snap/bin/chromium")]).as_deref(),
+            Some("/snap/bin/chromium"),
+            "a snap install is still used when it is all there is"
+        );
+        assert_eq!(pick_browser(Vec::new()), None);
+    }
 
     #[test]
     fn executable_candidates_reject_directories_and_non_executable_files() {
@@ -532,7 +569,7 @@ mod tests {
             .filter_map(|e| e.file_name().to_string_lossy().parse::<u32>().ok())
             .find(|pid| {
                 *pid != wrapper.id()
-                    && pid_within_process_tree(*pid, wrapper.id())
+                    && crate::platform::pid_within_process_tree(*pid, wrapper.id())
                     && pid_holds_socket(*pid, inode)
             })
             .expect("forked listener pid");

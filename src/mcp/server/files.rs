@@ -215,16 +215,26 @@ fn pick_candidate<'a>(
     cands.last().copied()
 }
 
-/// Format a completed download: real on-disk size (trust the file, not the
-/// event counter) + final path + source URL.
-fn describe_download(d: &DownloadInfo) -> String {
-    let size = std::fs::metadata(&d.path)
-        .map(|m| m.len())
-        .unwrap_or(d.received_bytes);
-    format!(
-        "download complete: {} ({} bytes)\nfrom: {}",
-        d.path, size, d.url
-    )
+/// Format a completed download from the file itself: real on-disk size +
+/// final path + source URL. Chrome's "completed" event only says the browser
+/// finished writing somewhere — a sandboxed browser that cannot reach the
+/// downloads dir (Flatpak) completes into a private tree the host never
+/// sees — so a missing file is an error, never a completion.
+fn describe_download(d: &DownloadInfo) -> std::result::Result<String, String> {
+    match std::fs::metadata(&d.path) {
+        Ok(m) if m.is_file() => Ok(format!(
+            "download complete: {} ({} bytes)\nfrom: {}",
+            d.path,
+            m.len(),
+            d.url
+        )),
+        _ => Err(format!(
+            "download not on disk: the browser reported {} complete ({} bytes), but {} does not exist — \
+             the browser saved it where bladebro cannot read it (a sandboxed browser without access \
+             to the downloads dir). For a URL that needs no login, retry with body=true.\nfrom: {}",
+            d.filename, d.received_bytes, d.path, d.url
+        )),
+    }
 }
 
 /// Wait for the correlated download to reach a terminal state (#22).
@@ -319,13 +329,23 @@ pub async fn handle_download(page: &mut Page, args: &Value) -> Result<String> {
             seen.retain(|g| g != &d.guid);
         }
     }
-    let expected = expected_filename(url);
+    let resolved = if !url.is_empty() {
+        Some(normalize_download_url(url, Some(page.model().url()))?)
+    } else {
+        None
+    };
+    let expected = expected_filename(
+        resolved
+            .as_ref()
+            .map(|(fetch_u, _)| fetch_u.as_str())
+            .unwrap_or(url),
+    );
 
-    if !url.is_empty() {
+    if let Some((ref fetch_url, ref fallback_url)) = resolved {
         // Use fetch + Blob + <a download> to trigger a download without
         // navigating away from the current page. Direct navigation loads
         // PDFs in Chrome's viewer instead of downloading them.
-        let js_url = serde_json::to_string(url)
+        let js_url = serde_json::to_string(fetch_url)
             .map_err(|_| crate::error::BladeError::Other("invalid URL for download".into()))?;
         let js_expr = format!(
             r#"(async function() {{
@@ -383,7 +403,7 @@ pub async fn handle_download(page: &mut Page, args: &Value) -> Result<String> {
                     let downloads = download_page.downloads();
                     download_page
                         .cdp_ref()
-                        .send("Page.navigate", Some(json!({"url": url})))
+                        .send("Page.navigate", Some(json!({"url": fallback_url})))
                         .await?;
                     let deadline =
                         std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
@@ -419,7 +439,8 @@ pub async fn handle_download(page: &mut Page, args: &Value) -> Result<String> {
                         })),
                     )
                     .await;
-                return waited.map(|download| describe_download(&download));
+                return waited
+                    .and_then(|download| describe_download(&download).map_err(BladeError::Other));
             }
             return Err(crate::error::BladeError::Other(format!(
                 "download failed: {err}"
@@ -438,7 +459,7 @@ pub async fn handle_download(page: &mut Page, args: &Value) -> Result<String> {
     )
     .await
     {
-        Ok(d) => Ok(describe_download(&d)),
+        Ok(d) => describe_download(&d).map_err(crate::error::BladeError::Other),
         Err(e) => Err(crate::error::BladeError::Other(e)),
     }
 }
@@ -585,6 +606,36 @@ mod download_correlation_tests {
         assert!(err.contains("canceled"), "{err}");
         assert!(err.contains("two.pdf"), "{err}");
     }
+
+    /// A "completed" event is the browser's word, not a file: a Flatpak
+    /// browser without access to the downloads dir completes into a
+    /// sandbox-private tree the host never sees. The verdict must come from
+    /// the file on disk, and a missing file must never read as complete.
+    #[test]
+    fn completed_download_missing_on_disk_is_not_reported_complete() {
+        let dir = std::env::temp_dir().join(format!("blade-dl-verdict-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut present = dl("g1", "here.txt", "completed");
+        present.path = dir.join("here.txt").display().to_string();
+        std::fs::write(&present.path, b"12345").unwrap();
+        let mut missing = dl("g2", "gone.txt", "completed");
+        missing.path = dir.join("gone.txt").display().to_string();
+
+        let found = describe_download(&present);
+        let lost = describe_download(&missing);
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let found = found.expect("a file on disk is a completed download");
+        assert!(
+            found.starts_with("download complete: ") && found.contains("(5 bytes)"),
+            "size comes from the file, not the event counter: {found}"
+        );
+        let lost = lost.expect_err("a file missing on the host must not be reported complete");
+        assert!(
+            lost.starts_with("download not on disk") && lost.contains(&missing.path),
+            "{lost}"
+        );
+    }
 }
 
 /// Explicit curl-like body fetch. Browser cookies/JS are intentionally absent;
@@ -646,12 +697,41 @@ pub(super) async fn handle_body_download(args: &Value) -> Result<String> {
     Ok(json!({"path":path,"bytes":bytes.len(),"status":status,"url":final_url,"content_type":kind,"note":"HTTP body; browser cookies/session not used; status is the server response"}).to_string())
 }
 
+fn normalize_download_url(raw: &str, base_url: Option<&str>) -> Result<(String, String)> {
+    let trimmed = raw.trim();
+    crate::page::validate_nav_url(trimmed)?;
+    if trimmed
+        .get(..6)
+        .is_some_and(|p| p.eq_ignore_ascii_case("about:"))
+    {
+        return Err(BladeError::Usage(
+            "download URL cannot use about: scheme".into(),
+        ));
+    }
+    let is_relative = trimmed.starts_with('/')
+        || trimmed.starts_with('.')
+        || trimmed.starts_with('?')
+        || trimmed.starts_with('#');
+    if is_relative {
+        let fallback = base_url
+            .and_then(|base| url::Url::parse(base).ok())
+            .and_then(|base| base.join(trimmed).ok())
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| trimmed.to_string());
+        Ok((trimmed.to_string(), fallback))
+    } else {
+        let schemed = crate::page::with_scheme(trimmed);
+        Ok((schemed.clone(), schemed))
+    }
+}
+
 pub(super) fn body_client(
     proxy: Option<crate::browser::proxy::ProxySpec>,
 ) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30));
     if let Some(proxy) = proxy {
-        if proxy.server.starts_with("socks") || proxy.server.starts_with("quic:") {
+        let lower = proxy.server.to_ascii_lowercase();
+        if lower.starts_with("socks") || lower.starts_with("quic:") {
             return Err(BladeError::Usage("body download supports HTTP(S) BLADE_PROXY only; use browser downloads for this proxy type".into()));
         }
         let server = if proxy.server.contains("://") {
@@ -665,6 +745,8 @@ pub(super) fn body_client(
             )
         })?;
         builder = builder.proxy(configured);
+    } else {
+        builder = builder.no_proxy();
     }
     builder
         .build()
@@ -704,10 +786,93 @@ mod body_proxy_tests {
             .unwrap();
         assert_eq!(response.text().await.unwrap(), "PROXIED");
         server.await.unwrap();
-        let proxy =
-            crate::browser::proxy::parse_blade_proxy("socks5://user:secret@127.0.0.1:9").unwrap();
-        let error = body_client(Some(proxy)).unwrap_err().to_string();
-        assert!(!error.contains("secret"));
-        assert!(error.contains("HTTP(S)"));
+        for raw_proxy in [
+            "socks5://user:secret@127.0.0.1:9",
+            "SOCKS5://user:secret@127.0.0.1:9",
+            "QUIC://127.0.0.1:9",
+        ] {
+            let proxy = crate::browser::proxy::parse_blade_proxy(raw_proxy).unwrap();
+            let error = body_client(Some(proxy)).unwrap_err().to_string();
+            assert!(!error.contains("secret"));
+            assert!(error.contains("HTTP(S)"), "rejected {raw_proxy}: {error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn body_client_without_blade_proxy_ignores_ambient_http_proxy_env() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let hit = Arc::new(AtomicBool::new(false));
+        let hit_srv = hit.clone();
+        let _server = tokio::spawn(async move {
+            if listener.accept().await.is_ok() {
+                hit_srv.store(true, Ordering::SeqCst);
+            }
+        });
+
+        let prev = std::env::var_os("HTTP_PROXY");
+        // SAFETY: scoped to this unit test checking reqwest builder .no_proxy().
+        unsafe {
+            std::env::set_var("HTTP_PROXY", format!("http://{address}"));
+        }
+        let client = body_client(None);
+        match prev {
+            Some(v) => unsafe { std::env::set_var("HTTP_PROXY", v) },
+            None => unsafe { std::env::remove_var("HTTP_PROXY") },
+        }
+        let client = client.unwrap();
+        let res = client
+            .get("http://ambient-proxy-isolation.invalid/fixture")
+            .send()
+            .await;
+        assert!(
+            res.is_err(),
+            "unproxied request to .invalid must fail DNS, not hit HTTP_PROXY"
+        );
+        assert!(
+            !hit.load(Ordering::SeqCst),
+            "ambient HTTP_PROXY must never receive unconfigured body=true traffic"
+        );
+    }
+
+    #[test]
+    fn normalize_download_url_guards_schemes_and_preserves_relative_paths() {
+        for bad in [
+            "javascript:alert(1)",
+            "chrome://settings",
+            "devtools://devtools/bundled/inspector.html",
+            "about:blank",
+        ] {
+            assert!(
+                normalize_download_url(bad, Some("https://example.com/app")).is_err(),
+                "{bad} must be rejected before any browser or tab fallback work"
+            );
+        }
+        assert_eq!(
+            normalize_download_url("example.com/report.pdf", None).unwrap(),
+            (
+                "https://example.com/report.pdf".into(),
+                "https://example.com/report.pdf".into()
+            )
+        );
+        assert_eq!(
+            normalize_download_url("localhost:8080/report.pdf", None).unwrap(),
+            (
+                "http://localhost:8080/report.pdf".into(),
+                "http://localhost:8080/report.pdf".into()
+            )
+        );
+        assert_eq!(
+            normalize_download_url("/files/report.pdf", Some("https://example.com/dir/page"))
+                .unwrap(),
+            (
+                "/files/report.pdf".into(),
+                "https://example.com/files/report.pdf".into()
+            )
+        );
     }
 }

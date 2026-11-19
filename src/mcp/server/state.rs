@@ -5,7 +5,7 @@
 
 use serde_json::{json, Value};
 
-use crate::error::{BladeError, Result};
+use crate::error::Result;
 use crate::page::Page;
 use crate::state::StateOp;
 
@@ -14,9 +14,7 @@ pub async fn handle_state(args: &Value, page: &mut Page) -> Result<String> {
     if let Some(r) = crate::record::hub::try_handle(args, page).await {
         return r;
     }
-    if args.get("slim").is_some_and(|v| !v.is_boolean()) {
-        return Err(BladeError::Usage("state slim must be a boolean".into()));
-    }
+    super::validate::state(args)?;
     let out = handle_state_inner(args, page).await?;
     // Tab IDs are essential readback; their model is optional in a quiet run.
     if args.get("slim").and_then(Value::as_bool).unwrap_or(false)
@@ -31,32 +29,6 @@ pub async fn handle_state(args: &Value, page: &mut Page) -> Result<String> {
 }
 
 async fn handle_state_inner(args: &Value, page: &mut Page) -> Result<String> {
-    if !args.is_object() {
-        return Err(BladeError::Other(
-            "state arguments must be an object".into(),
-        ));
-    }
-    for key in [
-        "op",
-        "name",
-        "value",
-        "url",
-        "domain",
-        "path",
-        "sameSite",
-        "target_id",
-        "mode",
-        "classes",
-    ] {
-        if args.get(key).is_some_and(|value| !value.is_string()) {
-            return Err(BladeError::Other(format!("state {key} must be a string")));
-        }
-    }
-    for key in ["secure", "httpOnly", "clear"] {
-        if args.get(key).is_some_and(|value| !value.is_boolean()) {
-            return Err(BladeError::Other(format!("state {key} must be a boolean")));
-        }
-    }
     let op_str = args.get("op").and_then(|o| o.as_str()).unwrap_or("");
     let name = args.get("name").and_then(|n| n.as_str()).unwrap_or("");
     let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
@@ -175,6 +147,7 @@ async fn handle_state_inner(args: &Value, page: &mut Page) -> Result<String> {
     let op = match op_str {
         "cookies" => {
             // If url is provided, filter cookies to that domain.
+            // A domain reads that domain (and subdomains) browser-wide.
             // Otherwise, use the current page URL so the agent gets
             // relevant cookies, not a 100+ line dump of all browser cookies.
             let filter_url = if !url.is_empty() {
@@ -191,6 +164,11 @@ async fn handle_state_inner(args: &Value, page: &mut Page) -> Result<String> {
             };
             StateOp::GetCookies {
                 urls: filter_url.map(|u| vec![u]).unwrap_or_default(),
+                domain: args
+                    .get("domain")
+                    .and_then(Value::as_str)
+                    .filter(|d| !d.is_empty())
+                    .map(String::from),
             }
         }
         "set-cookie" => StateOp::SetCookie {

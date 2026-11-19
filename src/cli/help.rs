@@ -57,7 +57,7 @@ COMMANDS
   rb on|off [sub]                 real-browser lane: drive YOUR browser (see 'help rb')
   hermes on|off|status             switch Hermes' browser to Bladebro; reversible MCP setup
   headless on|off|status          hide/show the managed browser for a suite (see 'help headless')
-  audit                           stealth audit — 61-check suite + boot self-check + drift stamp
+  audit                           stealth audit — vector suite + boot self-check + drift stamp
   update | -u [--check] [--force]  self-update; --rollback restores the previous binary
   doctor | -doc                   system diagnostics (13 checks)
   -v | --version                  version + install method + update status
@@ -263,6 +263,8 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--js": "eval expression (@file or - for scripts)",
                 "--submit": "fill: submit button ref or text",
                 "--next": "paginate: CSS selector or text=Next (also label=/ref=)",
+                "--extract": "paginate: read kind per page — auto (default) | links | forms | json (needs --template)",
+                "--limit": "paginate: per-page extraction item limit",
                 "--body": "download: HTTP body, <=32MiB/30s, no browser cookies; honors HTTP(S) BLADE_PROXY",
                 "--sort": "Reddit post extract: confidence|top|new|controversial|old|qa",
                 "--slim": "verdict-only successful actions; batch/run inherit, reads/errors retained",
@@ -270,7 +272,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--dpr": "viewport: device scale factor 0.5-5 (default 1)",
                 "--mobile": "viewport: emulate a mobile device",
                 "--reset": "viewport: remove the emulation",
-                "--format": "extract/eval: text (default) | json — pure JSON output (for eval: the bare returned value; {data,note} when a note rides along; an {artifact,bytes} envelope when oversized)"
+                "--format": "read/extract/eval: text (default) | json — read returns live values/state/select choices; for eval: the bare returned value; {data,note} for notices; {artifact,bytes,next_offset:0} when oversized"
             },
             "examples": [
                 "bladebro act click e5",
@@ -282,6 +284,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro act batch @steps.json",
                 "bladebro act extract --format json",
                 "bladebro act wait settle",
+                "bladebro act dialog confirm --accept false",
                 "bladebro act eval \"document.title\"",
                 "bladebro act viewport --width 375 --height 800",
                 "bladebro act viewport --reset"
@@ -330,7 +333,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro run @steps.json",
                 "cat steps.json | bladebro run -"
             ],
-            "notes": ["stops on first error with the step number + page state", "while+see reads across pages in ONE call"]
+            "notes": ["stops on first error with the step number + page state", "while+see reads across pages in ONE call", "--format json: status, results per top-level step, stopped_at/error/page/note on failure; nested observations remain output text; step formats are explicit; large results offload"]
         }),
         "vision" => json!({
             "usage": "bladebro vision [--marks] [--full-page | --viewport]",
@@ -396,7 +399,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
             "usage": "bladebro audit",
             "tool": null,
             "examples": ["bladebro audit"],
-            "notes": ["stealth audit — 61-check local suite + boot self-check + cross-restart consistency stamp; 61/61 is the bar"]
+            "notes": ["stealth audit — local vector suite + boot self-check + cross-restart consistency stamp; every check must pass (the run prints its own total); any FAIL exits non-zero"]
         }),
         "update" => json!({
             "usage": "bladebro update | -u [--check] [--force]",
@@ -595,11 +598,11 @@ FLAGS
   --content           include text in model mode
   --budget <N>        max response chars (default 8000)
   --limit <N>         max extract items (default 50; Reddit comments: all ≤1000)
-  --logs console|network
+  --logs console|network|xhr
   --artifact <path>   paged read (--offset/--limit count chars; --items counts JSON rows)
   --preview           extract auto: container/schema without rows
   --changes           model delta since last capture; --format json for structured fields
-  --clear             read then clear --logs console|network
+  --clear             read then clear --logs console|network|xhr
   --sort <sort>       Reddit post auto-extract: confidence|top|new|controversial|old|qa
   --full              audit: every finding (--limit N: top N per kind)
   --min-target <px>   audit: touch target minimum (default 24)
@@ -630,9 +633,12 @@ ACTIONS
   scroll <dx> <dy>         hover <target>            navigate <url> [--block]
   upload <target> <path>   download <url> [--path]  wait <condition> [value]
   eval <js> [--ref]        collect <url> [--max N]   read <ref|label>
-  paginate <next> [--max N] [--extract auto]  bounded read/advance, retains pages
+  paginate <next> [--max N] [--extract auto|links|forms|json] [--limit N]
+                           bounded read/advance, retains pages
   download <url> --body   save an HTTP body without browser cookies (HTTP(S) proxy honored)
   extract [auto|links|forms|json]   structured data (same as 'see extract …')
+  dialog <alert|confirm|prompt|beforeunload|any|clear> [--accept true|false]
+         [--prompt-text <t>] [--message <m>]   arm the NEXT dialog's answer (one use)
   batch <steps|@file|->    pdf [--path] [--landscape]
   back / forward / reload  save <name> / load <name>
   viewport --width W --height H [--dpr N] [--mobile]   emulate a viewport (persists
@@ -641,12 +647,15 @@ ACTIONS
 
 UNIVERSAL FLAGS (mirror the MCP schema — accepted on every action)
   --ref --label --text --selector --role --nth --key --url --option --condition --timeout
-  --next --body --sort --dx --dy --js --submit --block --slim --format  (per-action: --path, --max, --x/--y…)
+  --next --body --sort --dx --dy --js --submit --block --slim --format  (per-action: --path, --max, --extract, --limit, --x/--y…)
 
 Multi-word values don't need quotes: 'act click Sign in' works. Big JSON
 payloads: @file or - (stdin). Unknown flags fail loudly (exit 2). Key chords: 'act press Control+a'.
 
 RESULT SHAPES (stable — parse them without guessing)
+  read          live text/control value, checked/indeterminate and ARIA state,
+                select choices (first 80; options_total/options_truncated disclose bounds).
+                --format json returns structured properties; large reads offload.
   eval          one line: `result: <compact JSON of the returned value>` — read
                 that line, json.loads it. A returned string that CONTAINS JSON is
                 called out in a `note:` line (parse the value once more — do not
@@ -734,7 +743,7 @@ EXAMPLES
             r#"bladebro run — batch actions with branching and loops
 
 USAGE
-  bladebro run '<json-steps>'      (or @file / - for stdin)
+  bladebro run '<json-steps>' [--slim] [--format text|json] (or @file / -)
 
 Steps are action objects (same fields as act) plus:
   {"action":"if","condition":…,"then":[…],"else":[…]}   branch
@@ -744,6 +753,10 @@ Steps are action objects (same fields as act) plus:
 
 Stops on the first error and returns the step number + page state.
 Conditions: element, title, url, text, settle, js.
+--format json returns status=completed|stopped and results with 1-based top-level
+step IDs, status=ok|optional_failed|failed and output text. Stopped runs include
+stopped_at/error/page/note. Nested observations stay in output; set each read's
+format explicitly. Oversized results use the usual artifact paging envelope.
 
 EXAMPLES
   bladebro run '[{"action":"navigate","url":"example.com"},{"action":"see","mode":"content"}]'
@@ -838,8 +851,11 @@ USAGE
   bladebro stop
 
 Graceful: flushes logins + domain knowledge, kills Chrome, removes the
-socket. Idempotent — exit 0 even when nothing is running. If the daemon is
-wedged, falls back to terminating the pid from the pid file.
+socket. Idempotent — exit 0 even when nothing is running. The daemon runs
+one command at a time: if it does not answer within 10s (busy with a long
+command, or wedged), stop sends SIGTERM to the pid from the pid file — the
+running command is cancelled (outcome unknown) and Chrome still closes
+gracefully; SIGKILL follows if it is still alive 10s later.
 "#
         }
         "help" => {
@@ -853,6 +869,7 @@ USAGE
                              payload conventions, examples — call ONCE and
                              you know the whole CLI
   bladebro help <cmd> --json per-command machine help
+  bladebro <cmd> --help      same as help <cmd> (never runs the command)
 "#
         }
         "headless" => crate::launch_mode::HELP_TEXT,
@@ -901,12 +918,14 @@ Chrome launches lazily on the first tool call.
 USAGE
   bladebro audit
 
-Runs the local vector suite (tests/vectors.html — 61 checks: the core
-stealth surface, the permissions native-parity battery, GL-coherence
-checks, worker/iframe propagation) plus a boot self-check and a
-cross-restart consistency stamp (canvas/audio/geometry/UA/GL must not
-drift between runs). Run it after any stealth-affecting change; 61/61
-is the bar.
+Runs the local vector suite (tests/vectors.html: the core stealth
+surface, the permissions native-parity battery, GL-coherence checks,
+worker/iframe propagation) plus a boot self-check and a cross-restart
+consistency stamp (canvas/audio/geometry/UA/GL must not drift between
+runs). Run it after any stealth-affecting change; every check must pass —
+the run prints its own total (it depends on platform and profile), and
+any FAIL line exits non-zero. The suite is built into the binary; a
+tests/vectors.html in the current directory overrides it.
 "#
         }
         "update" => {
@@ -1022,6 +1041,43 @@ mod tests {
         );
         assert_eq!(suggest_command("browsers"), Some("rb use"));
         assert_eq!(suggest_command("completely-unrelated"), None);
+    }
+
+    /// The audit total is platform/profile-dependent and printed by the run
+    /// itself (audit.rs); a number pinned in help drifted (help said 61
+    /// while the suite had grown to 111). No help surface may pin one.
+    #[test]
+    fn audit_help_does_not_pin_a_check_count() {
+        fn pins_a_count(text: &str) -> bool {
+            let b = text.as_bytes();
+            (0..b.len()).any(|i| {
+                b[i].is_ascii_digit() && (i == 0 || !b[i - 1].is_ascii_digit()) && {
+                    let end = (i..b.len())
+                        .find(|&j| !b[j].is_ascii_digit())
+                        .unwrap_or(b.len());
+                    let tail = &text[end..];
+                    tail.starts_with("-check")
+                        || tail.starts_with(" checks")
+                        || tail.starts_with(" vectors")
+                        || (tail.starts_with('/')
+                            && tail[1..].starts_with(|c: char| c.is_ascii_digit()))
+                }
+            })
+        }
+        assert!(pins_a_count("a 61-check suite") && pins_a_count("61/61 is the bar"));
+        assert!(!pins_a_count("vector suite + boot self-check"));
+        let manual = help_text();
+        let audit_line = manual
+            .lines()
+            .find(|l| l.trim_start().starts_with("audit "))
+            .expect("manual lists audit");
+        for text in [
+            audit_line.to_string(),
+            command_help_text("audit").unwrap(),
+            command_help_json("audit").unwrap().to_string(),
+        ] {
+            assert!(!pins_a_count(&text), "audit help pins a count: {text}");
+        }
     }
 
     #[test]
