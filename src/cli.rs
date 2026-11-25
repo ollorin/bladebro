@@ -49,7 +49,7 @@ use self::args::{
 use self::daemon::{daemon_request, MAX_REQUEST_BYTES};
 use self::daemon::{run_daemon, stop_daemon};
 pub use self::help::{command_help_text, help_json, help_text, suggest_command};
-use self::rb::run_rb;
+use self::rb::{run_audio, run_rb};
 
 /// Unix socket path for the CLI daemon.
 #[cfg(unix)]
@@ -169,11 +169,12 @@ pub async fn dispatch(
     crate::record::timeline::end(tl, &result);
 
     match result {
-        Ok(mut text) => {
+        Ok(text) => {
+            let mut notices = String::new();
             // Drain dialogs and ambient events (same as MCP handle_tools_call).
             let dialogs = page.drain_dialogs();
             if !dialogs.is_empty() {
-                text.push_str("\n\u{26a0} dialogs handled:\n");
+                notices.push_str("\n\u{26a0} dialogs handled:\n");
                 for d in &dialogs {
                     let action = if d.accepted { "accepted" } else { "cancelled" };
                     let how = if d.via == "expectation" {
@@ -181,22 +182,33 @@ pub async fn dispatch(
                     } else {
                         ""
                     };
-                    text.push_str(&format!(
+                    notices.push_str(&format!(
                         "  {} \"{}\" \u{2014} {}{}\n",
                         d.kind, d.message, action, how
                     ));
                     if let Some(n) = &d.note {
-                        text.push_str(&format!("    ({n})\n"));
+                        notices.push_str(&format!("    ({n})\n"));
+                    }
+                    if let Some(p) = &d.default_prompt {
+                        if !p.is_empty() {
+                            notices.push_str(&format!("    (prompt default: \"{}\")\n", p));
+                        }
                     }
                 }
             }
             if let Some(note) = page.drain_dialog_expect_note() {
-                text.push_str(&format!("\n\u{26a0} {note}\n"));
+                notices.push_str(&format!("\n\u{26a0} {note}\n"));
             }
             let ambient = page.drain_ambient();
             for a in &ambient {
-                text.push_str(&format!("\u{26a0} {}\n", a));
+                if !notices.ends_with('\n') {
+                    notices.push('\n');
+                }
+                notices.push_str(&format!("\u{26a0} {}\n", a));
             }
+            // Keep `--format json` machine-readable even when dialogs, HTTP
+            // status notices or consent events ride along (matching MCP).
+            let text = server::append_notices(text, &notices, server::json_response(args));
             Ok(ToolResult {
                 text,
                 image: None,
@@ -207,6 +219,14 @@ pub async fn dispatch(
         Err(BladeError::Closed) => Err(BladeError::Closed),
         Err(e) => {
             let mut text = format!("\u{2717} error: {e}");
+            // Mirror MCP tool_error: attach current page state when not already
+            // embedded so CLI agents can recover without an extra `see` call.
+            if !text.contains("--- current page state ---") {
+                let view = page.view(1200);
+                if !view.trim().is_empty() {
+                    text.push_str(&format!("\n--- current page state ---\n{view}"));
+                }
+            }
             let dialogs = page.drain_dialogs();
             if !dialogs.is_empty() {
                 text.push_str("\n\n\u{26a0} dialogs handled:\n");
@@ -228,6 +248,13 @@ pub async fn dispatch(
             }
             if let Some(note) = page.drain_dialog_expect_note() {
                 text.push_str(&format!("\n\u{26a0} {note}\n"));
+            }
+            let ambient = page.drain_ambient();
+            for a in &ambient {
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(&format!("\u{26a0} {}\n", a));
             }
             Ok(ToolResult {
                 text,
@@ -447,6 +474,19 @@ fn send_to_daemon(req: &str) -> std::result::Result<ToolResult, DaemonCallError>
     })
 }
 
+/// Best-effort graceful stop of a running CLI daemon (used after self-update
+/// or rollback so the next command starts on the new binary instead of talking
+/// to the stale inode). Returns `true` if a live daemon was stopped.
+pub async fn stop_daemon_if_running() -> bool {
+    #[cfg(unix)]
+    {
+        if daemon_running() {
+            return stop_daemon().await.is_ok();
+        }
+    }
+    false
+}
+
 /// Main CLI entry point. Called from main.rs.
 ///
 /// Exit-code contract (documented in `help`):
@@ -521,6 +561,7 @@ async fn run_cli_inner(
 
     match cmd {
         "rb" | "realbrowser" => run_rb(rest, json_mode).await,
+        "audio" => run_audio(rest, json_mode).await,
         "hermes" => hermes::run(rest, json_mode).await,
         // Fork hook (.planning/HOOKS.md): headless on|off|status.
         "headless" => crate::launch_mode::run_cli(rest, json_mode),

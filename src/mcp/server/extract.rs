@@ -119,6 +119,7 @@ pub async fn handle_template_extract(
     json_mode: bool,
 ) -> Result<String> {
     let expr = template_extract_expr(template, limit)?;
+    page.settle_route(crate::page::ROUTE_BUDGET).await;
 
     let res = page
         .cdp_ref()
@@ -230,6 +231,8 @@ const AUTO_EXTRACT_MAX: usize = 500;
 fn auto_extract_expr(limit: usize, post_marker: bool) -> String {
     let lim = limit.min(AUTO_EXTRACT_MAX);
     include_str!("js/auto_extract.js")
+        .replace("__SITE_ADAPTERS__", &crate::adapters::site_adapters_js())
+        .replace("__JSONLD_FALLBACK__", crate::adapters::jsonld_fallback_js())
         .replace("__LIMIT__", &lim.to_string())
         .replace(
             "__POST_MARKER__",
@@ -237,25 +240,42 @@ fn auto_extract_expr(limit: usize, post_marker: bool) -> String {
         )
 }
 
-/// Run auto-extract and return the parsed JSON value.
+/// Run auto-extract and return `(parsed JSON payload, live location.href)`.
 ///
 /// Feeds hydrate asynchronously — an extract fired during the stream can
 /// find no list yet, or only the first few items. When the result is empty
 /// OR tiny (<8 items) and requests are still in flight, settle briefly and
-/// re-run (bounded: 2 retries). Quiet pages pay zero extra latency.
+/// re-run (bounded: 2 retries). Handoff markers (`handoff: true`) and
+/// single-entity detail adapters (`detail: true`) exit immediately without
+/// burning settle latency.
 async fn run_auto_extract(
     page: &Page,
     limit: usize,
     post_marker: bool,
-) -> Result<serde_json::Value> {
+) -> Result<(serde_json::Value, String)> {
     // A client-side route change leaves the PREVIOUS route's DOM mounted while
     // the new route is still rendering (the router moves the url first). The
     // detector would answer with stale items that look perfectly healthy, so
     // wait the transition out before reading anything.
     page.settle_route(crate::page::ROUTE_BUDGET).await;
     let expr = auto_extract_expr(limit, post_marker);
-    let mut val = auto_extract_eval(page, &expr).await?;
+    let (mut val, mut live_url) = match auto_extract_eval(page, &expr).await {
+        Ok(res) => res,
+        Err(e) if crate::cdp::CdpSession::is_stale_context_err(&e) => {
+            // A redirect (e.g. reddit short post URL -> canonical slug) or
+            // challenge commit landed mid-eval; let the destination load and
+            // retry this pure read once.
+            let _ =
+                crate::page::wait_for_load(page.cdp_ref(), std::time::Duration::from_secs(3)).await;
+            page.settle_route(crate::page::ROUTE_BUDGET).await;
+            auto_extract_eval(page, &expr).await?
+        }
+        Err(e) => return Err(e),
+    };
     for _ in 0..2 {
+        if crate::adapters::is_early_settle(&val) {
+            break;
+        }
         let items_len = val
             .get("items")
             .and_then(|i| i.as_array())
@@ -271,21 +291,20 @@ async fn run_auto_extract(
         )
         .await
         .ok();
-        val = auto_extract_eval(page, &expr).await?;
+        let next = auto_extract_eval(page, &expr).await?;
+        val = next.0;
+        live_url = next.1;
     }
-    Ok(val)
+    Ok((val, live_url))
 }
 
-async fn auto_extract_eval(page: &Page, expr: &str) -> Result<serde_json::Value> {
+async fn auto_extract_eval(page: &Page, expr: &str) -> Result<(serde_json::Value, String)> {
+    let wrapped = format!(
+        "(()=>{{const p={expr};return JSON.stringify({{u:String(location.href||''),p}});}})()"
+    );
     let res = page
         .cdp_ref()
-        .send(
-            "Runtime.evaluate",
-            Some(serde_json::json!({
-                "expression": expr,
-                "returnByValue": true,
-            })),
-        )
+        .eval_isolated_with_timeout(&wrapped, true, false, std::time::Duration::from_secs(15))
         .await?;
     if let Some(exc) = res.get("exceptionDetails") {
         let msg = exc
@@ -298,13 +317,29 @@ async fn auto_extract_eval(page: &Page, expr: &str) -> Result<serde_json::Value>
             crate::platform::truncate_utf8(msg.lines().next().unwrap_or(msg), 200)
         )));
     }
-    let json_str = res
+    let Some(raw) = res
         .get("result")
         .and_then(|r| r.get("value"))
         .and_then(|v| v.as_str())
-        .unwrap_or("{}");
-    Ok(serde_json::from_str(json_str)
-        .unwrap_or_else(|_| serde_json::json!({"error": "parse failed", "items": []})))
+    else {
+        return Err(BladeError::Other(
+            "auto-extract: browser returned no data; retry after the page settles".into(),
+        ));
+    };
+    let outer: Value = serde_json::from_str(raw)
+        .unwrap_or_else(|_| serde_json::json!({"error": "parse failed", "items": []}));
+    if let Some(payload_str) = outer.get("p").and_then(Value::as_str) {
+        let live_url = outer
+            .get("u")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let val = serde_json::from_str(payload_str)
+            .unwrap_or_else(|_| serde_json::json!({"error": "parse failed", "items": []}));
+        Ok((val, live_url))
+    } else {
+        Ok((outer, page.model().url().to_string()))
+    }
 }
 /// Render an auto-extract payload. Text mode: header + inline JSON, big
 /// payloads offloaded with a preview. JSON mode (W2): a bare parseable
@@ -473,11 +508,11 @@ fn range_filter_note(url: &str, val: &serde_json::Value) -> Option<String> {
     }
     let lo = prices
         .iter()
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(s, _)| s.clone())?;
     let hi = prices
         .iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .max_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(s, _)| s.clone())?;
     Some(format!(
         "\nnote: the URL carries a range filter ({raw}), but every readable item price on this page is outside it ({lo}–{hi}, {n} of {n} items) — the site may not have applied that filter; verify with the site's own filter UI before trusting these results",
@@ -543,8 +578,11 @@ fn parse_price(shown: &str) -> Option<f64> {
 }
 
 pub(super) async fn auto_preview(page: &Page) -> Result<String> {
-    let value = run_auto_extract(page, 3, false).await?;
-    let fields: std::collections::BTreeSet<String> = value
+    let (value, _) = run_auto_extract(page, 3, true).await?;
+    if let Some(handoff_preview) = crate::adapters::preview_for_handoff(&value) {
+        return Ok(handoff_preview.to_string());
+    }
+    let mut fields: std::collections::BTreeSet<String> = value
         .get("items")
         .and_then(Value::as_array)
         .into_iter()
@@ -552,6 +590,15 @@ pub(super) async fn auto_preview(page: &Page) -> Result<String> {
         .filter_map(Value::as_object)
         .flat_map(|o| o.keys().cloned())
         .collect();
+    // Detail adapters with separate metadata objects (e.g. youtube-video when
+    // comments haven't loaded yet) surface those entity fields too.
+    if fields.is_empty() {
+        for key in ["video", "post", "issue", "question"] {
+            if let Some(obj) = value.get(key).and_then(Value::as_object) {
+                fields.extend(obj.keys().map(|k| format!("{key}.{k}")));
+            }
+        }
+    }
     Ok(json!({"container":value.get("container"),"fields":fields,"sampled":value.get("count"),"note":"schema sampled from up to 3 rendered rows; other rows may have additional fields"}).to_string())
 }
 
@@ -562,138 +609,44 @@ pub async fn handle_auto_extract(
     json_mode: bool,
     sort_override: Option<&str>,
 ) -> Result<String> {
-    let val = run_auto_extract(page, limit, true).await?;
-
-    if sort_override.is_some()
-        && val.get("container").and_then(Value::as_str) != Some("reddit-post-page")
+    let (val, live_url) = run_auto_extract(page, limit, true).await?;
+    let mut fallback_reason = String::new();
+    let (mut val, effective_url) = match crate::adapters::dispatch(
+        page,
+        &val,
+        &live_url,
+        limit,
+        limit_explicit,
+        sort_override,
+    )
+    .await?
     {
-        return Err(BladeError::Usage(
-            "sort applies to extract=auto on Reddit post pages only".into(),
-        ));
-    }
-    // Reddit post pages: the marker hands off to the comment-tree sweep — one
-    // in-page API pass returns every comment (collapsed replies included),
-    // thread-ordered and structured, instead of scraping the rendered DOM.
-    if val.get("container").and_then(|c| c.as_str()) == Some("reddit-post-page") {
-        let permalink = val
-            .get("permalink")
-            .and_then(|p| p.as_str())
-            .unwrap_or("")
-            .to_string();
-        let sort = sort_override.map(str::to_string).unwrap_or_else(|| {
-            val.get("sort")
-                .and_then(|s| s.as_str())
-                .unwrap_or("confidence")
-                .to_string()
-        });
-        if !permalink.is_empty() {
-            let cap = if limit_explicit {
-                limit.clamp(1, crate::reddit::MAX_COMMENT_CAP)
-            } else {
-                crate::reddit::DEFAULT_COMMENT_CAP
-            };
-            match crate::reddit::fetch_comments(page.cdp_ref(), &permalink, &sort, cap).await {
-                Ok(payload) => {
-                    let _ = page.take_route_unsettled();
-                    return auto_extract_output(&payload, json_mode, "");
-                }
-                Err(e) => {
-                    // API route failed (exotic host, blocked page): fall back to
-                    // the DOM listing — and say so, because the DOM misses
-                    // collapsed replies. Policy denials can persist; the
-                    // fallback never claims the full tree or promises a retry.
-                    let mut val = run_auto_extract(page, limit, false).await?;
-                    val["complete"] = json!(false);
-                    val["partial"] = json!(true);
-                    let hint = if crate::reddit::is_security_block(&e) {
-                        " (Reddit denied the API request; repeated extracts may remain blocked. DOM coverage is partial; verify complete before treating this as the full thread)"
-                    } else {
-                        ""
-                    };
-                    let note = format!(
-                        "\nnote: full-thread fetch failed ({e}); items above are a DOM fallback and may miss collapsed replies{hint}{}",
-                        route_note(page)
-                    );
-                    return auto_extract_output(&val, json_mode, &note);
-                }
-            }
+        crate::adapters::AdapterDispatch::Handled(payload) => {
+            return auto_extract_output(&payload, json_mode, "");
         }
-    }
-
-    // Reddit SEARCH pages: results are client-rendered SDUI units (no
-    // `shreddit-post` exists, so the feed fast path cannot see them) and the
-    // page's router swaps the feed AFTER the url moves — a DOM read here can
-    // answer the previous query. Hand off to reddit's own listing JSON: exact
-    // scores, the query it answered, and freshness independent of what the
-    // router has painted yet.
-    if val.get("container").and_then(|c| c.as_str()) == Some("reddit-search-page") {
-        let pathname = val.get("path").and_then(|p| p.as_str()).unwrap_or("");
-        let params = val.get("params").and_then(|p| p.as_str()).unwrap_or("");
-        if let Some((path, query)) = crate::reddit::search_target(pathname, params) {
-            let cap = if limit_explicit {
-                limit.clamp(1, crate::reddit::MAX_SEARCH_PAGE)
-            } else {
-                crate::reddit::DEFAULT_SEARCH_LIMIT
-            };
-            match crate::reddit::fetch_search(page.cdp_ref(), &path, &query, cap).await {
-                Ok(payload) => {
-                    let _ = page.take_route_unsettled();
-                    return auto_extract_output(&payload, json_mode, "");
-                }
-                Err(e) => {
-                    // Wall / cold profile: fall back to the mounted DOM, and
-                    // say so — the DOM cannot prove which query it shows.
-                    let mut val = run_auto_extract(page, limit, false).await?;
-                    val["complete"] = json!(false);
-                    val["partial"] = json!(true);
-                    let hint = if crate::reddit::is_security_block(&e) {
-                        " (Reddit denied the API request; repeated extracts may remain blocked. DOM coverage is partial)"
-                    } else {
-                        ""
-                    };
-                    let note = format!(
-                        "\nnote: reddit search listing fetch failed ({e}); items above are a DOM fallback{hint}{}",
-                        route_note(page)
-                    );
-                    return auto_extract_output(&val, json_mode, &note);
-                }
-            }
+        crate::adapters::AdapterDispatch::Fallback { reason } => {
+            let (mut dom_val, dom_url) = run_auto_extract(page, limit, false).await?;
+            dom_val["complete"] = json!(false);
+            dom_val["partial"] = json!(true);
+            fallback_reason = reason;
+            (dom_val, dom_url)
         }
-    }
+        crate::adapters::AdapterDispatch::PassThrough => (val, live_url),
+    };
 
-    // X.COM pages: the marker hands off to the graphql fast path — the
-    // page's own API traffic is replayed from page context, so the result
-    // is complete regardless of what the virtualized DOM has mounted.
-    if val.get("container").and_then(|c| c.as_str()) == Some("x-page") {
-        let kind = val.get("kind").and_then(|k| k.as_str()).unwrap_or("other");
-        let cap = if limit_explicit {
-            limit.clamp(1, crate::x::MAX_ITEM_CAP)
-        } else {
-            crate::x::DEFAULT_ITEM_CAP
-        };
-        match crate::x::extract(page, kind, cap).await {
-            Ok(payload) => {
-                let _ = page.take_route_unsettled();
-                return auto_extract_output(&payload, json_mode, "");
-            }
-            Err(e) => {
-                // Capture/fetch failed (no API traffic seen, exotic page):
-                // fall back to the DOM listing and say so.
-                let mut val = run_auto_extract(page, limit, false).await?;
-                val["complete"] = json!(false);
-                val["partial"] = json!(true);
-                let note = format!(
-                    "\nnote: x.com fast path failed ({e}); items above are a DOM fallback{}",
-                    route_note(page)
-                );
-                return auto_extract_output(&val, json_mode, &note);
-            }
-        }
+    // Strip internal engine routing flags before emitting the payload.
+    if let Some(obj) = val.as_object_mut() {
+        obj.remove("detail");
+        obj.remove("handoff");
     }
-
-    let mut val = val;
-    let mut note = auto_extract_notes(&val, limit);
-    if let Some(range_note) = range_filter_note(page.model().url(), &val) {
+    let url_for_notes = if effective_url.is_empty() {
+        page.model().url()
+    } else {
+        effective_url.as_str()
+    };
+    let mut note = fallback_reason;
+    note.push_str(&auto_extract_notes(&val, limit));
+    if let Some(range_note) = range_filter_note(url_for_notes, &val) {
         note.push_str(&range_note);
     }
     if let Some((path, dropped)) = trim_for_inline(&mut val) {
@@ -735,7 +688,7 @@ pub async fn handle_collect(page: &mut Page, args: &Value) -> Result<String> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
     loop {
-        let val = run_auto_extract(page, 500, false).await?;
+        let (val, _) = run_auto_extract(page, 500, false).await?;
         let items = val
             .get("items")
             .and_then(|i| i.as_array())
@@ -750,7 +703,8 @@ pub async fn handle_collect(page: &mut Page, args: &Value) -> Result<String> {
         if new_count == 0 {
             no_new_streak += 1;
             if no_new_streak >= 2 {
-                stop = "feed exhausted (no new items after 2 scrolls)".to_string();
+                let pager = detect_pager(page).await;
+                stop = collect_stop_reason(all_items.len(), &val, pager.as_ref());
                 break;
             }
         } else {
@@ -823,6 +777,78 @@ fn merge_collected(
     new_count
 }
 
+const DETECT_PAGER_JS: &str = include_str!("js/detect_pager.js");
+
+/// Check if the current page exposes a visible pagination "next" control.
+/// Used by `handle_collect` so scrolling a paginated listing does not falsely
+/// assert "feed exhausted".
+async fn detect_pager(page: &Page) -> Option<Value> {
+    let res = page
+        .cdp_ref()
+        .send(
+            "Runtime.evaluate",
+            Some(serde_json::json!({
+                "expression": DETECT_PAGER_JS,
+                "returnByValue": true,
+            })),
+        )
+        .await
+        .ok()?;
+    let val = res.get("result")?.get("value")?;
+    if val.is_object() {
+        Some(val.clone())
+    } else {
+        None
+    }
+}
+
+/// Truthful terminal reason for `handle_collect` after 2 scrolls yield 0 new items.
+fn collect_stop_reason(collected: usize, last_val: &Value, pager: Option<&Value>) -> String {
+    let paged = last_val.get("paged").and_then(Value::as_bool) == Some(true);
+    let page_total = last_val
+        .get("page_total")
+        .and_then(Value::as_u64)
+        .filter(|&t| (t as usize) > collected);
+    let next_hint = pager.and_then(|p| {
+        if let Some(sel) = p
+            .get("selector")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            Some(format!("next={sel}"))
+        } else {
+            p.get("text")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(|t| format!("next=text={t}"))
+        }
+    });
+
+    if paged || next_hint.is_some() {
+        let mut details = Vec::new();
+        if let Some(total) = page_total {
+            details.push(format!("page states {total} total"));
+        }
+        if let Some(hint) = next_hint {
+            details.push(format!("live next control ({hint})"));
+        }
+        let detail_str = if details.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", details.join("; "))
+        };
+        return format!(
+            "scrolling added no new items — pagination detected{detail_str}; use act paginate instead of collect"
+        );
+    }
+    if let Some(total) = page_total {
+        return format!(
+            "scrolling added no new items after 2 scrolls (page states {total} total — remaining items may require clicking a pager or load-more button)"
+        );
+    }
+    "feed exhausted (no new items after 2 scrolls)".to_string()
+}
+
 #[cfg(test)]
 mod collect_tests {
     use super::*;
@@ -850,6 +876,37 @@ mod collect_tests {
         ];
         assert_eq!(merge_collected(&mut all, &mut seen, pass, 100), 1);
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn collect_discloses_pagination_instead_of_claiming_feed_exhausted() {
+        let paged_val = json!({"page_total": 32, "paged": true, "partial": true});
+        let pager = json!({"selector": "li.next > a", "text": "next"});
+        let stop = collect_stop_reason(20, &paged_val, Some(&pager));
+        assert!(
+            stop.contains("pagination detected")
+                && stop.contains("32 total")
+                && stop.contains("li.next > a")
+                && stop.contains("act paginate")
+                && !stop.contains("feed exhausted"),
+            "unexpected stop: {stop}"
+        );
+
+        // Live next link even without a total banner.
+        let plain_val = json!({"items": []});
+        let stop_pager_only = collect_stop_reason(20, &plain_val, Some(&pager));
+        assert!(
+            stop_pager_only.contains("pagination detected")
+                && !stop_pager_only.contains("feed exhausted"),
+            "unexpected stop: {stop_pager_only}"
+        );
+
+        // Genuine infinite-scroll feed with no pager and no unreached total.
+        let stop_exhausted = collect_stop_reason(20, &plain_val, None);
+        assert_eq!(
+            stop_exhausted,
+            "feed exhausted (no new items after 2 scrolls)"
+        );
     }
 }
 

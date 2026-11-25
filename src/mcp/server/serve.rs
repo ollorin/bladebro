@@ -229,10 +229,11 @@ pub(super) async fn serve(use_pipe: bool, host: &str, port: u16) -> Result<()> {
                                         shutdown_browser(b).await;
                                     }
                                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                                    relaunch_note = Some(if crate::realbrowser::real_lane() {
-                                        "note: the real-browser lane is now ON — Chrome was relaunched as the user's own browser (their profile data; page patches off). Page state reset to about:blank; navigate to continue.".into()
-                                    } else {
-                                        "note: the real-browser lane is now OFF — Chrome was relaunched as the isolated agent browser. Page state reset to about:blank; navigate to continue.".into()
+                                    relaunch_note = Some(match (lane_switched, crate::realbrowser::real_lane()) {
+                                        (true, true) => "note: the real-browser lane is now ON — Chrome was relaunched as the user's own browser (their profile data; page patches off). Page state reset to about:blank; navigate to continue.".into(),
+                                        (true, false) => "note: the real-browser lane is now OFF — Chrome was relaunched as the isolated agent browser. Page state reset to about:blank; navigate to continue.".into(),
+                                        (false, true) => "note: real-browser settings or cloned profile updated — Chrome was relaunched with the updated profile/settings. Page state reset to about:blank; navigate to continue.".into(),
+                                        (false, false) => "note: browser settings changed (e.g. audio) — Chrome was relaunched with the updated settings. Page state reset to about:blank; navigate to continue.".into(),
                                     });
                                 } else {
                                     // Chrome crashed or is dead, kill it first.
@@ -241,9 +242,11 @@ pub(super) async fn serve(use_pipe: bool, host: &str, port: u16) -> Result<()> {
                                         shutdown_browser(b).await;
                                     }
                                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                                    relaunch_note = Some(
+                                    relaunch_note = Some(if call_navigates(&params) {
+                                        "note: Chrome was restarted before this call (connection lost; prior tabs and refs cleared).".into()
+                                    } else {
                                         "note: Chrome was restarted (connection lost) — page state reset to about:blank. Navigate to continue.".into()
-                                    );
+                                    });
                                 }
                             } else if drifted {
                                 // Attach session (never owned): `rb off` /
@@ -264,9 +267,11 @@ pub(super) async fn serve(use_pipe: bool, host: &str, port: u16) -> Result<()> {
                                 // Post-idle relaunch: the agent's refs
                                 // are all gone. Say so explicitly.
                                 idle_closed = false;
-                                relaunch_note = Some(
+                                relaunch_note = Some(if call_navigates(&params) {
+                                    "note: Chrome was restarted before this call after idle shutdown (prior tabs and refs cleared).".into()
+                                } else {
                                     "note: Chrome was restarted after idle shutdown — page state reset to about:blank. Navigate to continue.".into()
-                                );
+                                });
                             } else {
                                 eprintln!("[bladebro] launching Chrome (first tool call)...");
                             }
@@ -369,6 +374,7 @@ pub(super) async fn serve(use_pipe: bool, host: &str, port: u16) -> Result<()> {
                                     Ok((new_page, new_browser)) => {
                                         browser = new_browser;
                                         page = Some(new_page);
+                                        launched = crate::realbrowser::launch_fingerprint();
                                         // Set knowledge base on the new page.
                                         if let Some(ref mut p) = page {
                                             p.set_knowledge(knowledge.clone());
@@ -579,6 +585,17 @@ pub(super) async fn serve(use_pipe: bool, host: &str, port: u16) -> Result<()> {
                 }
             }
             _ = idle_check.tick() => {
+                // Reap an owned browser that already exited (e.g. user closed
+                // a visible real-browser window manually): frees the child
+                // wait status immediately (no `<defunct>` zombie) and cleans
+                // up `sess-<pid>` so `rb refresh` / `rb forget` work right away.
+                if browser.as_mut().is_some_and(|b| b.has_exited()) {
+                    eprintln!("[bladebro] owned browser exited externally — cleaning up session");
+                    if let Some(b) = browser.take() {
+                        shutdown_browser(b).await;
+                    }
+                    page = None;
+                }
                 // Periodic login snapshot for crash/power-loss resilience.
                 // We persist the authoritative live cookie store (CDP), never
                 // a hot copy of the on-disk profile: copying a live Chrome
@@ -719,6 +736,43 @@ fn cancelled_by_signal(
     send(out, &json!({"jsonrpc":"2.0","id":id,"result":result}));
 }
 
+/// True when the incoming MCP `tools/call` already navigates to a URL on its
+/// own (`act navigate`, `act` with `url=`, or `see` with `url=`). Used to keep
+/// pre-call restart notices truthful: claiming "page state reset to
+/// about:blank. Navigate to continue." on a call that JUST navigated misleads
+/// the agent.
+fn call_navigates(params: &Value) -> bool {
+    let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+    let args = &params["arguments"];
+    let has_url = args
+        .get("url")
+        .and_then(Value::as_str)
+        .is_some_and(|u| !u.trim().is_empty());
+    match name {
+        "see" => has_url,
+        "act" => {
+            let action = args.get("action").and_then(Value::as_str).unwrap_or("");
+            action == "navigate"
+                || (has_url
+                    && !matches!(
+                        action,
+                        "download"
+                            | "collect"
+                            | "state"
+                            | "set-cookie"
+                            | "cookies"
+                            | "del-cookie"
+                            | "open-tab"
+                            | "close-tab"
+                            | "switch-tab"
+                            | "save"
+                            | "load"
+                    ))
+        }
+        _ => false,
+    }
+}
+
 /// The answer to a tool handler that panicked (caught by `call_tool`).
 fn panicked(id: Option<Value>) -> Value {
     json!({
@@ -774,5 +828,33 @@ mod tests {
             matches!(res, Some(Err(_))),
             "a handler panic must be caught, not unwind out of serve()"
         );
+    }
+
+    #[test]
+    fn call_navigates_distinguishes_navigating_from_in_page_calls() {
+        assert!(call_navigates(&json!({
+            "name": "act",
+            "arguments": {"action": "navigate", "url": "https://example.com"}
+        })));
+        assert!(call_navigates(&json!({
+            "name": "act",
+            "arguments": {"action": "click", "text": "Go", "url": "https://example.com"}
+        })));
+        assert!(call_navigates(&json!({
+            "name": "see",
+            "arguments": {"mode": "content", "url": "https://example.com"}
+        })));
+        assert!(!call_navigates(&json!({
+            "name": "act",
+            "arguments": {"action": "click", "ref": "e5"}
+        })));
+        assert!(!call_navigates(&json!({
+            "name": "act",
+            "arguments": {"action": "download", "url": "https://example.com/a.pdf"}
+        })));
+        assert!(!call_navigates(&json!({
+            "name": "see",
+            "arguments": {"mode": "model"}
+        })));
     }
 }

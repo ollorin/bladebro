@@ -55,18 +55,26 @@ impl TargetInfo {
     }
 }
 
-/// HTTP client for the DevTools endpoint. Never proxied: the endpoint is
-/// reached directly, exactly like the CDP WebSocket that follows discovery
-/// (which never uses a proxy). reqwest's environment proxy matcher has no
-/// implicit loopback bypass, so an ambient `HTTP_PROXY`/`ALL_PROXY` with an
-/// empty `NO_PROXY` routed `127.0.0.1:<port>/json/version` through the proxy
-/// and every launch failed with "debug endpoint not responding" while Chrome
-/// was up and listening.
-fn devtools_client() -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .no_proxy()
-        .build()?)
+/// Shared HTTP client for the DevTools endpoint. Reused across startup polls
+/// and tab discovery calls so each request skips rebuilding a rustls/Hyper
+/// client pool. Never proxied: the endpoint is reached directly, exactly like
+/// the CDP WebSocket that follows discovery (which never uses a proxy).
+/// reqwest's environment proxy matcher has no implicit loopback bypass, so an
+/// ambient `HTTP_PROXY`/`ALL_PROXY` with an empty `NO_PROXY` routed
+/// `127.0.0.1:<port>/json/version` through the proxy and every launch failed
+/// with "debug endpoint not responding" while Chrome was up and listening.
+fn devtools_client() -> Result<&'static reqwest::Client> {
+    static CLIENT: std::sync::OnceLock<std::result::Result<reqwest::Client, String>> =
+        std::sync::OnceLock::new();
+    let res = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .no_proxy()
+            .build()
+            .map_err(|e| e.to_string())
+    });
+    res.as_ref()
+        .map_err(|e| BladeError::Other(format!("failed to build devtools HTTP client: {e}")))
 }
 
 /// Fetch `/json/version` from a browser debug endpoint.
@@ -96,13 +104,46 @@ pub async fn list_page_targets(base: &str) -> Result<Vec<TargetInfo>> {
         .collect())
 }
 
-/// Pick the first page target with a WebSocket URL, or [`BladeError::NoTarget`].
+/// Pick the best page target with a WebSocket URL, or [`BladeError::NoTarget`].
+///
+/// In a user's real browser with extensions or DevTools open, `/json` can list
+/// `devtools://` or `chrome-extension://` targets ahead of normal web tabs.
+/// Prefer real web pages (`http://`/`https://`), then ordinary blank/newtab
+/// pages, and only fall back to extension/internal targets if nothing else
+/// exists.
 pub async fn first_page_target(base: &str) -> Result<TargetInfo> {
-    list_page_targets(base)
+    let mut pages: Vec<TargetInfo> = list_page_targets(base)
         .await?
         .into_iter()
-        .find(|t| t.web_socket_debugger_url.is_some())
-        .ok_or(BladeError::NoTarget)
+        .filter(|t| t.web_socket_debugger_url.is_some())
+        .collect();
+    if pages.is_empty() {
+        return Err(BladeError::NoTarget);
+    }
+    let priority = |url: &str| -> u8 {
+        if url.starts_with("https://") || url.starts_with("http://") {
+            0
+        } else if url.is_empty()
+            || url == "about:blank"
+            || url.starts_with("chrome://newtab")
+            || url.starts_with("edge://newtab")
+            || url.starts_with("brave://newtab")
+        {
+            1
+        } else if url.starts_with("devtools://") || url.starts_with("chrome-extension://") {
+            3
+        } else {
+            2
+        }
+    };
+    if let Some((best_idx, _)) = pages
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, t)| priority(&t.url))
+    {
+        return Ok(pages.swap_remove(best_idx));
+    }
+    Err(BladeError::NoTarget)
 }
 
 /// Best-effort raw JSON dump of `/json` — used by the probe subcommand for

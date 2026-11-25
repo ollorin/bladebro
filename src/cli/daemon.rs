@@ -350,11 +350,13 @@ pub async fn run_daemon() -> Result<()> {
                 // replaced on disk (a restart is one `bladebro stop` away).
                 let mut advisories: Vec<String> = Vec::new();
                 if drifted {
-                    advisories.push(match (detached_attach, crate::realbrowser::real_lane()) {
-                        (false, true) => "note: real-browser lane ON — relaunched as your own browser (page state reset)".into(),
-                        (false, false) => "note: real-browser lane OFF — relaunched as the isolated agent browser (page state reset)".into(),
-                        (true, true) => "note: real-browser settings changed — detached from the attached browser and reopened per the current settings (page state reset)".into(),
-                        (true, false) => "note: real-browser lane OFF — detached from the attached browser (left running, untouched) and relaunched as the isolated agent browser (page state reset)".into(),
+                    advisories.push(match (detached_attach, lane_switched, crate::realbrowser::real_lane()) {
+                        (false, true, true) => "note: real-browser lane ON — relaunched as your own browser (page state reset)".into(),
+                        (false, true, false) => "note: real-browser lane OFF — relaunched as the isolated agent browser (page state reset)".into(),
+                        (false, false, true) => "note: real-browser settings or profile clone updated — relaunched browser (page state reset)".into(),
+                        (false, false, false) => "note: browser settings changed (e.g. audio) — relaunched browser (page state reset)".into(),
+                        (true, _, true) => "note: real-browser settings changed — detached from the attached browser and reopened per the current settings (page state reset)".into(),
+                        (true, _, false) => "note: real-browser lane OFF — detached from the attached browser (left running, untouched) and relaunched as the isolated agent browser (page state reset)".into(),
                     });
                 }
                 if !stale_warned && crate::platform::stale_binary() {
@@ -393,6 +395,7 @@ pub async fn run_daemon() -> Result<()> {
                             Ok((new_page, new_browser)) => {
                                 browser = new_browser;
                                 page = Some(new_page);
+                                launched = crate::realbrowser::launch_fingerprint();
                                 if let Some(ref mut p) = page {
                                     p.set_knowledge(knowledge.clone());
                                 }
@@ -431,6 +434,17 @@ pub async fn run_daemon() -> Result<()> {
                 last_activity = std::time::Instant::now();
             }
             _ = idle_check.tick() => {
+                // Reap an owned browser that already exited (e.g. user closed
+                // a visible real-browser window manually) so it never sits as
+                // a `<defunct>` zombie or holds a stale `sess-<pid>` dir.
+                if browser.as_mut().is_some_and(|b| b.has_exited()) {
+                    eprintln!("[bladebro] owned browser exited externally — cleaning up session");
+                    if let Some(b) = browser.take() {
+                        crate::record::hub::finish_best_effort().await; // fork hook (record): see .planning/HOOKS.md
+                        b.shutdown_gracefully().await;
+                    }
+                    page = None;
+                }
                 // Real lane: the browser is the user's — never yanked by the
                 // idle timer unless `idle_shutdown` opts in.
                 if idle_secs > 0
@@ -519,10 +533,26 @@ async fn dispatch_or_shutdown(
     args: &Value,
     page: &mut Page,
 ) -> Option<Result<super::ToolResult>> {
+    use futures_util::FutureExt;
     tokio::select! {
         biased;
         _ = signals.recv() => None,
-        result = dispatch(tool, args, page) => Some(result),
+        outcome = std::panic::AssertUnwindSafe(dispatch(tool, args, page)).catch_unwind() => {
+            Some(match outcome {
+                Ok(res) => res,
+                Err(panic_val) => {
+                    let msg = panic_val
+                        .downcast_ref::<&str>()
+                        .copied()
+                        .or_else(|| panic_val.downcast_ref::<String>().map(String::as_str))
+                        .unwrap_or("unknown internal panic");
+                    eprintln!("[bladebro] panic caught in daemon tool handler ({tool}): {msg}");
+                    Err(BladeError::Other(format!(
+                        "internal error in {tool} (panic caught; daemon stayed alive): {msg}"
+                    )))
+                }
+            })
+        }
     }
 }
 
@@ -613,6 +643,8 @@ const DAEMON_SCOPED_ENV: &[&str] = &[
     "BLADE_CONSENT",
     "BLADE_PACE",
     "BLADE_NO_COMPRESS",
+    "BLADE_NO_ACTIVATE",
+    "BLADE_AUDIO",
 ];
 
 #[cfg(unix)]
@@ -920,6 +952,12 @@ mod tests {
         )
         .unwrap();
         assert!(why.contains("CHROME_PATH"), "{why}");
+        let why = check(
+            json!({"lane": "agent", "env": {"BLADE_NO_ACTIVATE": "1"}}),
+            false,
+        )
+        .unwrap();
+        assert!(why.contains("BLADE_NO_ACTIVATE"), "{why}");
         // Unlisted names are not the daemon's business.
         assert_eq!(
             check(

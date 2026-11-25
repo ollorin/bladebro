@@ -287,6 +287,108 @@ pub(super) fn gl_stages() -> &'static [GlStage] {
     ]
 }
 
+/// Reorder [`gl_stages`] to try a host-learned working GL stage first while
+/// keeping every remaining fallback stage behind it.
+pub(super) fn ordered_gl_stages(preferred: Option<GlStage>) -> Vec<GlStage> {
+    let base = gl_stages();
+    let Some(pref) = preferred else {
+        return base.to_vec();
+    };
+    if base.first() == Some(&pref) {
+        return base.to_vec();
+    }
+    let mut out = Vec::with_capacity(base.len() + 1);
+    out.push(pref);
+    for &s in base {
+        if s != pref {
+            out.push(s);
+        }
+    }
+    out
+}
+
+/// Audio output configuration (`<data-dir>/audio.json`).
+///
+/// Browser audio is MUTED by default (`--mute-audio`) on both the agent lane
+/// and owned real-browser launches so background media/YouTube playback never
+/// blasts unexpected sound with no pause button. Users opt in explicitly via
+/// `bladebro audio on` (persisted) or `BLADE_AUDIO=1` (per-process override).
+/// `--mute-audio` mutes at Chrome's OS audio sink without altering Blink/DOM
+/// media properties or WebAudio fingerprinting.
+pub fn audio_config_path() -> std::path::PathBuf {
+    crate::platform::blade_dir().join("audio.json")
+}
+
+/// Read persisted audio preference from `path` (default `false` = muted).
+pub fn audio_persisted_from(path: &std::path::Path) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Read persisted audio preference (mtime/size/path-cached).
+pub fn audio_persisted() -> bool {
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    type Key = (PathBuf, Option<(std::time::SystemTime, u64)>);
+    static CACHE: OnceLock<Mutex<Option<(Key, bool)>>> = OnceLock::new();
+    let path = audio_config_path();
+    let meta_key = std::fs::metadata(&path)
+        .ok()
+        .and_then(|m| m.modified().ok().map(|t| (t, m.len())));
+    let key: Key = (path.clone(), meta_key);
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    let mut guard = match cache.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if let Some((cached_key, val)) = guard.as_ref() {
+        if *cached_key == key {
+            return *val;
+        }
+    }
+    let val = audio_persisted_from(&path);
+    *guard = Some((key, val));
+    val
+}
+
+/// Persist the opt-in audio preference (`0600`).
+pub fn set_audio_enabled(enabled: bool) -> crate::error::Result<()> {
+    let path = audio_config_path();
+    if let Some(parent) = path.parent() {
+        crate::platform::secure_create_dir_all(parent)
+            .map_err(|e| crate::error::BladeError::Other(format!("cannot create data dir: {e}")))?;
+    }
+    let body = serde_json::json!({ "enabled": enabled }).to_string();
+    crate::platform::secure_write_file(&path, body.as_bytes())
+        .map_err(|e| crate::error::BladeError::Other(format!("cannot write audio.json: {e}")))?;
+    Ok(())
+}
+
+/// Effective audio state: `BLADE_AUDIO` env override (`1|on|true|yes` vs
+/// `0|off|false|no`) wins over the persisted preference; default is `false`
+/// (muted). Pure — unit-testable.
+pub fn audio_enabled_from(env_override: Option<&str>, persisted: bool) -> bool {
+    match env_override
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("1" | "on" | "true" | "yes") => true,
+        Some("0" | "off" | "false" | "no") => false,
+        _ => persisted,
+    }
+}
+
+/// True when the user explicitly opted in to audible browser audio output.
+pub fn audio_enabled() -> bool {
+    audio_enabled_from(
+        std::env::var("BLADE_AUDIO").ok().as_deref(),
+        audio_persisted(),
+    )
+}
+
 /// Everything a Chrome command line depends on. Both transports build from
 /// [`launch_args`] — the v3.9.11 pipe path silently missing
 /// `--ignore-gpu-blocklist` is exactly the class of bug this prevents:
@@ -296,9 +398,11 @@ pub(super) struct LaunchCfg<'a> {
     pub(super) stage: GlStage,
     pub(super) headful: bool,
     pub(super) no_sandbox: bool,
+    pub(super) mute_audio: bool,
     pub(super) transport: Transport,
     pub(super) port: u16,
     pub(super) user_data_dir: &'a std::path::Path,
+    pub(super) disk_cache_dir: Option<&'a std::path::Path>,
     pub(super) proxy: Option<&'a str>,
     pub(super) extra: &'a [String],
 }
@@ -307,6 +411,9 @@ pub(super) struct LaunchCfg<'a> {
 /// lock the WS/pipe delta to exactly the transport flag.
 pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
     let mut args: Vec<String> = STEALTH_FLAGS.iter().map(|s| s.to_string()).collect();
+    if cfg.mute_audio {
+        args.push("--mute-audio".into());
+    }
     if cfg.no_sandbox {
         args.push("--no-sandbox".into());
     }
@@ -355,6 +462,15 @@ pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
         Transport::Pipe => args.push("--remote-debugging-pipe".into()),
     }
     args.push(format!("--user-data-dir={}", cfg.user_data_dir.display()));
+    if let Some(cache_dir) = cfg.disk_cache_dir {
+        if !cfg.extra.iter().any(|f| f.starts_with("--disk-cache-dir")) {
+            args.push(format!("--disk-cache-dir={}", cache_dir.display()));
+            if !cfg.extra.iter().any(|f| f.starts_with("--disk-cache-size")) {
+                // 100 MiB cap on the cross-session RFC-9111 HTTP cache.
+                args.push("--disk-cache-size=104857600".into());
+            }
+        }
+    }
     if let Some(proxy) = cfg.proxy {
         args.push(format!("--proxy-server={proxy}"));
     }
@@ -386,6 +502,7 @@ pub(super) fn launch_args(cfg: &LaunchCfg<'_>) -> Vec<String> {
 pub(super) struct RealLaunchCfg<'a> {
     pub(super) headless: bool,
     pub(super) no_sandbox: bool,
+    pub(super) mute_audio: bool,
     pub(super) ozone_x11: bool,
     pub(super) port: u16,
     pub(super) user_data_dir: &'a std::path::Path,
@@ -407,6 +524,9 @@ pub(super) fn launch_args_real(cfg: &RealLaunchCfg<'_>) -> Vec<String> {
         // Driver functionality: PDFs download instead of opening inline.
         "--disable-features=PdfPlugin".into(),
     ];
+    if cfg.mute_audio {
+        args.push("--mute-audio".into());
+    }
     if cfg.no_sandbox {
         args.push("--no-sandbox".into());
     }
@@ -435,7 +555,12 @@ pub(super) fn launch_args_real(cfg: &RealLaunchCfg<'_>) -> Vec<String> {
     if let Some(dir) = cfg.profile_directory {
         // Which profile inside the root (`Default`, `Profile 1`, ...) — the
         // root is what gets cloned/adopted, never a bare profile subdir.
-        args.push(format!("--profile-directory={dir}"));
+        // Flat-root browsers (Opera / Opera GX) use sentinel `.` and store
+        // Preferences/Cookies directly in `user_data_dir`: omit the flag so
+        // they open their real root profile instead of creating a blank subdir.
+        if !dir.is_empty() && dir != "." {
+            args.push(format!("--profile-directory={dir}"));
+        }
     }
     if let Some(proxy) = cfg.proxy {
         args.push(format!("--proxy-server={proxy}"));
@@ -543,12 +668,48 @@ mod launch_flag_tests {
             stage,
             headful,
             no_sandbox: false,
+            mute_audio: true,
             transport,
             port: 9222,
             user_data_dir: Path::new("/tmp/bb-launch-args-test"),
+            disk_cache_dir: None,
             proxy: None,
             extra: EMPTY_EXTRA,
         }
+    }
+
+    #[test]
+    fn ordered_gl_stages_promotes_learned_stage_without_dropping_fallbacks() {
+        assert_eq!(ordered_gl_stages(None), gl_stages());
+        assert_eq!(ordered_gl_stages(Some(GlStage::NativeGlEgl)), gl_stages());
+        assert_eq!(
+            ordered_gl_stages(Some(GlStage::SwiftShader)),
+            vec![
+                GlStage::SwiftShader,
+                GlStage::NativeGlEgl,
+                GlStage::NativeGlEgl,
+                GlStage::NativeGl,
+            ]
+        );
+    }
+
+    #[test]
+    fn disk_cache_dir_sets_bounded_cache_unless_extra_overrides() {
+        let with_cache = launch_args(&LaunchCfg {
+            disk_cache_dir: Some(Path::new("/tmp/bb-cache-slot-0")),
+            ..cfg(GlStage::NativeGlEgl, true, Transport::Ws)
+        });
+        assert!(with_cache.contains(&"--disk-cache-dir=/tmp/bb-cache-slot-0".to_string()));
+        assert!(with_cache.contains(&"--disk-cache-size=104857600".to_string()));
+
+        let custom = vec!["--disk-cache-dir=/custom/cache".to_string()];
+        let overridden = launch_args(&LaunchCfg {
+            disk_cache_dir: Some(Path::new("/tmp/bb-cache-slot-0")),
+            extra: &custom,
+            ..cfg(GlStage::NativeGlEgl, true, Transport::Ws)
+        });
+        assert!(overridden.contains(&"--disk-cache-dir=/custom/cache".to_string()));
+        assert!(!overridden.contains(&"--disk-cache-dir=/tmp/bb-cache-slot-0".to_string()));
     }
 
     /// The v3.9.11 bug: the pipe path was missing `--ignore-gpu-blocklist` and
@@ -745,6 +906,7 @@ mod launch_flag_tests {
         let real = launch_args_real(&RealLaunchCfg {
             headless: true,
             no_sandbox: false,
+            mute_audio: true,
             ozone_x11: false,
             port: 9222,
             user_data_dir: Path::new("/tmp/bb-launch-args-test"),
@@ -766,6 +928,64 @@ mod launch_flag_tests {
             );
             assert_eq!(lists("--enable-features"), vec!["--enable-features=Foo"]);
         }
+    }
+
+    #[test]
+    fn mute_audio_flag_present_by_default_and_omitted_when_opted_in() {
+        let muted_ws = launch_args(&cfg(GlStage::NativeGlEgl, true, Transport::Ws));
+        let muted_pipe = launch_args(&cfg(GlStage::NativeGlEgl, true, Transport::Pipe));
+        let audible = launch_args(&LaunchCfg {
+            mute_audio: false,
+            ..cfg(GlStage::NativeGlEgl, true, Transport::Ws)
+        });
+        assert!(muted_ws.iter().any(|f| f == "--mute-audio"));
+        assert!(muted_pipe.iter().any(|f| f == "--mute-audio"));
+        assert!(!audible.iter().any(|f| f == "--mute-audio"));
+
+        let real_muted = launch_args_real(&RealLaunchCfg {
+            headless: false,
+            no_sandbox: false,
+            mute_audio: true,
+            ozone_x11: false,
+            port: 9222,
+            user_data_dir: Path::new("/tmp/bb-launch-args-test"),
+            profile_directory: Some("Default"),
+            proxy: None,
+            extra: EMPTY_EXTRA,
+        });
+        let real_audible = launch_args_real(&RealLaunchCfg {
+            headless: false,
+            no_sandbox: false,
+            mute_audio: false,
+            ozone_x11: false,
+            port: 9222,
+            user_data_dir: Path::new("/tmp/bb-launch-args-test"),
+            profile_directory: Some("."),
+            proxy: None,
+            extra: EMPTY_EXTRA,
+        });
+        assert!(real_muted.iter().any(|f| f == "--mute-audio"));
+        assert!(real_muted
+            .iter()
+            .any(|f| f == "--profile-directory=Default"));
+        assert!(!real_audible.iter().any(|f| f == "--mute-audio"));
+        assert!(
+            !real_audible
+                .iter()
+                .any(|f| f.starts_with("--profile-directory=")),
+            "flat-root Opera profile sentinel `.` must omit --profile-directory"
+        );
+    }
+
+    #[test]
+    fn audio_enabled_from_respects_env_override_and_defaults_muted() {
+        assert!(!audio_enabled_from(None, false));
+        assert!(audio_enabled_from(None, true));
+        assert!(audio_enabled_from(Some("1"), false));
+        assert!(audio_enabled_from(Some("on"), false));
+        assert!(!audio_enabled_from(Some("0"), true));
+        assert!(!audio_enabled_from(Some("off"), true));
+        assert!(!audio_enabled_from(Some("bogus"), false));
     }
 }
 

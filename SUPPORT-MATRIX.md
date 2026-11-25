@@ -1,6 +1,6 @@
 # Support Matrix
 
-Current verification coverage by platform, browser engine, and runnable instrument. Current release: `4.6.9` (verified locally on Arch Linux x86_64 with Chromium `157.0.8103.38` and pinned `rustc 1.100.0`).
+Current verification coverage by platform, browser engine, and runnable instrument. Current release: `4.8.4` (verified locally on Arch Linux x86_64 with Chromium `158.0.8127.36` and pinned `rustc 1.100.0`).
 
 ## Platforms
 
@@ -10,17 +10,17 @@ Current verification coverage by platform, browser engine, and runnable instrume
 | Linux ARM64 | Cross `cargo check --all-targets` (`zig cc`) | glibc `2.28` `zigbuild` + ABI check in `release.yml`; physical ARM64/Raspberry Pi browser runtime not run |
 | macOS Apple Silicon (`darwin-arm64`) | Native `cargo check --all-targets`, unit tests (`--lib`), `cargo build --release` on `macos-26` | Native `macos-26` release binary in `release.yml` |
 | macOS Intel (`darwin-x64`) | Cross `cargo check --all-targets` | Built on `macos-26` (`--target x86_64-apple-darwin`) in `release.yml`; not executed natively (`macos-26-intel` wedges headful Chrome in `ISIconManager` XPC) |
-| Windows x86_64 | Cross `cargo check --all-targets` + native check, unit tests (`--lib`), and `cargo build --release` on `windows-latest` | `zigbuild` PE binary in `release.yml` |
+| Windows x86_64 | Cross `cargo check --all-targets` + native check, unit tests (`--lib`), and `cargo build --release` (`+crt-static` + PE `VERSIONINFO`) on `windows-latest` | Native `windows-latest` MSVC release binary (`+crt-static`, PE `VERSIONINFO` + `asInvoker` manifest) + binary smoke in `release.yml` |
 | Android (`aarch64-linux-android`) | Source compile check (`ci.yml` NDK job) | Source-level `cfg` guard only; no binary published and no runtime claim |
 
 ## Browser Engines
 
 | Engine | Verified scope |
 |---|---|
-| Chromium `157` (Arch Linux x86_64) | Full local verification floor (`audit`, `diff_oracle` agent + real lanes, `qol_probe`, `lane_matrix`, `gap44`, `reliability_probe`) |
-| Google Chrome Stable (Ubuntu CI) | Parallel `probes.yml` browser jobs (`audit`, `qol`, `lanes`, `gap44`, `reliability`) |
+| Chromium `158` (Arch Linux x86_64) | Full local verification floor (`audit`, `diff_oracle` agent + real lanes, `qol_probe`, `lane_matrix`, `gap44`, `reliability_probe`) |
+| Google Chrome Stable (Ubuntu CI) | Parallel `probes.yml` browser jobs (`audit`, `oracle`, `qol`, `lanes`, `gap44`, `reliability`) |
 | Flatpak `org.chromium.Chromium` (`1.18.4` x86_64) | Discovery, sandboxed launch, host persistence, upload staging, download, and teardown verified on Linux x86_64 |
-| Chromium forks (Brave, Helium, Edge, Vivaldi, Opera) | Discovery, wrapper/AppImage PID ownership, and clone unit/integration fixtures (`tools/rb_live/helium.py` available for manual Helium runs) |
+| Chromium forks (Brave, Helium, Arc, Edge, Vivaldi, Opera, Opera GX, Thorium, Ungoogled Chromium) | Discovery, wrapper/AppImage PID ownership, and clone unit/integration fixtures (`tools/rb_live/helium.py` available for manual Helium runs) |
 
 ## Feature-to-Instrument Map
 
@@ -44,7 +44,6 @@ See [tools/README.md](tools/README.md) for exact invocations and pass criteria.
 
 ## Unverified Gaps
 
-- **Remote `oracle` job in `probes.yml`**: currently fails on GitHub's Ubuntu runner before comparison starts (`stock Chrome debug endpoint did not come up`); verified locally on Linux x86_64.
 - **macOS & Windows live browser probes**: `gate.yml` runs native compile, unit tests, and release linking on `macos-26` and `windows-latest`; the live browser probe suite (`probes.yml`) runs on Linux only.
 - **Physical ARM64 / Raspberry Pi & SteamOS/Silverblue hosts**: covered by cross-builds, ABI checks, host-selector unit tests, and x86_64 Flatpak runs, not physical device runs.
 - **Commercial upstream proxies & non-stock fork GUIs**: proxy tests use local forward proxies; non-Chromium forks outside manual Helium runs are covered by discovery/ownership fixtures rather than full GUI suites.

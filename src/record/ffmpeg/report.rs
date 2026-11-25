@@ -568,11 +568,9 @@ mod tests {
             !body.contains("Status::Fail"),
             "ffmpeg must never fail doctor"
         );
-        let disk = src.find("checks.push(check_disk_space());").expect("disk");
+        let locks = src.find("checks.push(locks_check);").expect("locks");
         let hook = src.find("checks.push(check_ffmpeg());").expect("hook");
-        let ver = src
-            .find("checks.push(check_version().await);")
-            .expect("ver");
-        assert!(disk < hook && hook < ver);
+        let net = src.find("checks.push(network_check);").expect("net");
+        assert!(locks < hook && hook < net);
     }
 }

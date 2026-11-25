@@ -12,14 +12,15 @@
 //!   domains (Target.*), child sessions drive page domains; events are
 //!   filtered to the child's session id.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
 use crate::cdp::client::CdpClient;
 use crate::cdp::protocol::CdpEvent;
-use crate::error::Result;
+use crate::error::{BladeError, Result};
 
 /// A handle to one CDP session on a shared connection. Cheap to clone.
 #[derive(Clone)]
@@ -27,6 +28,8 @@ pub struct CdpSession {
     client: CdpClient,
     session_id: Option<String>,
     cookie_context: Option<(CdpClient, String)>,
+    main_frame_id: Arc<Mutex<Option<String>>>,
+    isolated_ctx: Arc<Mutex<Option<i64>>>,
 }
 
 impl CdpSession {
@@ -37,6 +40,8 @@ impl CdpSession {
             client,
             session_id: None,
             cookie_context: None,
+            main_frame_id: Arc::new(Mutex::new(None)),
+            isolated_ctx: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -46,7 +51,180 @@ impl CdpSession {
             client,
             session_id: Some(session_id.into()),
             cookie_context: None,
+            main_frame_id: Arc::new(Mutex::new(None)),
+            isolated_ctx: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Record the main frame id for isolated-world creation (set once at attach).
+    pub(crate) fn set_main_frame(&self, frame_id: String) {
+        if !frame_id.is_empty() {
+            if let Ok(mut g) = self.main_frame_id.lock() {
+                *g = Some(frame_id);
+            }
+        }
+    }
+
+    /// Drop the cached isolated-world execution context id (called on navigation).
+    pub(crate) fn reset_isolated(&self) {
+        if let Ok(mut g) = self.isolated_ctx.lock() {
+            *g = None;
+        }
+    }
+
+    async fn ensure_isolated_ctx(&self) -> Option<i64> {
+        if let Ok(g) = self.isolated_ctx.lock() {
+            if let Some(id) = *g {
+                return Some(id);
+            }
+        }
+        let frame_id = self.main_frame_id.lock().ok().and_then(|g| g.clone())?;
+        let res = self
+            .send_with_timeout(
+                "Page.createIsolatedWorld",
+                Some(json!({
+                    "frameId": frame_id,
+                    "worldName": "",
+                    "grantUniveralAccess": true,
+                })),
+                Duration::from_secs(3),
+            )
+            .await
+            .ok()?;
+        let id = res.get("executionContextId")?.as_i64()?;
+        if let Ok(mut g) = self.isolated_ctx.lock() {
+            *g = Some(id);
+        }
+        Some(id)
+    }
+
+    pub(crate) fn is_stale_context_err(err: &BladeError) -> bool {
+        let msg = err.to_string();
+        msg.contains("Cannot find context")
+            || msg.contains("Execution context was destroyed")
+            || msg.contains("Inspected target navigated")
+    }
+
+    /// Evaluate JS in a cached isolated world when available (invisible to
+    /// main-world `window` / `Object.getOwnPropertySymbols(window)` / patched
+    /// DOM APIs), falling back to main-world `Runtime.evaluate` only when
+    /// isolated worlds are unavailable (e.g. mock CDP servers in tests).
+    pub(crate) async fn eval_isolated_with_timeout(
+        &self,
+        expression: &str,
+        return_by_value: bool,
+        await_promise: bool,
+        deadline: Duration,
+    ) -> Result<Value> {
+        for attempt in 0..3 {
+            let Some(ctx_id) = self.ensure_isolated_ctx().await else {
+                break;
+            };
+            match self
+                .send_with_timeout(
+                    "Runtime.evaluate",
+                    Some(json!({
+                        "contextId": ctx_id,
+                        "expression": expression,
+                        "returnByValue": return_by_value,
+                        "awaitPromise": await_promise,
+                    })),
+                    deadline,
+                )
+                .await
+            {
+                Ok(v) => return Ok(v),
+                Err(e) if matches!(e, BladeError::Closed | BladeError::Timeout(_)) => {
+                    return Err(e)
+                }
+                Err(e) if attempt < 2 && Self::is_stale_context_err(&e) => {
+                    self.reset_isolated();
+                    tokio::time::sleep(Duration::from_millis(150 + attempt * 200)).await;
+                    continue;
+                }
+                Err(_) => {
+                    self.reset_isolated();
+                    break;
+                }
+            }
+        }
+        match self
+            .send_with_timeout(
+                "Runtime.evaluate",
+                Some(json!({
+                    "expression": expression,
+                    "returnByValue": return_by_value,
+                    "awaitPromise": await_promise,
+                })),
+                deadline,
+            )
+            .await
+        {
+            Err(e) if Self::is_stale_context_err(&e) => {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                self.send_with_timeout(
+                    "Runtime.evaluate",
+                    Some(json!({
+                        "expression": expression,
+                        "returnByValue": return_by_value,
+                        "awaitPromise": await_promise,
+                    })),
+                    deadline,
+                )
+                .await
+            }
+            other => other,
+        }
+    }
+
+    /// Evaluate a stealth-sensitive watcher strictly inside the isolated world
+    /// on real browsers (so it never writes symbols or observers onto the
+    /// page's main-world `window`). Falls back to main-world only when no main
+    /// frame id was attached (mock CDP servers in tests).
+    pub(crate) async fn eval_isolated_strict(
+        &self,
+        expression: &str,
+        deadline: Duration,
+    ) -> Result<()> {
+        let has_frame = self.main_frame_id.lock().ok().is_some_and(|g| g.is_some());
+        if !has_frame {
+            let _ = self
+                .send_with_timeout(
+                    "Runtime.evaluate",
+                    Some(json!({ "expression": expression })),
+                    deadline,
+                )
+                .await;
+            return Ok(());
+        }
+        for attempt in 0..2 {
+            let Some(ctx_id) = self.ensure_isolated_ctx().await else {
+                return Ok(());
+            };
+            match self
+                .send_with_timeout(
+                    "Runtime.evaluate",
+                    Some(json!({
+                        "contextId": ctx_id,
+                        "expression": expression,
+                    })),
+                    deadline,
+                )
+                .await
+            {
+                Ok(_) => return Ok(()),
+                Err(BladeError::Closed) => return Err(BladeError::Closed),
+                Err(e) if attempt == 0 && Self::is_stale_context_err(&e) => {
+                    self.reset_isolated();
+                    continue;
+                }
+                Err(_) => {
+                    self.reset_isolated();
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The underlying connection (for browser-level commands from a child).
@@ -270,5 +448,50 @@ mod tests {
 
         let child_ev = child.recv().await.unwrap();
         assert_eq!(child_ev.method, "Page.loadEventFired");
+    }
+
+    #[tokio::test]
+    async fn eval_isolated_recovers_from_inspected_target_navigated() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let mut calls = 0usize;
+            for step in 0..2 {
+                let req = socket.next().await.unwrap().unwrap();
+                let req: Value = serde_json::from_str(req.to_text().unwrap()).unwrap();
+                calls += 1;
+                let msg = if step == 0 {
+                    json!({
+                        "id": req["id"],
+                        "error": { "code": -32000, "message": "Inspected target navigated or closed" }
+                    })
+                } else {
+                    json!({
+                        "id": req["id"],
+                        "result": { "result": { "value": "recovered" } }
+                    })
+                };
+                socket
+                    .send(Message::Text(msg.to_string().into()))
+                    .await
+                    .unwrap();
+            }
+            calls
+        });
+        let client = crate::cdp::CdpClient::connect(&format!("ws://{address}"))
+            .await
+            .unwrap();
+        let cdp = CdpSession::root(client);
+        let res = cdp
+            .eval_isolated_with_timeout("'ok'", true, false, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(res["result"]["value"], "recovered");
+        assert_eq!(task.await.unwrap(), 2);
     }
 }

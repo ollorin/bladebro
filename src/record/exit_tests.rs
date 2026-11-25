@@ -67,19 +67,19 @@ async fn orphan_cycle(tag: &str) {
 
 #[test]
 fn hooks_present_in_daemon() {
-    assert_eq!(DAEMON.matches("finish_best_effort").count(), 4);
+    assert_eq!(DAEMON.matches("finish_best_effort").count(), 5);
     let lines: Vec<&str> = DAEMON.lines().collect();
-    // The three relaunch/idle sites; the 4th is the post-loop exit (order
-    // checked below) and the 5th the launch-failure cleanup, where no page
-    // ever existed.
+    // The four relaunch/idle/external-exit sites; the 5th is the post-loop exit
+    // (order checked below) and the 6th the launch-failure cleanup, where no
+    // page ever existed.
     let sites: Vec<usize> = lines
         .iter()
         .enumerate()
         .filter(|(_, l)| l.contains("b.shutdown_gracefully().await"))
         .map(|(i, _)| i)
         .collect();
-    assert_eq!(sites.len(), 5, "{sites:?}");
-    for &i in &sites[..3] {
+    assert_eq!(sites.len(), 6, "{sites:?}");
+    for &i in &sites[..4] {
         assert!(
             lines[i - 3..i]
                 .iter()

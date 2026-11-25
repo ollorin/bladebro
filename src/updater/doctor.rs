@@ -1,22 +1,62 @@
-//! System diagnostics — the "doctor" that checks everything.
+//! System diagnostics — the Mafia Don "System Dossier" (`bladebro doctor`).
+//!
+//! Runs local filesystem/environment probes immediately and executes async
+//! checks (Chrome `--version` + one shared release-registry check) **in
+//! parallel**, cutting wall-clock latency roughly in half while avoiding
+//! redundant GitHub requests and subprocesses (`statvfs` / `GetDiskFreeSpaceExW`
+//! for disk space, pure Rust `PATH` scan for Xvfb).
+
+use std::fmt;
+use std::time::Instant;
 
 use super::ui;
+use super::version;
 use crate::error::Result;
-use std::fmt;
+
+/// Diagnostic section grouping for the dossier.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Group {
+    Environment,
+    Browser,
+    Vault,
+    Network,
+}
+
+impl Group {
+    fn title(self) -> &'static str {
+        match self {
+            Group::Environment => "Environment",
+            Group::Browser => "Browser & Display",
+            Group::Vault => "Vault & Hygiene",
+            Group::Network => "Network & Release",
+        }
+    }
+}
 
 /// A single diagnostic check result.
 struct Check {
+    group: Group,
     name: &'static str,
     status: Status,
     detail: String,
     fix: Option<String>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Status {
     Pass,
     Warn,
     Fail,
+}
+
+impl Status {
+    fn tone(self) -> ui::Tone {
+        match self {
+            Status::Pass => ui::Tone::Success,
+            Status::Warn => ui::Tone::Warn,
+            Status::Fail => ui::Tone::Fail,
+        }
+    }
 }
 
 impl fmt::Display for Status {
@@ -29,120 +69,157 @@ impl fmt::Display for Status {
     }
 }
 
-/// Run all diagnostic checks and print the report.
+/// Run all diagnostic checks and print the Mafia Don System Dossier.
 pub async fn run() -> Result<()> {
-    ui::header("Bladebro Doctor");
+    let started = Instant::now();
+    let meta = format!(
+        "{} · {}",
+        version::platform_label(),
+        version::install_channel_label()
+    );
+    ui::masthead("System Dossier", &meta);
 
-    let mut checks: Vec<Check> = Vec::new();
+    let spin = ui::Spinner::start("Inspecting environment, browser, vault & release registry...");
 
-    // 1. Operating system
-    checks.push(check_os());
+    // Synchronous local checks (microseconds — zero subprocesses).
+    let os_check = check_os();
+    let data_dir_check = check_data_dir();
+    let binary_check = check_binary();
+    let disk_check = check_disk_space();
 
-    // 2. Data directory (where state resolves: BLADE_HOME/XDG/legacy)
-    checks.push(check_data_dir());
+    let chrome_check = check_chrome();
+    let chrome_found = chrome_check.status == Status::Pass;
+    let browser_mode_check = check_browser_mode();
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let xvfb_check = check_xvfb();
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let wm_check_res = check_window_manager();
 
-    // 3. Chrome/Chromium
-    checks.push(check_chrome());
+    let profile_dir_check = check_profile_dir();
+    let login_check = check_login_sidecar();
+    let knowledge_check = check_knowledge_and_cache();
+    let hygiene_check = check_profile_hygiene();
+    let locks_check = check_stale_locks();
 
-    // 3. Chrome version (if found)
-    if checks
-        .last()
-        .map(|c| c.status == Status::Pass)
-        .unwrap_or(false)
-    {
-        checks.push(check_chrome_version().await);
+    // Run async checks IN PARALLEL — and share ONE release check between
+    // GitHub connectivity and Version (instead of two sequential HTTP calls).
+    let (chrome_ver_opt, latest_res) = tokio::join!(
+        async {
+            if chrome_found {
+                Some(check_chrome_version().await)
+            } else {
+                None
+            }
+        },
+        version::fetch_latest_tag(),
+    );
+
+    let network_check = check_network_from(&latest_res);
+    let version_check = check_version_from(&latest_res);
+
+    spin.finish_clear();
+
+    let mut checks: Vec<Check> = vec![
+        os_check,
+        data_dir_check,
+        binary_check,
+        disk_check,
+        chrome_check,
+    ];
+    if let Some(cv) = chrome_ver_opt {
+        checks.push(cv);
     }
-
-    checks.push(check_browser_mode());
-
-    // 4. Xvfb (Linux only)
+    checks.push(browser_mode_check);
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    checks.push(check_xvfb());
-
-    // 4b. Window manager for the virtual display (no WM = no decorations, an
-    // Xvfb signature); only meaningful where Xvfb is the lane.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    checks.push(check_window_manager());
-
-    // 5. Profile directory
-    checks.push(check_profile_dir());
-
-    // 6. Login sidecar (the logins that survive reboots/SIGKILL)
-    checks.push(check_login_sidecar());
-
-    // 7. Session/profiles hygiene (orphans, disk usage)
-    checks.push(check_profile_hygiene());
-
-    // 8. Stale locks
-    checks.push(check_stale_locks());
-
-    // 9. Network connectivity
-    checks.push(check_network().await);
-
-    // 10. Binary integrity + install method
-    checks.push(check_binary());
-
-    // 11. Disk space
-    checks.push(check_disk_space());
+    {
+        checks.push(xvfb_check);
+        checks.push(wm_check_res);
+    }
+    checks.push(profile_dir_check);
+    checks.push(login_check);
+    checks.push(knowledge_check);
+    checks.push(hygiene_check);
+    checks.push(locks_check);
     // Fork hook (.planning/HOOKS.md): ffmpeg for opt-in recording; never Fail.
     checks.push(check_ffmpeg());
     // Fork hook (.planning/HOOKS.md): browser launch mode and its source (HEAD-04).
     checks.push(check_launch_mode());
+    checks.push(network_check);
+    checks.push(version_check);
 
-    // 12. Version vs latest
-    checks.push(check_version().await);
+    // Compute exact aligned column width from all active checks (never overflows).
+    let label_width = checks
+        .iter()
+        .map(|c| c.name.chars().count())
+        .max()
+        .unwrap_or(20);
 
-    // Print results.
-    let mut passes = 0;
-    let mut warns = 0;
-    let mut fails = 0;
+    let mut passes = 0usize;
+    let mut warns = 0usize;
+    let mut fails = 0usize;
 
-    for check in &checks {
-        let icon = match check.status {
-            Status::Pass => ui::green("  ✓"),
-            Status::Warn => ui::yellow("  ⚠"),
-            Status::Fail => ui::red("  ✗"),
-        };
-        println!("{icon} {:<24} {}", check.name, check.detail);
-        if let Some(fix) = &check.fix {
-            println!("    {} {}", ui::dim("fix:"), fix);
+    for group in [
+        Group::Environment,
+        Group::Browser,
+        Group::Vault,
+        Group::Network,
+    ] {
+        let group_checks: Vec<&Check> = checks.iter().filter(|c| c.group == group).collect();
+        if group_checks.is_empty() {
+            continue;
         }
-        match check.status {
-            Status::Pass => passes += 1,
-            Status::Warn => warns += 1,
-            Status::Fail => fails += 1,
+        ui::section(group.title());
+        for check in group_checks {
+            ui::dossier_row(
+                check.status.tone(),
+                check.name,
+                &check.detail,
+                check.fix.as_deref(),
+                label_width,
+            );
+            match check.status {
+                Status::Pass => passes += 1,
+                Status::Warn => warns += 1,
+                Status::Fail => fails += 1,
+            }
         }
     }
 
-    // Summary.
-    println!();
     let total = checks.len();
+    let elapsed = ui::format_elapsed(started.elapsed());
     if fails == 0 && warns == 0 {
-        ui::success(&format!("All {total} checks passed. Bladebro is healthy."));
+        ui::verdict_card(
+            ui::Tone::Success,
+            &format!("ALL {total} CHECKS CLEAR · BLADEBRO IS HEALTHY"),
+            &elapsed,
+            &[],
+        );
     } else if fails == 0 {
-        println!(
-            "  {} {}/{} passed, {} warning{}",
-            ui::yellow("⚠"),
-            passes,
-            total,
-            warns,
-            if warns == 1 { "" } else { "s" }
+        ui::verdict_card(
+            ui::Tone::Warn,
+            &format!(
+                "{passes}/{total} PASSED · {warns} ADVISOR{}",
+                if warns == 1 { "Y" } else { "IES" }
+            ),
+            &elapsed,
+            &[(
+                "note",
+                "Bladebro is operational; review advisories above".into(),
+            )],
         );
     } else {
-        println!(
-            "  {} {}/{} passed, {} failed, {} warning{}",
-            ui::red("✗"),
-            passes,
-            total,
-            fails,
-            warns,
-            if warns == 1 { "" } else { "s" }
+        ui::verdict_card(
+            ui::Tone::Fail,
+            &format!(
+                "{passes}/{total} PASSED · {fails} FAILED · {warns} WARNING{}",
+                if warns == 1 { "" } else { "S" }
+            ),
+            &elapsed,
+            &[(
+                "next",
+                "Fix the failures above, then run `bladebro doctor` again".into(),
+            )],
         );
-        println!();
-        ui::hint("Fix the failures above, then run bladebro doctor again.");
-    }
-
-    if fails > 0 {
         return Err(crate::error::BladeError::Other(format!(
             "doctor: {fails} failed check(s)"
         )));
@@ -151,26 +228,45 @@ pub async fn run() -> Result<()> {
 }
 
 fn check_os() -> Check {
-    let os = if cfg!(target_os = "linux") {
-        "Linux"
-    } else if cfg!(target_os = "macos") {
-        "macOS"
-    } else if cfg!(target_os = "windows") {
-        "Windows"
-    } else {
-        "Unknown"
-    };
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x86_64"
-    } else if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else {
-        "unknown"
-    };
     Check {
+        group: Group::Environment,
         name: "Operating system",
         status: Status::Pass,
-        detail: format!("{os} ({arch})"),
+        detail: version::platform_label(),
+        fix: None,
+    }
+}
+
+fn check_knowledge_and_cache() -> Check {
+    let kb = crate::knowledge::KnowledgeBase::load();
+    let s = kb.summary();
+    let cache_root = crate::platform::blade_dir().join("http-cache");
+    let cache_slots = std::fs::read_dir(&cache_root)
+        .ok()
+        .map(|it| {
+            it.flatten()
+                .filter(|e| {
+                    e.file_type().is_ok_and(|t| t.is_dir())
+                        && e.file_name().to_string_lossy().starts_with("slot-")
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let detail = format!(
+        "{} domains ({} consent, {} site-chrome, {} chirpy, {} heavy-risk; {} links folded); HTTP cache: {} warm slot(s)",
+        s.domains,
+        s.consent_rules,
+        s.chrome_domains,
+        s.chirpy_domains,
+        s.heavy_risk_domains,
+        s.total_chrome_folded,
+        cache_slots,
+    );
+    Check {
+        group: Group::Vault,
+        name: "Knowledge & cache",
+        status: Status::Pass,
+        detail,
         fix: None,
     }
 }
@@ -193,8 +289,6 @@ fn check_data_dir() -> Check {
             "XDG_STATE_HOME"
         }
     } else if dir == home {
-        // Legacy dir selected: either nothing state-worthy exists yet or the
-        // migration-free fallback kept an existing install put.
         if home.join("profile").exists()
             || home.join("logins.json").exists()
             || home.join("knowledge").exists()
@@ -208,6 +302,7 @@ fn check_data_dir() -> Check {
         "XDG default"
     };
     Check {
+        group: Group::Environment,
         name: "Data directory",
         status: Status::Pass,
         detail: format!("{} ({reason}; override with BLADE_HOME)", dir.display()),
@@ -216,11 +311,9 @@ fn check_data_dir() -> Check {
 }
 
 fn check_browser_mode() -> Check {
-    // Every launch parses BLADE_CHROME_FLAGS first, and so does the incognito
-    // policy: a malformed value is its own failure with its own fix, never a
-    // BLADE_INCOGNITO problem.
     if let Err(error) = crate::browser::env_chrome_flags() {
         return Check {
+            group: Group::Browser,
             name: "Chrome flags",
             status: Status::Fail,
             detail: error.to_string(),
@@ -231,18 +324,21 @@ fn check_browser_mode() -> Check {
     }
     match crate::browser::incognito_policy() {
         Ok(true) => Check {
+            group: Group::Browser,
             name: "Agent browser mode",
             status: Status::Warn,
             detail: "incognito compatibility (cookies/named sessions supported; history/cache and automatic localStorage persistence unavailable)".into(),
             fix: Some("BLADE_INCOGNITO=0 disables automatic Raspberry Pi OS trixie compatibility; restart the client/daemon".into()),
         },
         Ok(false) => Check {
+            group: Group::Browser,
             name: "Agent browser mode",
             status: Status::Pass,
             detail: "persistent profile".into(),
             fix: None,
         },
         Err(error) => Check {
+            group: Group::Browser,
             name: "Agent browser mode",
             status: Status::Fail,
             detail: error.to_string(),
@@ -254,12 +350,14 @@ fn check_browser_mode() -> Check {
 fn check_chrome() -> Check {
     match crate::browser::find_chrome() {
         Ok(path) => Check {
+            group: Group::Browser,
             name: "Chrome/Chromium",
             status: Status::Pass,
             detail: path,
             fix: None,
         },
         Err(error) => Check {
+            group: Group::Browser,
             name: "Chrome/Chromium",
             status: Status::Fail,
             detail: error.to_string(),
@@ -273,6 +371,7 @@ async fn check_chrome_version() -> Check {
         Some(p) => p,
         None => {
             return Check {
+                group: Group::Browser,
                 name: "Chrome version",
                 status: Status::Fail,
                 detail: "Chrome not found".into(),
@@ -293,9 +392,6 @@ async fn check_chrome_version() -> Check {
     match output {
         Ok(Ok(o)) if o.status.success() => {
             let version_str = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            // Extract the first token that looks like a version (contains digits and dots).
-            // "Chromium 150.0.7871.186 Arch Linux" → "150.0.7871.186"
-            // "Google Chrome 150.0.7871.186" → "150.0.7871.186"
             let version_token = version_str.split_whitespace().find(|t| {
                 t.chars()
                     .next()
@@ -312,6 +408,7 @@ async fn check_chrome_version() -> Check {
 
             if major >= 100 {
                 Check {
+                    group: Group::Browser,
                     name: "Chrome version",
                     status: Status::Pass,
                     detail: display.to_string(),
@@ -319,6 +416,7 @@ async fn check_chrome_version() -> Check {
                 }
             } else if major > 0 {
                 Check {
+                    group: Group::Browser,
                     name: "Chrome version",
                     status: Status::Warn,
                     detail: format!("{display} (v100+ recommended)"),
@@ -326,6 +424,7 @@ async fn check_chrome_version() -> Check {
                 }
             } else {
                 Check {
+                    group: Group::Browser,
                     name: "Chrome version",
                     status: Status::Warn,
                     detail: format!("{version_str} (could not parse version)"),
@@ -334,6 +433,7 @@ async fn check_chrome_version() -> Check {
             }
         }
         _ => Check {
+            group: Group::Browser,
             name: "Chrome version",
             status: Status::Fail,
             detail: "--version failed or did not answer within 5s".into(),
@@ -342,6 +442,8 @@ async fn check_chrome_version() -> Check {
     }
 }
 
+/// Pure-Rust lookup for Xvfb (standard paths + `PATH`, zero subprocesses —
+/// works on minimal containers without `which`).
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn check_xvfb() -> Check {
     let candidates = [
@@ -349,22 +451,29 @@ fn check_xvfb() -> Check {
         "/usr/local/bin/Xvfb",
         "/run/current-system/sw/bin/Xvfb",
     ];
-    let found = candidates.iter().any(|p| std::path::Path::new(p).exists())
-        || std::process::Command::new("which")
-            .arg("Xvfb")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+    let found = candidates
+        .iter()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.is_file())
+        .or_else(|| {
+            std::env::var_os("PATH").and_then(|path| {
+                std::env::split_paths(&path)
+                    .map(|d| d.join("Xvfb"))
+                    .find(|p| p.is_file())
+            })
+        });
 
-    if found {
+    if let Some(p) = found {
         Check {
+            group: Group::Browser,
             name: "Xvfb (headful stealth)",
             status: Status::Pass,
-            detail: "available".into(),
+            detail: format!("{} (available)", p.display()),
             fix: None,
         }
     } else {
         Check {
+            group: Group::Browser,
             name: "Xvfb (headful stealth)",
             status: Status::Warn,
             detail: "not found (headless fallback will be used)".into(),
@@ -376,35 +485,28 @@ fn check_xvfb() -> Check {
     }
 }
 
-/// The window manager the virtual display starts. Xvfb alone is not the
-/// headful lane: with no WM the screen has no decorations at all —
-/// `outerWidth == innerWidth`, `screen.availHeight == screen.height` — which
-/// is an Xvfb signature only `bladebro audit` otherwise catches. The binary
-/// lookup is the lane's own (`browser::display::window_manager`), so doctor
-/// cannot pass a machine on which the lane would silently degrade.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn check_window_manager() -> Check {
     wm_check(crate::browser::display::window_manager())
 }
 
-/// The report for a found (or missing) window manager. Pure, so the missing
-/// branch is tested without a machine that lacks xfwm4.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn wm_check(found: Option<String>) -> Check {
     match found {
         Some(path) => Check {
-            name: "Window manager (headful geometry)",
+            group: Group::Browser,
+            name: "Window manager",
             status: Status::Pass,
             detail: format!("{path} (real decorations, coherent outer/inner geometry)"),
             fix: None,
         },
         None => Check {
-            name: "Window manager (headful geometry)",
+            group: Group::Browser,
+            name: "Window manager",
             status: Status::Warn,
-            detail:
-                "xfwm4 not found — Xvfb runs headful with no decorations or frame extents \
-                     (outerWidth == innerWidth, availHeight == height); pages see an Xvfb signature"
-                    .into(),
+            detail: "xfwm4 not found — Xvfb runs headful with no decorations or frame extents \
+                 (outerWidth == innerWidth, availHeight == height); pages see an Xvfb signature"
+                .into(),
             fix: Some(
                 "Install xfwm4: sudo pacman -S xfwm4 (Arch) / sudo apt install xfwm4 (Debian)"
                     .into(),
@@ -414,22 +516,18 @@ fn wm_check(found: Option<String>) -> Check {
 }
 
 fn check_profile_dir() -> Check {
-    // Honor BLADE_PROFILE_DIR: the effective profile root, not just the
-    // template inside the data dir.
     let dir = std::env::var("BLADE_PROFILE_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| crate::platform::blade_dir().join("profile"));
     if !dir.exists() {
         return Check {
+            group: Group::Vault,
             name: "Profile directory",
             status: Status::Warn,
             detail: format!("{} (will be created on first run)", dir.display()),
             fix: None,
         };
     }
-    // Check writability. Unpredictable name + O_EXCL: a fixed name let a
-    // local attacker pre-place a symlink and turn this probe into an
-    // arbitrary-file write (the same class the updater's check fixed).
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -446,6 +544,7 @@ fn check_profile_dir() -> Check {
         Ok(_) => {
             let _ = std::fs::remove_file(&test_file);
             Check {
+                group: Group::Vault,
                 name: "Profile directory",
                 status: Status::Pass,
                 detail: format!("{} (writable)", dir.display()),
@@ -453,6 +552,7 @@ fn check_profile_dir() -> Check {
             }
         }
         Err(e) => Check {
+            group: Group::Vault,
             name: "Profile directory",
             status: Status::Fail,
             detail: format!("{} (not writable: {e})", dir.display()),
@@ -465,6 +565,7 @@ fn check_login_sidecar() -> Check {
     let path = crate::platform::blade_dir().join("logins.json");
     if !path.exists() {
         return Check {
+            group: Group::Vault,
             name: "Login persistence",
             status: Status::Pass,
             detail: "no saved logins yet (created on first login)".into(),
@@ -477,6 +578,7 @@ fn check_login_sidecar() -> Check {
         if let Ok(meta) = std::fs::metadata(&path) {
             if meta.permissions().mode() & 0o077 != 0 {
                 return Check {
+                    group: Group::Vault,
                     name: "Login persistence",
                     status: Status::Warn,
                     detail: format!("{} has non-private permissions", path.display()),
@@ -490,6 +592,7 @@ fn check_login_sidecar() -> Check {
             Ok(v) => {
                 let n = v.as_array().map(|a| a.len()).unwrap_or(0);
                 Check {
+                    group: Group::Vault,
                     name: "Login persistence",
                     status: Status::Pass,
                     detail: format!("{n} cookie(s) saved for next session"),
@@ -497,6 +600,7 @@ fn check_login_sidecar() -> Check {
                 }
             }
             Err(_) => Check {
+                group: Group::Vault,
                 name: "Login persistence",
                 status: Status::Warn,
                 detail: format!("{} is unreadable JSON", path.display()),
@@ -504,6 +608,7 @@ fn check_login_sidecar() -> Check {
             },
         },
         Err(e) => Check {
+            group: Group::Vault,
             name: "Login persistence",
             status: Status::Warn,
             detail: format!("cannot read {}: {e}", path.display()),
@@ -517,10 +622,6 @@ fn check_profile_hygiene() -> Check {
 }
 
 fn profile_hygiene_at(dir: &std::path::Path) -> Check {
-    // Count exactly what the reaper reaps — dead-owner `sess-*` dirs in the
-    // agent lane and every real-lane root, by the reaper's own ownership
-    // rule — so "auto-reaped on next launch" is a promise the next launch
-    // keeps. doctor reports them so disk isn't silently eaten between runs.
     let mut orphans = Vec::new();
     let mut total_orphan_bytes: u64 = 0;
     for root in crate::session_profile::session_roots(dir) {
@@ -531,7 +632,6 @@ fn profile_hygiene_at(dir: &std::path::Path) -> Check {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             if crate::session_profile::session_owner_dead(&path) {
-                // size (best effort, bounded)
                 let mut size: u64 = 0;
                 if let Ok(it) = fs_items(&path) {
                     for f in it {
@@ -548,6 +648,7 @@ fn profile_hygiene_at(dir: &std::path::Path) -> Check {
     }
     if orphans.is_empty() {
         return Check {
+            group: Group::Vault,
             name: "Profile hygiene",
             status: Status::Pass,
             detail: "no orphaned session dirs".into(),
@@ -556,6 +657,7 @@ fn profile_hygiene_at(dir: &std::path::Path) -> Check {
     }
     let mb = total_orphan_bytes as f64 / 1_048_576.0;
     Check {
+        group: Group::Vault,
         name: "Profile hygiene",
         status: Status::Warn,
         detail: format!(
@@ -567,7 +669,6 @@ fn profile_hygiene_at(dir: &std::path::Path) -> Check {
     }
 }
 
-/// Walk a dir shallowly collecting file sizes (no symlink following).
 fn fs_items(dir: &std::path::Path) -> std::io::Result<Vec<std::fs::Metadata>> {
     let mut out = Vec::new();
     if let Ok(e) = std::fs::read_dir(dir) {
@@ -583,7 +684,6 @@ fn fs_items(dir: &std::path::Path) -> std::io::Result<Vec<std::fs::Metadata>> {
 }
 
 fn check_stale_locks() -> Check {
-    // Same rule as SessionProfile::create: an empty override is no override.
     let custom = std::env::var("BLADE_PROFILE_DIR")
         .ok()
         .filter(|v| !v.is_empty())
@@ -591,16 +691,10 @@ fn check_stale_locks() -> Check {
     profile_locks_at(&crate::platform::blade_dir(), custom.as_deref())
 }
 
-/// Chrome holds `SingletonLock` only in the dir it runs on: the operator's
-/// BLADE_PROFILE_DIR, otherwise each session's `profiles/sess-*` dir. The
-/// template (`profile/`) is never run and its copies skip the lock, so it
-/// can never show one.
 fn profile_locks_at(blade_dir: &std::path::Path, custom: Option<&std::path::Path>) -> Check {
     if let Some(dir) = custom {
         return custom_profile_lock(dir);
     }
-    // A live session's lock is its own browser's business; a dead one's is
-    // what the reaper must clear — unless a browser still runs on it.
     let mut running = Vec::new();
     let mut stale = Vec::new();
     for root in crate::session_profile::session_roots(blade_dir) {
@@ -626,6 +720,7 @@ fn profile_locks_at(blade_dir: &std::path::Path, custom: Option<&std::path::Path
     }
     if !running.is_empty() {
         return Check {
+            group: Group::Vault,
             name: "Profile locks",
             status: Status::Warn,
             detail: format!(
@@ -639,6 +734,7 @@ fn profile_locks_at(blade_dir: &std::path::Path, custom: Option<&std::path::Path
     }
     if !stale.is_empty() {
         return Check {
+            group: Group::Vault,
             name: "Profile locks",
             status: Status::Warn,
             detail: format!(
@@ -649,6 +745,7 @@ fn profile_locks_at(blade_dir: &std::path::Path, custom: Option<&std::path::Path
         };
     }
     Check {
+        group: Group::Vault,
         name: "Profile locks",
         status: Status::Pass,
         detail: "no stale locks".into(),
@@ -656,25 +753,23 @@ fn profile_locks_at(blade_dir: &std::path::Path, custom: Option<&std::path::Path
     }
 }
 
-/// BLADE_PROFILE_DIR is run directly, so any lock in it matters.
 fn custom_profile_lock(dir: &std::path::Path) -> Check {
     let lock = dir.join("SingletonLock");
-    // symlink_metadata, not exists(): on Unix the lock is a `host-pid`
-    // symlink to nothing, and exists() follows it to "not found".
     if std::fs::symlink_metadata(&lock).is_err() {
         return Check {
+            group: Group::Vault,
             name: "Profile locks",
             status: Status::Pass,
             detail: "no stale locks".into(),
             fix: None,
         };
     }
-    // There's a lock. Check if it's stale (PID is dead).
     let pid = read_lock_pid(&lock);
     match pid {
         Some(p) => {
             if crate::platform::process_alive(p) {
                 Check {
+                    group: Group::Vault,
                     name: "Profile locks",
                     status: Status::Warn,
                     detail: format!("lock held by PID {p} (another bladebro may be running)"),
@@ -682,6 +777,7 @@ fn custom_profile_lock(dir: &std::path::Path) -> Check {
                 }
             } else {
                 Check {
+                    group: Group::Vault,
                     name: "Profile locks",
                     status: Status::Warn,
                     detail: format!(
@@ -692,6 +788,7 @@ fn custom_profile_lock(dir: &std::path::Path) -> Check {
             }
         }
         None => Check {
+            group: Group::Vault,
             name: "Profile locks",
             status: Status::Pass,
             detail: "no stale locks".into(),
@@ -700,20 +797,37 @@ fn custom_profile_lock(dir: &std::path::Path) -> Check {
     }
 }
 
-async fn check_network() -> Check {
-    match super::version::fetch_latest().await {
-        Ok(release) => Check {
-            name: "GitHub connectivity",
+fn check_network_from(latest: &Result<String>) -> Check {
+    match latest {
+        Ok(tag) => Check {
+            group: Group::Network,
+            name: "Release registry",
             status: Status::Pass,
-            detail: format!("reachable (latest: {})", release.tag_name),
+            detail: format!("reachable (latest: v{tag})"),
             fix: None,
         },
-        Err(e) => Check {
-            name: "GitHub connectivity",
-            status: Status::Fail,
-            detail: format!("cannot reach GitHub: {e}"),
-            fix: Some("Check your internet connection and firewall settings".into()),
-        },
+        Err(e) => {
+            let disabled = std::env::var("BLADE_NO_UPDATE_CHECK")
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            if disabled {
+                Check {
+                    group: Group::Network,
+                    name: "Release registry",
+                    status: Status::Warn,
+                    detail: "skipped (BLADE_NO_UPDATE_CHECK=1)".into(),
+                    fix: None,
+                }
+            } else {
+                Check {
+                    group: Group::Network,
+                    name: "Release registry",
+                    status: Status::Fail,
+                    detail: format!("cannot reach GitHub or npm: {e}"),
+                    fix: Some("Check your internet connection and firewall/proxy settings".into()),
+                }
+            }
+        }
     }
 }
 
@@ -722,6 +836,7 @@ fn check_binary() -> Check {
         Ok(p) => p,
         Err(e) => {
             return Check {
+                group: Group::Environment,
                 name: "Binary integrity",
                 status: Status::Warn,
                 detail: format!("cannot check: {e}"),
@@ -732,21 +847,14 @@ fn check_binary() -> Check {
 
     let size = std::fs::metadata(&exe).map(|m| m.len()).unwrap_or(0);
     let size_mb = size as f64 / 1_048_576.0;
-    let method = super::version::install_method();
+    let channel = version::install_channel_label();
 
     let size_ok = size > 1_000_000 && size < 500_000_000;
-    let detail = format!(
-        "v{} ({size_mb:.1}MB) [{}]",
-        super::CURRENT_VERSION,
-        match method {
-            "npm" => "npm",
-            "source" => "source build",
-            _ => "binary",
-        }
-    );
+    let detail = format!("v{} ({size_mb:.1} MB) [{channel}]", super::CURRENT_VERSION);
 
     if size_ok {
         Check {
+            group: Group::Environment,
             name: "Binary integrity",
             status: Status::Pass,
             detail,
@@ -754,6 +862,7 @@ fn check_binary() -> Check {
         }
     } else {
         Check {
+            group: Group::Environment,
             name: "Binary integrity",
             status: Status::Warn,
             detail: format!("{detail} unusual size"),
@@ -767,6 +876,7 @@ fn check_disk_space() -> Check {
         Ok(p) => p,
         Err(_) => {
             return Check {
+                group: Group::Environment,
                 name: "Disk space",
                 status: Status::Warn,
                 detail: "cannot check".into(),
@@ -774,56 +884,35 @@ fn check_disk_space() -> Check {
             }
         }
     };
-    // Suppress unused warning on non-Unix (exe only used in cfg(unix) block).
-    let _ = &exe;
-
-    #[cfg(unix)]
-    {
-        let dir = exe.parent().unwrap_or(std::path::Path::new("."));
-        let output = std::process::Command::new("df")
-            .arg("-k")
-            .arg(dir)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .output();
-
-        match output {
-            Ok(o) if o.status.success() => {
-                let stdout = String::from_utf8_lossy(&o.stdout);
-                if let Some(line) = stdout.lines().last() {
-                    let fields: Vec<&str> = line.split_whitespace().collect();
-                    let use_idx = fields.iter().position(|f| f.ends_with('%'));
-                    let avail_idx = use_idx.and_then(|i| if i > 0 { Some(i - 1) } else { None });
-                    if let Some(idx) = avail_idx {
-                        if let Ok(avail_kb) = fields[idx].parse::<u64>() {
-                            let avail_mb = avail_kb as f64 / 1024.0;
-                            if avail_mb < 50.0 {
-                                return Check {
-                                    name: "Disk space",
-                                    status: Status::Warn,
-                                    detail: format!("{avail_mb:.0} MB free (updates need ~20MB)"),
-                                    fix: Some("Free up disk space before updating".into()),
-                                };
-                            }
-                            return Check {
-                                name: "Disk space",
-                                status: Status::Pass,
-                                detail: format!("{avail_mb:.0} MB free"),
-                                fix: None,
-                            };
-                        }
-                    }
+    let dir = exe.parent().unwrap_or(std::path::Path::new("."));
+    match crate::platform::available_disk_bytes(dir) {
+        Some(avail) => {
+            let avail_mb = avail as f64 / 1_048_576.0;
+            if avail_mb < 50.0 {
+                Check {
+                    group: Group::Environment,
+                    name: "Disk space",
+                    status: Status::Warn,
+                    detail: format!("{} free (updates need ~20 MB)", ui::format_bytes(avail)),
+                    fix: Some("Free up disk space before updating".into()),
+                }
+            } else {
+                Check {
+                    group: Group::Environment,
+                    name: "Disk space",
+                    status: Status::Pass,
+                    detail: format!("{} free", ui::format_bytes(avail)),
+                    fix: None,
                 }
             }
-            _ => {}
         }
-    }
-
-    Check {
-        name: "Disk space",
-        status: Status::Warn,
-        detail: "could not measure available space".into(),
-        fix: None,
+        None => Check {
+            group: Group::Environment,
+            name: "Disk space",
+            status: Status::Warn,
+            detail: "could not measure available space".into(),
+            fix: None,
+        },
     }
 }
 
@@ -831,6 +920,7 @@ fn check_disk_space() -> Check {
 fn check_ffmpeg() -> Check {
     let line = crate::record::ffmpeg::doctor_check();
     Check {
+        group: Group::Environment,
         name: crate::record::ffmpeg::CHECK_NAME,
         status: match line.level {
             crate::record::ffmpeg::Level::Ok => Status::Pass,
@@ -845,6 +935,7 @@ fn check_ffmpeg() -> Check {
 fn check_launch_mode() -> Check {
     let c = crate::launch_mode::doctor_check();
     Check {
+        group: Group::Browser,
         name: crate::launch_mode::CHECK_NAME,
         status: if c.ok { Status::Pass } else { Status::Fail },
         detail: c.detail,
@@ -852,30 +943,36 @@ fn check_launch_mode() -> Check {
     }
 }
 
-async fn check_version() -> Check {
-    match super::version::fetch_latest().await {
-        Ok(latest) => {
-            if super::version::is_newer(latest.tag(), super::CURRENT_VERSION) {
-                Check {
-                    name: "Version",
-                    status: Status::Warn,
-                    detail: format!(
-                        "v{} (update available: {})",
-                        super::CURRENT_VERSION,
-                        latest.tag_name
-                    ),
-                    fix: Some("Run: bladebro -u".into()),
-                }
-            } else {
-                Check {
-                    name: "Version",
-                    status: Status::Pass,
-                    detail: format!("v{} (up to date)", super::CURRENT_VERSION),
-                    fix: None,
-                }
-            }
-        }
+fn check_version_from(latest: &Result<String>) -> Check {
+    match latest {
+        Ok(tag) => match version::compare_versions(tag, super::CURRENT_VERSION) {
+            std::cmp::Ordering::Greater => Check {
+                group: Group::Network,
+                name: "Version",
+                status: Status::Warn,
+                detail: format!("v{} (update available: v{tag})", super::CURRENT_VERSION),
+                fix: Some(format!("Run: {}", version::update_command_hint())),
+            },
+            std::cmp::Ordering::Equal => Check {
+                group: Group::Network,
+                name: "Version",
+                status: Status::Pass,
+                detail: format!("v{} (on the latest release)", super::CURRENT_VERSION),
+                fix: None,
+            },
+            std::cmp::Ordering::Less => Check {
+                group: Group::Network,
+                name: "Version",
+                status: Status::Pass,
+                detail: format!(
+                    "v{} (ahead of latest release v{tag})",
+                    super::CURRENT_VERSION
+                ),
+                fix: None,
+            },
+        },
         Err(_) => Check {
+            group: Group::Network,
             name: "Version",
             status: Status::Warn,
             detail: format!("v{} (could not check for updates)", super::CURRENT_VERSION),
@@ -884,15 +981,12 @@ async fn check_version() -> Check {
     }
 }
 
-/// Find Chrome path for the doctor (doesn't launch anything).
 fn find_chrome_path() -> Option<String> {
     crate::browser::find_chrome().ok()
 }
 
 fn chrome_install_hint() -> String {
     if cfg!(target_os = "linux") {
-        // Read-only roots (SteamOS, Bazzite, Silverblue) cannot take a
-        // package-manager install; Flatpak exports are discovered.
         "Install: sudo pacman -S chromium (Arch) / sudo apt install chromium-browser (Debian) / nix-shell -p chromium (Nix) / flatpak install flathub org.chromium.Chromium (SteamOS, Bazzite, Silverblue: found automatically), or set CHROME_PATH".into()
     } else if cfg!(target_os = "macos") {
         "Install: brew install --cask google-chrome".into()
@@ -903,7 +997,6 @@ fn chrome_install_hint() -> String {
     }
 }
 
-/// Read PID from SingletonLock (same logic as browser.rs).
 fn read_lock_pid(lock: &std::path::Path) -> Option<u32> {
     #[cfg(unix)]
     {
@@ -960,17 +1053,40 @@ mod tests {
     }
 
     #[test]
+    fn version_check_distinguishes_behind_equal_and_ahead() {
+        let behind = check_version_from(&Ok("99.0.0".into()));
+        assert!(behind.status == Status::Warn);
+        assert!(behind.detail.contains("update available"));
+        assert!(behind.fix.is_some());
+
+        let equal = check_version_from(&Ok(super::super::CURRENT_VERSION.into()));
+        assert!(equal.status == Status::Pass);
+        assert!(equal.detail.contains("on the latest release"));
+
+        let ahead = check_version_from(&Ok("0.0.1".into()));
+        assert!(ahead.status == Status::Pass);
+        assert!(ahead.detail.contains("ahead of latest release"));
+    }
+
+    #[test]
+    fn disk_space_check_succeeds_natively() {
+        let check = check_disk_space();
+        assert!(
+            check.status == Status::Pass,
+            "native disk space check should pass: {}",
+            check.detail
+        );
+    }
+
+    #[test]
     fn hygiene_counts_exactly_what_the_reaper_reaps() {
         let root = scratch("hygiene");
         let me = std::process::id();
-        session(&root, "sess-999999998", 999_999_998); // dead: reaped
-        session(&root, &format!("sess-{me}"), me); // live: kept
+        session(&root, "sess-999999998", 999_999_998);
+        session(&root, &format!("sess-{me}"), me);
 
-        // Never created by bladebro and never reaped: promising otherwise
-        // is a warning that never clears.
         std::fs::create_dir_all(root.join("profiles/pid-999999996")).unwrap();
         std::fs::create_dir_all(root.join("profiles/junk")).unwrap();
-        // The reaper also visits real-lane roots.
         let real = root.join("realbrowser/chrome");
         session(&real, "sess-999999997", 999_999_997);
         let check = profile_hygiene_at(&root);
@@ -986,13 +1102,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn profile_locks_see_dangling_singleton_symlinks_in_live_dirs() {
-        // SingletonLock is a `host-pid` symlink to nothing: exists() follows
-        // it and always answers false.
         let custom = scratch("locks-custom");
         std::os::unix::fs::symlink("host-999999999", custom.join("SingletonLock")).unwrap();
         let custom_check = profile_locks_at(Path::new("/nonexistent-blade"), Some(&custom));
 
-        // No Chrome ever runs on the template; session dirs are where locks live.
         let root = scratch("locks-sessions");
         let me = std::process::id();
         let dead = session(&root, "sess-999999998", 999_999_998);

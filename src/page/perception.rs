@@ -23,7 +23,6 @@
 //! outline read modes).
 
 use serde::Deserialize;
-use serde_json::json;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -35,6 +34,8 @@ mod consent;
 mod content;
 mod wait;
 
+pub(crate) use self::consent::dismiss_consent_detailed;
+pub(crate) use self::wait::wait_for_settle_adaptive;
 pub use self::{
     block::{detect_block, remediation_ladder},
     consent::{dismiss_consent, dismiss_consent_with_stored},
@@ -457,18 +458,10 @@ pub async fn capture(cdp: &CdpSession) -> Result<PageCapture> {
     // JSON response page), Runtime.evaluate can hang. Return an unanswered
     // capture on timeout instead of erroring after 30s.
     let res = cdp
-        .send_with_timeout(
-            "Runtime.evaluate",
-            Some(json!({
-                "expression": &*CAPTURE_SCRIPT,
-                "returnByValue": true,
-                "awaitPromise": false,
-            })),
-            Duration::from_secs(10),
-        )
+        .eval_isolated_with_timeout(&CAPTURE_SCRIPT, true, false, Duration::from_secs(10))
         .await;
 
-    let res = match res {
+    let mut res = match res {
         Ok(v) => v,
         // A dead tab/browser is not a page state: `Closed` is the error the
         // MCP and daemon loops self-heal on. Swallowing it reported a blank
@@ -491,14 +484,16 @@ pub async fn capture(cdp: &CdpSession) -> Result<PageCapture> {
         return Err(BladeError::Other(format!("page capture failed: {msg}")));
     }
 
-    let value = res.get("result").and_then(|r| r.get("value"));
+    let value = res
+        .pointer_mut("/result/value")
+        .map(serde_json::Value::take);
 
     // No value means there was no document to read (a body-less document
     // answers with its url - see the script). Same unanswered capture.
     match value {
         Some(serde_json::Value::Null) | None => Ok(PageCapture::unanswered()),
         Some(v) => {
-            let mut parsed: PageCapture = serde_json::from_value(v.clone())?;
+            let mut parsed: PageCapture = serde_json::from_value(v)?;
             // Chrome internal pages (chrome://, chrome-extension://, about:*
             // except about:blank) expose their own shadow-DOM UI, which the
             // W2 shadow piercing would otherwise turn into phantom actionable

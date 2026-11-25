@@ -41,11 +41,16 @@ impl Page {
         self.apply_domain_profile(url).await;
         // Reset isolated world on navigation — old context is destroyed.
         self.reset_isolated();
-        // Knowledge: per-domain resource-block config the agent set before.
-        // Applied only when nothing is active — an explicit session choice
-        // always wins; `state block clear` erases the stored config.
+        // Reset previous navigation's HTTP document status so non-HTTP targets
+        // (about:blank, data:, file:) never inherit an older status code.
+        self.clear_doc_response();
+        // Knowledge: per-domain resource-block config, timing, chirpy network
+        // profile, and bot-risk level — one lock lookup for the whole navigation.
+        // Stored block configs apply ONLY when no explicit session block override
+        // is active, and revert cleanly to `none` when leaving for a domain
+        // without a stored config (never leaking domain A's rules onto domain B).
         let domain = crate::knowledge::domain_from_url(url);
-        let (stored_block, learned_settle) = self
+        let (stored_block, learned_settle, is_chirpy, domain_risk) = self
             .knowledge
             .as_ref()
             .and_then(|kb| kb.lock().ok())
@@ -53,13 +58,23 @@ impl Page {
                 (
                     kb.get_block_config(&domain).map(|s| s.to_string()),
                     kb.get_settle_ms(&domain),
+                    kb.is_chirpy(&domain),
+                    kb.get_bot_risk(&domain),
                 )
             })
-            .unwrap_or((None, None));
-        if let Some(spec) = stored_block.filter(|s| !s.is_empty()) {
-            if self.block_rules() == 0 {
-                if let Err(e) = self.set_block_classes(&spec).await {
-                    eprintln!("[bladebro] stored block config failed to apply: {e}");
+            .unwrap_or((None, None, false, crate::knowledge::BotRiskLevel::Unknown));
+        self.current_domain_risk = domain_risk;
+        if self.block_from_knowledge || self.block_rules() == 0 {
+            if let Some(spec) = stored_block.filter(|s| !s.is_empty()) {
+                let want_mask = crate::page::intercept::InterceptState::parse_classes(&spec);
+                if want_mask != self.block_rules() {
+                    if let Err(e) = self.apply_knowledge_block_classes(&spec).await {
+                        eprintln!("[bladebro] stored block config failed to apply: {e}");
+                    }
+                }
+            } else if self.block_from_knowledge {
+                if let Err(e) = self.set_block_classes("none").await {
+                    eprintln!("[bladebro] clearing prior domain block config failed: {e}");
                 }
             }
         }
@@ -80,6 +95,11 @@ impl Page {
             .await?;
         let nav_error: Option<String> = nav_res
             .get("errorText")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+        let loader_id: Option<String> = nav_res
+            .get("loaderId")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(String::from);
@@ -134,7 +154,25 @@ impl Page {
             // launched with (the real lane runs the person's own Chrome).
             let blade_proxy = !crate::realbrowser::real_lane()
                 && matches!(crate::browser::proxy::env_blade_proxy(), Ok(Some(_)));
-            if let Some(msg) = error_page_failure(&target, err, frame, blade_proxy) {
+            // For HTTP response code failures (empty-body 4xx/5xx), wait
+            // briefly for the network tracker task to drain the preceding
+            // Network.responseReceived event if it hasn't landed yet.
+            let mut doc_resp = self.doc_response_for(loader_id.as_deref());
+            if err.contains("ERR_HTTP_RESPONSE_CODE_FAILURE") && doc_resp.is_none() {
+                for _ in 0..12 {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    doc_resp = self.doc_response_for(loader_id.as_deref());
+                    if doc_resp.is_some() {
+                        break;
+                    }
+                }
+                if doc_resp.is_none() {
+                    doc_resp = self.doc_response_from_net_log(&target);
+                }
+            }
+            if let Some(msg) =
+                error_page_failure(&target, err, frame, blade_proxy, doc_resp.as_ref())
+            {
                 // Recapture so the error's page state is the tab's real
                 // state (Chrome's error page), not the page we left.
                 let _ = wait_for_load(&self.cdp, Duration::from_secs(3)).await;
@@ -145,40 +183,48 @@ impl Page {
         wait_for_load(&self.cdp, Duration::from_secs(10)).await?;
         _t("load");
         let _settle_t = std::time::Instant::now();
-        wait_for_settle_with_network(
+        let settle_report = perception::wait_for_settle_adaptive(
             &self.cdp,
             Duration::from_millis(settle_cap),
             Some(&self.in_flight),
+            is_chirpy,
         )
         .await?;
-        // Bounded post-drain re-quiet: a late fetch resolving after the
-        // network plateau mounts its content a moment later; this catches
-        // that mount without taxing interactions (nav-only).
-        let _ = re_settle(&self.cdp).await;
+        // Bounded post-drain re-quiet: only needed when requests actually
+        // completed during the network window (or DOM settle hit its cap) so a
+        // late fetch mount is caught without taxing already-quiet or pure
+        // persistent-connection pages.
+        if settle_report.needs_re_settle {
+            let _ = re_settle(&self.cdp).await;
+        }
         _t("settle");
         // Knowledge: learn this domain's real settle duration (only when it
-        // finished early — a cap timeout is not a settle sample).
+        // finished early — a cap timeout is not a settle sample) and whether
+        // its network drain plateaued on persistent background connections.
         if !domain.is_empty() {
             let elapsed = _settle_t.elapsed().as_millis() as u64;
-            if elapsed + 150 < settle_cap {
-                if let Some(kb) = self.knowledge.as_ref() {
-                    if let Ok(mut kb) = kb.lock() {
+            if let Some(kb) = self.knowledge.as_ref() {
+                if let Ok(mut kb) = kb.lock() {
+                    if elapsed + 150 < settle_cap {
                         kb.update_timing(&domain, elapsed);
                     }
+                    kb.record_net_drain(&domain, settle_report.net_plateaued);
                 }
             }
         }
         // M4+M6: Check for consent banners and block pages after navigation.
-        // Knowledge-base integration: try stored consent selector first,
-        // learn from successful dismissals, record the visit.
+        // Knowledge-base integration: fused single-round-trip stored selector
+        // + fallback ladder, downgrading stale stored selectors when missed.
         let stored_consent = self
             .knowledge
             .as_ref()
             .and_then(|kb| kb.lock().ok())
             .and_then(|kb| kb.get_consent(&domain).map(|c| c.selector.clone()));
-        let consent = dismiss_consent_with_stored(&self.cdp, stored_consent.as_deref())
-            .await
-            .unwrap_or(None);
+        let consent_outcome =
+            perception::dismiss_consent_detailed(&self.cdp, stored_consent.as_deref())
+                .await
+                .unwrap_or_default();
+        let consent = consent_outcome.matched;
         let blocked = detect_block(&self.cdp).await.unwrap_or(None);
         // JS challenge handling: many anti-bot systems (Reddit, Cloudflare)
         // serve a JS challenge page that a real browser solves automatically.
@@ -191,12 +237,6 @@ impl Page {
         // walls never do (waiting there only added 5s latency to a final verdict).
         // Knowledge: heavier vendors get a longer self-solve window (learned
         // per domain, raised by every real block we hit there).
-        let domain_risk = self
-            .knowledge
-            .as_ref()
-            .and_then(|kb| kb.lock().ok())
-            .map(|kb| kb.get_bot_risk(&domain))
-            .unwrap_or_default();
         let challenge_polls: u32 = if domain_risk >= crate::knowledge::BotRiskLevel::Heavy {
             16
         } else {
@@ -361,27 +401,41 @@ impl Page {
             other => other.map(String::from),
         };
         // Knowledge: persist what this domain does to us — a real block wall
-        // counts in stats and raises the domain's risk level; a solved JS
-        // challenge marks the domain as challenge-serving (medium).
+        // counts in stats and raises risk (resetting clean streak); a solved JS
+        // challenge records the solve and marks medium risk; a clean load feeds
+        // the gradual decay streak so one-time cold-profile walls recover.
         if !domain.is_empty() {
             if let Some(kb) = self.knowledge.as_ref() {
                 if let Ok(mut kb) = kb.lock() {
                     if let Some(ref bt) = blocked {
                         kb.record_block_detected();
-                        kb.raise_bot_risk(&domain, crate::knowledge::vendor_risk(bt));
+                        kb.record_block(&domain, crate::knowledge::vendor_risk(bt));
                     } else if challenge_seen {
-                        kb.raise_bot_risk(&domain, crate::knowledge::BotRiskLevel::Medium);
+                        kb.record_challenge_solved();
+                        kb.record_block(&domain, crate::knowledge::BotRiskLevel::Medium);
+                    } else {
+                        kb.record_clean_visit(&domain);
                     }
+                    self.current_domain_risk = kb.get_bot_risk(&domain);
                 }
             }
         }
         // Learn from successful consent dismissal (only specific selectors, not "generic").
+        // If a stored selector missed and the generic pass had to dismiss the live
+        // banner instead, downgrade the stale stored selector's confidence.
         if let Some(ref result) = consent {
-            if result != "generic" && !result.is_empty() && !domain.is_empty() {
+            if !domain.is_empty() {
                 if let Some(kb) = self.knowledge.as_ref() {
                     if let Ok(mut kb) = kb.lock() {
-                        kb.learn_consent_result(&domain, result);
-                        kb.record_consent_dismissed();
+                        if result == "generic" {
+                            if consent_outcome.stored_missed {
+                                kb.downgrade_consent(&domain);
+                            }
+                            kb.record_consent_dismissed();
+                        } else if !result.is_empty() {
+                            kb.learn_consent_result(&domain, result);
+                            kb.record_consent_dismissed();
+                        }
                     }
                 }
             }
@@ -425,6 +479,14 @@ impl Page {
         // agent trusts results that never had the filter applied. Observation
         // only — it names what is missing, never why.
         if let Ok(delta) = &r {
+            // Surface HTTP 4xx/5xx notices for THIS navigation even when
+            // re-navigating to the same URL (`delta.navigated == false`, e.g.
+            // reloading a rate-limited Reddit thread that returned HTTP 429).
+            if let Some(doc) = self.doc_response().filter(|d| d.status >= 400) {
+                if let Ok(mut a) = self.ambient.lock() {
+                    a.push(doc.ambient_note(self.lpm.url().starts_with("chrome-error://")));
+                }
+            }
             if delta.navigated {
                 if let Some(note) = nav_params_note(url, self.lpm.url()) {
                     if let Ok(mut a) = self.ambient.lock() {
@@ -434,6 +496,37 @@ impl Page {
             }
         }
         r
+    }
+
+    /// Look up the latest main-frame Document response, preferring a match on
+    /// `loader_id` when supplied so an unrelated prior response is never used.
+    fn doc_response_for(&self, loader_id: Option<&str>) -> Option<DocResponse> {
+        let doc = self.doc_response()?;
+        if doc.status <= 0 {
+            return None;
+        }
+        if let Some(lid) = loader_id {
+            if !doc.request_id.is_empty() && doc.request_id != lid {
+                return None;
+            }
+        }
+        Some(doc)
+    }
+
+    /// Fallback lookup in the completed/failed network ring when
+    /// `doc_response` missed the response event.
+    fn doc_response_from_net_log(&self, target: &str) -> Option<DocResponse> {
+        let log = self.network_log();
+        log.into_iter()
+            .rev()
+            .find(|e| e.status >= 400 && (e.url == target || e.error.is_some()))
+            .map(|e| DocResponse {
+                request_id: String::new(),
+                url: e.url,
+                status: e.status,
+                status_text: String::new(),
+                retry_after: None,
+            })
     }
 
     /// S11: apply per-domain stealth settings from ~/.blade/profiles.json.
@@ -451,11 +544,7 @@ impl Page {
             return;
         }
         let path = crate::platform::blade_dir().join("profiles.json");
-        let profiles: std::collections::HashMap<String, DomainProfile> =
-            std::fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
+        let profiles = load_domain_profiles_cached(&path);
         // Every field resolves for EVERY domain: the profile's value, else the
         // session baseline (BLADE_TZ / BLADE_LOCALE). Applying only what a
         // profile set left the previous domain's tz/locale on every later
@@ -603,11 +692,14 @@ impl Emulation {
 /// place of the target, or None when a real document is showing.
 /// `blade_proxy`: the browser runs behind BLADE_PROXY (names the recovery
 /// path for a proxy/tunnel failure).
+/// `doc_resp`: the main-frame Document HTTP response (status, reason,
+/// `Retry-After`) when the server replied with an HTTP error status.
 fn error_page_failure(
     target: &str,
     err: &str,
     frame: Option<&Value>,
     blade_proxy: bool,
+    doc_resp: Option<&DocResponse>,
 ) -> Option<String> {
     let frame = frame?;
     let unreachable = frame
@@ -620,6 +712,19 @@ fn error_page_failure(
         .is_some_and(|u| u.starts_with("chrome-error://"));
     if !(unreachable || error_doc) {
         return None;
+    }
+    if err.contains("ERR_HTTP_RESPONSE_CODE_FAILURE") {
+        if let Some(doc) = doc_resp.filter(|d| d.status >= 400) {
+            let guidance = doc
+                .guidance()
+                .map(|g| format!(" — {g}"))
+                .unwrap_or_default();
+            return Some(format!(
+                "navigation to {target} failed: HTTP {}{} [{err}]{guidance} (the tab shows Chrome's error page, not the site; the server answered with an HTTP error status and an empty body)",
+                doc.label(),
+                doc.retry_suffix(),
+            ));
+        }
     }
     let hint = if err.contains("PROXY") || err.contains("TUNNEL") {
         if blade_proxy {
@@ -640,10 +745,50 @@ fn error_page_failure(
 }
 
 /// S11: per-domain stealth settings stored in ~/.blade/profiles.json.
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Default)]
 struct DomainProfile {
     tz: Option<String>,
     locale: Option<String>,
+}
+
+type ProfilesCacheKey = (std::path::PathBuf, Option<(u64, u64)>);
+type ProfilesMap = std::collections::HashMap<String, DomainProfile>;
+
+/// Mtime+size cached loader for `~/.blade/profiles.json`: avoids blocking
+/// disk read + JSON parse on every navigation while reflecting edits instantly.
+fn load_domain_profiles_cached(path: &std::path::Path) -> ProfilesMap {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(ProfilesCacheKey, ProfilesMap)>>> =
+        std::sync::OnceLock::new();
+    let stamp = std::fs::metadata(path).ok().map(|m| {
+        let mtime = m
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        (mtime, m.len())
+    });
+    let key = (path.to_path_buf(), stamp);
+    let cell = CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(guard) = cell.lock() {
+        if let Some((cached_key, map)) = guard.as_ref() {
+            if *cached_key == key {
+                return map.clone();
+            }
+        }
+    }
+    let parsed: ProfilesMap = if stamp.is_some() {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        ProfilesMap::new()
+    };
+    if let Ok(mut guard) = cell.lock() {
+        *guard = Some((key, parsed.clone()));
+    }
+    parsed
 }
 
 /// Extract the registrable domain from a URL for profile lookup.
@@ -762,7 +907,7 @@ async fn probe_click_point(cdp: &CdpSession) -> Option<(f64, f64)> {
 
 /// Get the current page URL via CDP. Used by JS challenge detection
 /// to detect redirects after a challenge page is served.
-async fn eval_location_href(cdp: &CdpSession) -> String {
+pub(super) async fn eval_location_href(cdp: &CdpSession) -> String {
     cdp.send(
         "Runtime.evaluate",
         Some(json!({
@@ -1092,6 +1237,7 @@ mod tests {
             "net::ERR_UNSAFE_PORT",
             Some(&error_page),
             false,
+            None,
         )
         .expect("Chrome's error page must fail the navigation");
         assert!(
@@ -1106,6 +1252,7 @@ mod tests {
             "net::ERR_PROXY_CONNECTION_FAILED",
             Some(&url_only),
             true,
+            None,
         )
         .expect("error document by url");
         assert!(
@@ -1119,6 +1266,7 @@ mod tests {
             "net::ERR_TUNNEL_CONNECTION_FAILED",
             Some(&url_only),
             false,
+            None,
         )
         .expect("error document by url");
         assert!(
@@ -1131,9 +1279,51 @@ mod tests {
             "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
             Some(&url_only),
             false,
+            None,
         )
         .expect("error document by url");
         assert!(msg.contains("HTTP error status"), "{msg}");
+        // Issue #97: when the document's HTTP status was observed, surface the
+        // exact code, reason (including HTTP/2 empty statusText fallback),
+        // Retry-After header, and actionable hint directly in the error.
+        let doc_429 = crate::page::DocResponse {
+            request_id: "L1".into(),
+            url: "https://www.reddit.com/r/rust/comments/abc/".into(),
+            status: 429,
+            status_text: String::new(), // HTTP/2 omits reason phrase
+            retry_after: Some("45".into()),
+        };
+        let msg = error_page_failure(
+            "https://www.reddit.com/r/rust/comments/abc/",
+            "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
+            Some(&url_only),
+            false,
+            Some(&doc_429),
+        )
+        .expect("HTTP 429 error document");
+        assert!(msg.contains("HTTP 429 Too Many Requests"), "{msg}");
+        assert!(msg.contains("retry-after: 45s"), "{msg}");
+        assert!(msg.contains("rate limited"), "{msg}");
+        assert!(msg.contains("net::ERR_HTTP_RESPONSE_CODE_FAILURE"), "{msg}");
+
+        let doc_503 = crate::page::DocResponse {
+            request_id: "L2".into(),
+            url: "https://site.test/".into(),
+            status: 503,
+            status_text: "Service Unavailable".into(),
+            retry_after: None,
+        };
+        let msg = error_page_failure(
+            "https://site.test/",
+            "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
+            Some(&url_only),
+            false,
+            Some(&doc_503),
+        )
+        .expect("HTTP 503 error document");
+        assert!(msg.contains("HTTP 503 Service Unavailable"), "{msg}");
+        assert!(msg.contains("server error"), "{msg}");
+
         // A page-side navigation that superseded ours committed a REAL
         // document: that is still a successful navigation.
         let real = json!({"id": "MAIN", "url": "http://127.0.0.1:8080/next"});
@@ -1142,13 +1332,14 @@ mod tests {
                 "http://127.0.0.1:8080/a",
                 "net::ERR_ABORTED",
                 Some(&real),
-                false
+                false,
+                None,
             ),
             None
         );
         // Frame tree unavailable: no claim either way.
         assert_eq!(
-            error_page_failure("http://h/", "net::ERR_ABORTED", None, false),
+            error_page_failure("http://h/", "net::ERR_ABORTED", None, false, None),
             None
         );
     }

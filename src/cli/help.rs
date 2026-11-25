@@ -19,8 +19,8 @@ Bladebro CLI — drive a real, stealthy browser from shell commands.
 SETUP: none. The first command auto-starts a background daemon (one Chrome for all later commands). --no-daemon forces isolated one-shot runs; 'bladebro stop' cleans up.
 DISCOVERY: 'bladebro help' (human) — 'bladebro help --json' (this document) — 'bladebro help <command>' for one command in depth.
 OUTPUT CONTRACT: --json on any command gives ONE JSON object on stdout: {\"ok\":bool,\"is_error\":bool,\"text\":string} (+ \"image_path\" for vision — the PNG is saved to a file, never inlined base64). Exit codes: 0 = success; 1 = the command ran but failed (read 'text' — it carries current page state so you can recover without an extra call); 2 = usage error (bad command/flag/argument — fix the command).
-WORKFLOW: 1) nav <url> gives refs + a content preview (often enough to act). 2) Address by text when you can: 'act click \"Sign in\"' needs no see; refs self-heal; labels work for form fields. 3) On list/search/product/profile pages, 'see extract auto' FIRST: one call returns structured items (site adapters add fields on Reddit/GitHub/product pages; on Reddit POST pages it returns the full comment tree — all replies, thread order, complete flag). 4) Collapse round-trips: 'act fill' for whole forms; 'act batch' / 'run' for sequences (if/while branching; {\"action\":\"see\"} steps read inline). 5) Big JSON payloads: @file or - (stdin) — no shell-quoting games. 6) Keep budgets default; big outputs are written to files with an inline preview.
-RELIABILITY: real Chromium with the full stealth stack and human-like input; per-domain knowledge (settle timing, block config, bot risk) compounds across runs. Errors are loud, never silent: unknown flags and missing values fail with exit 2; a failed action returns the page state for recovery. Vision is the last resort — refs and deltas are cheaper.
+WORKFLOW: 1) Read-only URL? 'see content <url>' or 'see extract auto <url> --format json --block images,fonts' navigates and reads in ONE call. 2) Interactive flow? 'nav <url>' gives refs + a content preview; act by ref/text/label/selector ('act click \"Sign in\"' needs no see; refs self-heal within a page). 3) On list/search/product/profile pages, 'see extract auto' FIRST: one call returns structured items (site adapters cover Reddit/X/GitHub/HN/products; on Reddit POST pages it returns the full comment tree). 4) Collapse round-trips: 'act fill' for whole forms (supports nth/role per field); 'act batch' for linear sequences; 'run' for if/while branching or --format json step receipts. 5) Big JSON payloads: @file or - (stdin) — no shell-quoting games. 6) Keep budgets default; large outputs offload to artifact files read back via 'see --artifact <path>'.
+RELIABILITY: real Chromium with the full stealth stack and human-like input; per-domain knowledge (settle timing, block config, bot risk) compounds across runs. Errors are loud, never silent: unknown flags and missing values fail with exit 2; navigation errors report exact HTTP status codes (e.g. HTTP 429 + Retry-After); failed actions return current page state for recovery. Vision is the last resort — refs and deltas are cheaper.
 ";
 
 /// The human manual — printed by `bladebro help` / `-h` / bare `bladebro`.
@@ -55,11 +55,12 @@ COMMANDS
   daemon | stop                   manage the persistent Chrome session
   mcp                             MCP server on stdio — add to your agent's client config
   rb on|off [sub]                 real-browser lane: drive YOUR browser (see 'help rb')
+  audio [on|off|status]           browser sound output (muted by default; opt-in with 'audio on')
   hermes on|off|status             switch Hermes' browser to Bladebro; reversible MCP setup
   headless on|off|status          hide/show the managed browser for a suite (see 'help headless')
   audit                           stealth audit — vector suite + boot self-check + drift stamp
   update | -u [--check] [--force]  self-update; --rollback restores the previous binary
-  doctor | -doc                   system diagnostics (13 checks)
+  doctor | -doc                   system diagnostics dossier (OS, browser, display, vault, release)
   -v | --version                  version + install method + update status
   help [command]                  this manual; 'help --json' for the machine version
 
@@ -92,6 +93,7 @@ ENVIRONMENT
   BLADE_CMD_TIMEOUT    client wait for a daemon response, seconds (default 300)
   BLADE_IDLE_TIMEOUT   daemon idle before Chrome shuts down, seconds (default 600)
   BLADE_NO_COMPRESS=1  disable response compression
+  BLADE_NO_ACTIVATE=1  never raise the browser window on input, navigation, or tab ops
   BLADE_LANE           real|agent — force the real-browser lane for this process
   BLADE_RB_DEBUG=1     real lane: surface the browser's own stderr on launch failures
   BLADE_HEADLESS       1|0: force the managed browser hidden/visible (beats project/user config)
@@ -122,6 +124,9 @@ pub fn suggest_command(cmd: &str) -> Option<&'static str> {
         ("browsers", "rb use"),
         ("lane", "rb"),
         ("real", "rb"),
+        ("mute", "audio"),
+        ("unmute", "audio"),
+        ("sound", "audio"),
     ];
     let lower = cmd.to_ascii_lowercase();
     if let Some((_, target)) = ALIASES.iter().find(|(a, _)| *a == lower) {
@@ -139,6 +144,7 @@ pub fn suggest_command(cmd: &str) -> Option<&'static str> {
         "help",
         "rb",
         "realbrowser",
+        "audio",
         "hermes",
         "headless",
         "mcp",
@@ -213,13 +219,15 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "extract": "auto | links | forms | json (json needs --template)"
             },
             "flags": {
+                "--block": "with url: images,fonts,media,trackers to skip during load",
                 "--filter": "role filter (model mode)",
-                "--find": "search by text → refs",
+                "--find": "search by text → refs (supports --format json)",
                 "--scope": "ref id — read one element's subtree",
                 "--content": "include page text in model mode",
                 "--budget": "max chars (default 8000)",
                 "--limit": "max extract items (default 50; Reddit post comments: all up to 1000 unless set)",
-                "--logs": "console | network",
+                "--logs": "console | network | xhr (all support --format json)",
+                "--sort": "Reddit post auto-extract: confidence|top|new|controversial|old|qa",
                 "--template": "JSON or @file — for extract=json",
                 "--artifact": "read offloaded text chunks (concatenate data then parse); --items pages JSON rows; offset/limit count chars or rows",
                 "--preview": "auto-extract container/schema without rows",
@@ -229,7 +237,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--min-target": "audit: minimum touch target in CSS px (default 24, WCAG 2.2 SC 2.5.8)",
                 "--links": "audit link check: same-origin (default) | all | off",
                 "--max-links": "audit: links checked (default 20, max 200)",
-                "--format": "text (default) | json — pure JSON output for extract/artifact reads ({offset,next_offset,data} pages); audit: structured report"
+                "--format": "text (default) | json — pure JSON output for extract, artifact, changes, find, and logs reads; audit: structured report"
             },
             "examples": [
                 "bladebro see model",
@@ -241,7 +249,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "bladebro see audit",
                 "bladebro see audit --full --format json"
             ],
-            "notes": ["extract=auto is the first move on list/search/product/profile pages — one call returns structured items; on Reddit post pages it attempts the full comment tree; complete/partial disclose API denial and missing replies", "extract=auto envelope: container,count,items + page_total/partial/paged when the page claims more results than the DOM holds, sponsored (paid placements), duplicates_removed, redirects_unwrapped/redirects_unresolved — each explained by a note line"]
+            "notes": ["extract=auto is the first move on list/search/product/profile pages — one call returns structured items; on Reddit post pages it expands the comment tree via HTML partials and deep continuation links (no .json API); complete/partial disclose rate limits, blocks, and unexpanded replies", "extract=auto envelope: container,count,items + page_total/partial/paged when the page claims more results than the DOM holds, sponsored (paid placements), duplicates_removed, redirects_unwrapped/redirects_unresolved — each explained by a note line"]
         }),
         "act" => json!({
             "usage": "bladebro act <action> [target] [value] [--flags]",
@@ -310,6 +318,7 @@ fn command_help_json(cmd: &str) -> Option<Value> {
                 "--http-only": "httpOnly cookie",
                 "--same-site": "Strict | Lax | None",
                 "--target-id": "close-tab / switch-tab id",
+                "--slim": "open-tab / switch-tab / close-tab: tab ID only, omit page model",
                 "--clear": "block: stop blocking",
                 "--mode": "compress: on | off | status"
             },
@@ -360,8 +369,23 @@ fn command_help_json(cmd: &str) -> Option<Value> {
             "examples": ["bladebro help --json", "bladebro help act"],
             "notes": ["the single self-teaching surface — fetch 'help --json' once"]
         }),
+        "audio" => json!({
+            "usage": "bladebro audio [on|off|status] [--json]",
+            "tool": null,
+            "examples": [
+                "bladebro audio",
+                "bladebro audio on",
+                "bladebro audio off",
+                "bladebro audio status --json"
+            ],
+            "notes": [
+                "browser audio is muted by default (`--mute-audio`) on both the isolated agent browser and owned real-browser launches so media/video pages never play unexpected sound",
+                "opt in to audible playback with `bladebro audio on` (persisted) or `BLADE_AUDIO=1` (per-process override); `bladebro audio off` restores silent mode",
+                "does not alter externally attached browsers (`rb mode attach` / `--port`), and does not affect Blink media APIs or WebAudio fingerprinting"
+            ]
+        }),
         "rb" | "realbrowser" => json!({
-            "usage": "bladebro rb [on|off|status|mode <m>|use [id|--binary <path|auto>]|profile [key|auto]|visible on|off|idle-hum on|off|idle-shutdown on|off|refresh|forget|pause|resume]",
+            "usage": "bladebro rb [on|off|status|mode <m>|use [id|--binary <path|auto>]|profile [key|auto]|visible on|off|idle-hum on|off|idle-shutdown on|off|audio on|off|status|refresh|forget|pause|resume]",
             "tool": null,
             "examples": [
                 "bladebro rb on",
@@ -372,10 +396,10 @@ fn command_help_json(cmd: &str) -> Option<Value> {
             ],
             "notes": [
                 "real-browser lane: the agent drives YOUR Chromium-family browser (your profile data, your display) with zero page patches; the driver-side stack (perception, LPM, refs, adapters, token efficiency, biometrics) is unchanged",
-                "mechanisms: clone (default — imported copy; your browser may stay open), profile (your live profile — close the browser first), attach (a running browser exposing a debug endpoint, incl. Chrome 144+ chrome://inspect#remote-debugging); auto = attach if one is live, else clone",
+                "mechanisms: clone (default — imported copy that auto-refreshes whenever your source profile has newer logins/state; your browser may stay open), profile (your live profile — close the browser first), attach (a running browser exposing a debug endpoint, incl. fixed-port Linux discovery and Chrome 144+ chrome://inspect#remote-debugging); auto = attach if a live endpoint is reachable, else clone",
                 "attach caveat (measured, Chrome 151): an ephemeral `--remote-debugging-port=0` arm — and Chrome's approval flow — makes Chrome itself report navigator.webdriver=true; arm a FIXED port for a false reading (the lane never masks Chrome's own value)",
-                "every surface picks a switch up at its next action — the CLI daemon restarts immediately; a running MCP session switches its browser on the next call (owned browsers relaunch; an attached browser is detached, not closed)",
-                "`rb pause` refuses input, navigation, history, downloads, collecting and tab operations (reads, waits and eval stay available); `rb forget` wipes the imported copy; `rb refresh` re-imports; `rb use --binary` supports custom/nix/flatpak-wrapper binaries"
+                "every surface picks a switch or refreshed clone up at its next action — the CLI daemon restarts immediately; a running MCP session switches its browser on the next call (owned browsers relaunch; an attached browser is detached, not closed)",
+                "`rb pause` refuses input, navigation, history, downloads, collecting and tab operations (reads, waits and eval stay available); `rb forget` wipes the imported copy; `rb refresh` forces a fresh re-import; `rb use --binary` supports custom/nix/AppImage/Flatpak binaries"
             ]
         }),
         "hermes" => json!({
@@ -518,6 +542,7 @@ pub fn help_json(cmd: Option<&str>) -> Result<String> {
             "BLADE_CMD_TIMEOUT": "client wait for a daemon response, seconds (default 300)",
             "BLADE_IDLE_TIMEOUT": "daemon idle before Chrome shuts down, seconds (default 600)",
             "BLADE_NO_COMPRESS": "set 1 to disable response compression",
+            "BLADE_NO_ACTIVATE": "set 1 to keep Bladebro from raising the browser window on input, navigation, or tab ops (open-tab opens in the background)",
             "BLADE_LANE": "real|agent — force the real-browser lane for this process",
             "BLADE_RB_DEBUG": "real lane: set 1 to surface the browser's own stderr on launch failures",
             "BLADE_HEADLESS": "1|0 (on/off/true/false/yes/no): force the managed browser hidden/visible; beats .bladebro.json and launch.json",
@@ -607,7 +632,8 @@ FLAGS
   --full              audit: every finding (--limit N: top N per kind)
   --min-target <px>   audit: touch target minimum (default 24)
   --links same-origin|all|off   audit link check scope; --max-links <N> (default 20, max 200)
-  --format text|json  json: pure JSON out for extract/artifact/eval reads (and audit)
+  --format text|json  json: pure JSON out for extract, artifact, changes, find, and logs reads (and audit)
+  --block <classes>   with url: skip images,fonts,media,trackers during load
   --url <url>         navigate first (or pass the URL positionally)
 
 EXAMPLES
@@ -797,6 +823,25 @@ data dir; socket + pid file are 0600). Idle timeout: BLADE_IDLE_TIMEOUT
 seconds (default 600), then Chrome shuts down; the next command relaunches it.
 "#
         }
+        "audio" => {
+            r#"bladebro audio — browser sound output (muted by default)
+
+USAGE
+  bladebro audio                  show current audio state (same as `audio status`)
+  bladebro audio on               opt in to audible browser playback
+  bladebro audio off              mute browser audio again (default)
+  bladebro audio status [--json]  show effective audio state + env override
+
+Browser sound is muted by default (`--mute-audio`) on both the isolated agent
+browser and owned real-browser launches so YouTube, video ads, and media
+players never play unexpected sound while an agent browses.
+
+Opt in persistently with `bladebro audio on`, or for one run with
+`BLADE_AUDIO=1` (`BLADE_AUDIO=0` forces muted). The CLI daemon restarts
+immediately and running MCP sessions pick up the change on their next call.
+Externally attached browsers (`rb mode attach` / `--port`) are untouched.
+"#
+        }
         "rb" | "realbrowser" => {
             r#"bladebro rb — the real-browser lane
 
@@ -806,8 +851,8 @@ USAGE
   bladebro rb mode <m>            auto | clone | profile | attach
   bladebro rb use [id]            list / choose the browser
   bladebro rb use --binary <path|auto>
-                                  custom browser binary (nix wrapper, flatpak
-                                  launcher script, dev build)
+                                  custom browser binary (nix wrapper, AppImage,
+                                  flatpak export, dev build)
   bladebro rb profile [key]       list / choose the profile (an absolute path
                                   to a profile dir also works; `auto` resets)
   bladebro rb visible on|off      real window (default) vs --headless=new
@@ -815,6 +860,8 @@ USAGE
   bladebro rb idle-shutdown on|off
                                   may the idle timeout close the real browser?
                                   (default off — it is the user's)
+  bladebro rb audio [on|off|status]
+                                  alias for `bladebro audio` (muted by default)
   bladebro rb refresh             re-import the profile into the clone
   bladebro rb forget              wipe the imported copy
   bladebro rb pause | resume      hand the browser to yourself / back
@@ -828,12 +875,13 @@ page-injection layer switches OFF entirely (a real environment needs no
 masks; truth has no tells to catch). Everything driver-side still runs:
 perception, refs, adapters, token efficiency, biometrics + idle hum.
 
-Mechanisms: clone (default — imports your profile once; your browser may
+Mechanisms: clone (default — imports your profile and automatically refreshes
+whenever your real browser has newer logins/cookies/storage; your browser may
 stay open; the source is never written to), profile (launches on your live
 profile — close the browser first; branded Google Chrome 136+ refuses CDP
 on the default dir, so use clone/attach there), attach (drives a running
-browser that already exposes a debug endpoint — classic
---remote-debugging-port, or Chrome 144+ chrome://inspect#remote-debugging
+browser that already exposes a debug endpoint — fixed-port Linux discovery,
+--remote-debugging-port=0, or Chrome 144+ chrome://inspect#remote-debugging
 with per-connection approval). Attach caveat (measured, Chrome 151): an
 ephemeral `--remote-debugging-port=0` arm — and the approval flow — makes
 Chrome itself report navigator.webdriver=true on every page; arm a FIXED

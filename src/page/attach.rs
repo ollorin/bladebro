@@ -41,26 +41,30 @@ impl Page {
         }
         #[allow(unused_assignments)]
         let mut worker_task: Option<tokio::task::JoinHandle<()>> = None;
-        cdp.enable("Page").await?;
+        // Pipeline the three core domain enables concurrently (saves two CDP
+        // round-trips on every attach and tab switch).
         // DO NOT enable Runtime — DataDome's detection leverages the fact that
         // `Runtime.enable` changes console buffering behavior, making
         // `console.log(new Error())` trigger serialization (and thus getter
         // calls on Error.stack) only when CDP is connected. We can still use
         // `Runtime.evaluate` without enabling the domain — evaluate is a
         // standalone command, enable only turns on event notifications.
-        cdp.enable("Network").await?;
-        cdp.enable("DOM").await?;
+        tokio::try_join!(cdp.enable("Page"), cdp.enable("Network"), cdp.enable("DOM"),)?;
         // UA override: only needed in headless mode where the UA contains
         // "HeadlessChrome". In headful mode (Xvfb or native), the real UA
         // is already correct. Read the real UA + platform, and if headless,
         // replace just "HeadlessChrome" with "Chrome" — preserving the real
         // Chrome version and OS. This is a CDP-level override, not JS.
         let ua_info = cdp.send("Runtime.evaluate", Some(serde_json::json!({
-            "expression": "JSON.stringify({ua:navigator.userAgent,plt:navigator.platform,wd:navigator.webdriver})",
+            "expression": "JSON.stringify({ua:navigator.userAgent,plt:navigator.platform,wd:navigator.webdriver,href:location.href})",
             "returnByValue": true,
         }))).await.ok()
             .and_then(|r| r.get("result").and_then(|r| r.get("value")).and_then(|v| v.as_str()).map(String::from))
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+        let initial_href = ua_info
+            .as_ref()
+            .and_then(|v| v.get("href").and_then(|h| h.as_str()))
+            .unwrap_or("");
 
         // Real-browser lane honesty probe (measured, Chrome 151.0.7922.108):
         // a browser armed with an EPHEMERAL `--remote-debugging-port=0` (or
@@ -212,6 +216,18 @@ impl Page {
             super::navigate::Emulation::session()
         };
         wait_for_load(&cdp, Duration::from_secs(10)).await?;
+        // Resolve the main frame id BEFORE spawning background tasks so a
+        // fallible `Page.getFrameTree` cannot leak worker/dialog/download
+        // tasks and their CdpClient clones on early error return.
+        let main_frame = cdp
+            .send("Page.getFrameTree", None)
+            .await?
+            .pointer("/frameTree/frame/id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        cdp.set_main_frame(main_frame.clone());
+        let intercept_main_frame = main_frame.clone();
 
         // D22: Worker GL spoof — inject the GL spoof into Worker contexts too.
         // The main page GL spoof (via Page.addScriptToEvaluateOnNewDocument)
@@ -495,21 +511,15 @@ impl Page {
         let route = Arc::new(RouteEpoch::new());
         let net_log: Arc<Mutex<std::collections::VecDeque<NetEntry>>> =
             Arc::new(Mutex::new(std::collections::VecDeque::new()));
+        let doc_response: Arc<Mutex<Option<DocResponse>>> = Arc::new(Mutex::new(None));
         let xhr_log: Arc<Mutex<std::collections::VecDeque<XhrEntry>>> =
             Arc::new(Mutex::new(std::collections::VecDeque::new()));
         let cdp_for_net = cdp.clone();
         let net_counter = in_flight.clone();
         let net_log_t = net_log.clone();
+        let doc_response_t = doc_response.clone();
         let xhr_log_t = xhr_log.clone();
         let route_t = route.clone();
-        let main_frame = cdp
-            .send("Page.getFrameTree", None)
-            .await?
-            .pointer("/frameTree/frame/id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let intercept_main_frame = main_frame.clone();
         let network_task = tokio::spawn(async move {
             use std::collections::HashMap;
             let mut rx = cdp_for_net.subscribe();
@@ -523,6 +533,8 @@ impl Page {
                 std::collections::HashMap::new();
             // Pending request metadata for the V8 net log.
             let mut pending: HashMap<String, (String, String, i64)> = HashMap::new();
+            // Active main-frame Document requestId for HTTP status/Retry-After tracking.
+            let mut doc_req_id: Option<String> = None;
             let mut last_sweep = std::time::Instant::now();
             let mut sweep_tick = tokio::time::interval(std::time::Duration::from_secs(1));
             loop {
@@ -544,15 +556,27 @@ impl Page {
                             .get("requestId")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+                        let req_url = ev
+                            .params
+                            .pointer("/request/url")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
                         if ty == "Document"
                             && ev.params.get("frameId").and_then(Value::as_str)
                                 == Some(main_frame.as_str())
+                            && !req_url.starts_with("chrome-error://")
                         {
                             if let Ok(mut log) = net_log_t.lock() {
                                 log.clear();
                             }
                             if let Ok(mut log) = xhr_log_t.lock() {
                                 log.clear();
+                            }
+                            if !id.is_empty() && doc_req_id.as_deref() != Some(id) {
+                                doc_req_id = Some(id.to_string());
+                                if let Ok(mut doc) = doc_response_t.lock() {
+                                    *doc = None;
+                                }
                             }
                             pending.clear();
                             open.clear();
@@ -627,15 +651,59 @@ impl Page {
                             pending.insert(id.to_string(), (method, url, 0));
                         }
                     }
+                    Some(Ok(ev)) if ev.method == "Network.responseReceivedExtraInfo" => {
+                        let id = ev
+                            .params
+                            .get("requestId")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        if !id.is_empty() && doc_req_id.as_deref() == Some(id) {
+                            let status = ev
+                                .params
+                                .get("statusCode")
+                                .and_then(Value::as_i64)
+                                .unwrap_or(0);
+                            if status > 0 {
+                                let retry_after =
+                                    super::logs::extract_retry_after(ev.params.get("headers"));
+                                if let Ok(mut doc) = doc_response_t.lock() {
+                                    match doc.as_mut() {
+                                        Some(existing)
+                                            if existing.request_id == id
+                                                && existing.status == status =>
+                                        {
+                                            if existing.retry_after.is_none() {
+                                                existing.retry_after = retry_after;
+                                            }
+                                        }
+                                        _ => {
+                                            *doc = Some(DocResponse {
+                                                request_id: id.to_string(),
+                                                url: String::new(),
+                                                status,
+                                                status_text: String::new(),
+                                                retry_after,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Some(Ok(ev)) if ev.method == "Network.responseReceived" => {
                         let id = ev
                             .params
                             .get("requestId")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        let status = ev
+                        let ty = ev.params.get("type").and_then(Value::as_str).unwrap_or("");
+                        let frame_id = ev
                             .params
-                            .get("response")
+                            .get("frameId")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        let resp = ev.params.get("response");
+                        let status = resp
                             .and_then(|r| r.get("status"))
                             .and_then(|s| s.as_i64())
                             .unwrap_or(0);
@@ -643,6 +711,35 @@ impl Page {
                             entry.2 = status;
                         }
                         if status > 0 {
+                            let resp_url = resp
+                                .and_then(|r| r.get("url"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            let is_main_doc = (ty == "Document" && frame_id == main_frame.as_str())
+                                || (!id.is_empty() && doc_req_id.as_deref() == Some(id));
+                            if is_main_doc && !resp_url.starts_with("chrome-error://") {
+                                let status_text = resp
+                                    .and_then(|r| r.get("statusText"))
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_string();
+                                let retry_after = super::logs::extract_retry_after(
+                                    resp.and_then(|r| r.get("headers")),
+                                );
+                                if let Ok(mut doc) = doc_response_t.lock() {
+                                    let prev_ra = doc
+                                        .as_ref()
+                                        .filter(|d| d.request_id == id && d.status == status)
+                                        .and_then(|d| d.retry_after.clone());
+                                    *doc = Some(DocResponse {
+                                        request_id: id.to_string(),
+                                        url: resp_url.to_string(),
+                                        status,
+                                        status_text,
+                                        retry_after: retry_after.or(prev_ra),
+                                    });
+                                }
+                            }
                             if let Ok(mut log) = xhr_log_t.lock() {
                                 if let Some(e) = log.iter_mut().rev().find(|e| e.id == id) {
                                     e.status = status;
@@ -744,8 +841,8 @@ impl Page {
                 // a legit resource still loading after that is a download, not
                 // a page-load blocker.
                 if last_sweep.elapsed().as_secs() >= 1 {
-                    let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(8);
-                    open.retain(|_, ts| *ts > cutoff);
+                    open.retain(|_, ts| ts.elapsed() < std::time::Duration::from_secs(8));
+                    pending.retain(|id, _| open.contains_key(id));
                     last_sweep = std::time::Instant::now();
                 }
                 net_counter.store(open.len(), std::sync::atomic::Ordering::Relaxed);
@@ -753,9 +850,20 @@ impl Page {
         });
 
         let lpm = LivePageModel::new();
-        // M4+M6: Check for consent banners and block pages after initial load.
-        let consent = dismiss_consent(&cdp).await.unwrap_or(None);
-        let blocked = detect_block(&cdp).await.unwrap_or(None);
+        // M4+M6: Check for consent banners and block pages after initial load,
+        // skipping blank/internal targets (`about:blank`, `chrome://`) where no
+        // consent wall or bot challenge can exist (saves 2 CDP round-trips +
+        // isolated-world creation on every fresh launch / new tab).
+        let is_web_page =
+            initial_href.starts_with("http://") || initial_href.starts_with("https://");
+        let (consent, blocked) = if is_web_page {
+            (
+                dismiss_consent(&cdp).await.unwrap_or(None),
+                detect_block(&cdp).await.unwrap_or(None),
+            )
+        } else {
+            (None, None)
+        };
         if let Some(ref fw) = consent {
             if let Ok(mut a) = ambient.lock() {
                 a.push(format!(
@@ -816,6 +924,7 @@ impl Page {
             in_flight,
             route,
             net_log,
+            doc_response,
             xhr_log,
             network_task: Some(network_task),
             ambient,
@@ -829,11 +938,12 @@ impl Page {
             emulation,
             intercept,
             intercept_task: Some(intercept_task),
+            block_from_knowledge: false,
+            current_domain_risk: crate::knowledge::BotRiskLevel::Unknown,
             downloads,
             download_task: Some(download_task),
             knowledge: None,
             last_mouse,
-            isolated_ctx: Arc::new(std::sync::Mutex::new(None)),
             act_count: std::sync::atomic::AtomicU32::new(0),
             compress_enabled: std::sync::atomic::AtomicBool::new(
                 std::env::var("BLADE_NO_COMPRESS").as_deref() != Ok("1"),

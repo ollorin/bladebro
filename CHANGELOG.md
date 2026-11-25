@@ -15,6 +15,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `act eval` object/array results are also returned structured: CLI `--json` adds `data` beside the unchanged `text`; MCP adds `structuredContent`. Strings and scalars are unchanged.
 - `docs/qa-usage.md` (recommended QA environment, viewport/audit commands, a three-widths `run`), and `help state` / `help` / `docs/recording-and-launch-config.md` list the full env and ffmpeg prerequisites for a recorded QA run. The `BLADE_RECORD` gate is unchanged.
 
+## [4.8.4] - 2026-11-24
+
+### Fixed
+- **Windows antivirus false-positive mitigation (#99)**: switched the published `windows-x64` release artifact in `.github/workflows/release.yml` from Linux MinGW/Zig cross-compilation (`x86_64-pc-windows-gnu`) to a native `windows-latest` MSVC build (`x86_64-pc-windows-msvc` with static CRT), embedded standard Win32 PE `VS_VERSION_INFO` metadata and an `asInvoker` application manifest via `build.rs` (verified in `gate.yml` and `release.yml`), and removed unnecessary `Login Data` / `Login Data For Account` / `Secure Preferences` password-vault references from real-browser clone freshness checks and copy diagnostics.
+- **`BLADE_NO_ACTIVATE=1` and macOS tab-path window raising (#100)**: routed `switch_tab` (`state switch-tab`, `state open-tab`, `state close-tab` auto-switch) and popup-click opener re-activation through `activate_if_needed()` instead of unconditional `Page.bringToFront`; passed `background: true` to `Target.createTarget` when `BLADE_NO_ACTIVATE=1` and disclosed suppressed focus in tab verdicts; added `BLADE_NO_ACTIVATE` to `DAEMON_SCOPED_ENV` so CLI daemons refuse silent setting drift; documented behavior in `docs/configuration.md` and `bladebro help`; and added mock-CDP regression tests.
+- **Launch, action, cookie, and CLI daemon reliability**: `LaunchGuard::drop` now calls `discard_unstarted()` instead of syncing a crashed/failed startup over the seasoned template; `sub_fires` recovers from `RecvError::Lagged` instead of triggering false dialog or navigation waits on `act click`; `Action::Click` and `handle_template_extract` now run the SPA `route.settle` guard before capturing; Reddit collapsed-composer `act type` updates `sig_frame` before post-settle `finalize_edit`; `Page::attach` fetches `Page.getFrameTree` before spawning background tasks and eliminates unchecked `Instant::now() - Duration` panics (also fixed in `ui/anim.rs`) while pruning stale `pending` network entries; `trusted_select_all` sends `Meta+A` + `selectAll` on macOS; `SetCookie` and `DeleteCookies` readback compare cookie domains case-insensitively; and CLI daemon dispatch wraps tool calls in `catch_unwind` so a handler panic never skips Chrome shutdown or login snapshots.
+
+### Performance
+- **Faster cold start, CDP I/O, perception, and session restore**: cached a shared `reqwest::Client` in `cdp::discovery` instead of rebuilding a rustls/Hyper client on every 50 ms launch poll and click; eliminated full-frame `String` copies in WebSocket and pipe CDP readers (with `Acquire`/`Release` closure ordering inside the pending lock); pipelined `Page`/`Network`/`DOM` domain enables concurrently in `Page::attach`; moved Linux `font_audit` (`fc-list`) off the synchronous launch path; fixed `spawn_session_chrome` to stop polling `set_work_area` after WM readiness instead of spinning up to 3 s; stamped launch-time GL checks to skip a redundant first-call WebGL re-probe and break immediately on closed transports; skipped spurious `wait_for_settle` round-trips when `Action::Wait` sets `settle_ms == 0` (including `network-idle`); removed full DOM `Value` cloning in `perception::capture` and O(n²) landmark scans in `LivePageModel`; and batched `localStorage` writes with O(N) cookie readback indexing in `restore_session`.
+
+### Changed
+- Updated `url` (`2.5.8` → `2.5.9`, #98) and `form_urlencoded` (`1.2.2` → `1.2.3`), and removed the unused `anyhow` dependency from `Cargo.toml`.
+
+## [4.8.3] - 2026-11-21
+
+### Changed
+- **Zero-`.json` Reddit adapter for threads and search**: completely removed Reddit `.json` API endpoints (`/comments/...json`, `/api/info.json`, `/search.json`) and the `loid` reload loop that triggered HTTP 403 network-security walls and `CDP error (-32000) Inspected target navigated or closed`. Post and comment extraction now reads `<shreddit-post>`, `<shreddit-comment>`, and `old.reddit.com` trees directly from the live DOM, then sequentially expands `<faceplate-partial src="/svc/shreddit/more-comments/...">` ("View more comments" / "N more replies") and deep `div.fold-more` (`?force-legacy-sct=1`) / `.deepthread` continuation links one request at a time with polite jitter and in-browser `DOMParser` parsing — never firing parallel bursts, never navigating the tab away, and preserving full DFS depth, `op`, and detached single-comment permalink roots. Search pages extract Shreddit SDUI (`search-post-unit`) and `old.reddit.com` results directly from the DOM and follow `/svc/shreddit/search` HTML partials sequentially.
+
+### Fixed
+- **Mid-redirect `CDP error (-32000) Inspected target navigated or closed` recovery**: `CdpSession::eval_isolated_with_timeout` now backs off briefly across up to 3 stale-context retries, and `run_auto_extract` waits for load/route settle and retries once when a short-URL redirect (such as `/r/<sub>/comments/<id>/` → canonical slug) lands mid-evaluation.
+- **HTTP 429 (`Retry-After`) propagation across Reddit expansion, same-URL redirects, and reloads**: Reddit HTML partial sweeps stop immediately on HTTP 429 or security walls without hammering, preserve all collected comments, and report exact `HTTP 429` + `Retry-After` headers and remaining unexpanded reply counts; `navigate` and `act reload` now also surface `http:` 4xx/5xx notices even when the final URL matches the previous page (`delta.navigated == false`).
+- **Reddit DOM & Markdown extraction bugs**: scoped `[slot="comment"]`, `faceplate-timeago`, and `time` lookups to each owning `<shreddit-comment>` so deleted parents never steal child comment text; fixed `u/[deleted]` double-prefixing, `null !== ''` `NaN` score/depth coercion, and promoted-post filtering in `reddit.js`/`auto_extract.js`; and fixed `markdown.js` to match `reddit.com` hostnames strictly, read post author from `shreddit-post` instead of the navbar user link, and skip `shreddit-ad-post` / `shreddit-comments-page-ad` blocks.
+
+## [4.8.2] - 2026-11-20
+
+### Added
+- **Muted-by-default browser audio with opt-in `bladebro audio [on|off|status]`**: both the isolated agent browser and owned real-browser launches now pass `--mute-audio` by default so background YouTube/video/media playback never plays unexpected sound without a pause button (zero Blink/WebAudio fingerprint impact, verified `103/103` audit and `0 divergent` on both oracle lanes). Users opt in via `bladebro audio on` (persisted in `audio.json`), `bladebro rb audio on|off`, or `BLADE_AUDIO=1|0`; toggling restarts the CLI daemon and drifts long-lived MCP sessions cleanly without touching externally attached browsers.
+- **Expanded Chromium-family discovery for the real-browser lane**: added first-class support for Google Chrome Beta/Canary, Ungoogled Chromium, Arc, Thorium, and Opera GX alongside Chromium, Chrome, Brave, Helium, Edge, Vivaldi, and Opera; added Linux `PATH` search for all browsers, Linux Flatpak export discovery and sandboxed `flatpak run` launches on the real lane, flat-root profile handling for Opera/Opera GX, portable/AppImage `--binary`-only resolution when no system browser is installed, and automatic fixed-port `--remote-debugging-port=<N>` attach discovery on Linux.
+
+### Fixed
+- **Automatic real-browser clone freshness synchronization**: `rb on` and real-lane clone launches now compare nanosecond mtime and cookie DB size stamps across `Local State`, `Cookies`/`Network/Cookies`, `Preferences`, `Login Data`, and `Local/Session Storage` against `profile-source.json`, automatically refreshing stale clones whenever you log into a site in your real browser instead of launching a logged-out copy. Running MCP and daemon sessions now hash the clone `.blade-import` generation in `launch_fingerprint()` so refreshed clones trigger an automatic relaunch on the next tool call.
+- **Locked-cookie diagnostics & crash-bubble prevention**: clone imports now detect and warn loudly (in CLI output and one-shot MCP advisories) if a running browser locks critical auth files (`Cookies`, `Local State`, `Preferences`), skip modern Chromium `Sessions`/`Sessions_Encrypted` tab-restore directories, and sanitize cloned `Preferences` (`exit_type: "Normal"`, `exited_cleanly: true`) so importing an open browser never triggers the "Restore pages?" crash bubble.
+- **Real-lane reliability, zero-patch isolation, and lifecycle fixes**: guarded `stealth::full_script()` / `has_full_script()` so an agent→real mid-session switch never leaks agent OOPIF stealth scripts into the real browser; added periodic exited-browser reaping in MCP and CLI daemon loops (eliminating `<defunct>` Chromium zombies and stuck `sess-<pid>` locks after closing a visible RB window); added `ProfileDropGuard` + bounded startup stderr capture + Flatpak helper cleanup to `Browser::launch_real`; added loopback reachability checks (`devtools_port_live`) and IPv6 `/proc/net/tcp6` ownership checks; prioritized real web tabs over `devtools://` and `chrome-extension://` targets in `first_page_target`; included the config path in `realbrowser::config()`'s cache key; updated `launched` fingerprints after `BladeError::Closed` reconnects; and included `Cookies`/`History` recency + `Local State` active profile hints in profile selection.
+
+### Performance
+- **~5–10× faster real-browser clone imports, launches, and sync-backs**: excluded large, auto-regenerated Chromium component/ML/telemetry caches (`component_crx_cache`, `WasmTtsEngine`, `Safe Browsing`, `BrowserMetrics`, `OnDeviceHeadSuggestModel`, `CertificateRevocation`, `GPUPersistentCache`, `Media Cache`, `CacheStorage`, `ScriptCache`, etc.) from profile copies while keeping all user cookies, storage, history, logins, extensions, and `WidevineCdm` intact.
+
+## [4.8.1] - 2026-11-20
+
+### Added
+- **Noir Syndicate ("Mafia Don") CLI visual overhaul**: modularized terminal UI (`src/ui/{palette,anim,render}.rs`) with TrueColor → 256-color → 16-color → plain auto-negotiation, responsive box-framed mastheads with gold-shimmer reveal, animated diamond spinners with RAII cursor restoration, 8× sub-block gold-to-crimson gradient download progress bars with smoothed throughput and ETA, grouped dossier layouts, word-wrapped cards, and Windows `ENABLE_VIRTUAL_TERMINAL_PROCESSING` support across `-u`/`update`, `--rollback`, `doctor`, `-v`/`--version`, `audit`, `rb`, `hermes`, and `help` while keeping pipes, `--json`, `NO_COLOR`, and `BLADE_PLAIN=1` byte-clean.
+
+### Fixed
+- **Updater & rollback reliability across Linux, macOS, and Windows**: pre-flight install-directory writability check now fails immediately before downloading; live disk-space verification runs from response `Content-Length` headers via native OS APIs (`statvfs` on Unix, `GetDiskFreeSpaceExW` on Windows, eliminating permanent Windows `doctor` warnings); HTTP `416 Range Not Satisfiable` truncates stale partials and recovers cleanly; permanent 4xx errors fail fast with automatic fallback to legacy asset names on 404; Windows self-updates save the backup before moving the running executable, use retry-guarded atomic rename for AV scanners, and sweep leftover `*.exe.old` files; Unix rollbacks stage and smoke-test (`--version`) into a unique temp file before an atomic `rename` (eliminating the missing-binary window and `ETXTBSY`); both self-update and rollback gracefully stop any stale running CLI daemon.
+- **Cross-platform install-channel detection & npm launcher resilience**: normalized Windows backslashes and detected `npm`, `pnpm`, `bun`, `yarn`, `Homebrew`, `Cargo`, `source`, and standalone installs accurately so `-v`, `doctor`, and `-u` print the exact upgrade command; `npm/bladebro/binary.cjs` auto-repairs stripped Unix `+x` bits on optional-dependency binaries; `npm/bladebro/bin.js` adds actionable `ENOEXEC`/`EACCES` diagnostics and TTY-gated error formatting on `stderr`.
+- **Pi extension (`pi-extension.ts`) & Hermes CLI (`bladebro hermes`) fixes**: replaced bare global `require` in `pi-extension.ts` with a `createRequire(import.meta.url)` fallback so the extension loads cleanly under both jiti CJS and native Node/Bun ESM, verified executable files and Windows `.exe` fallback, added `/mcp` server description, updated `docs/setup.md` tool names (`mcp__bladebro__*`), and hardened `bladebro hermes` with Windows `.cmd` fallback and fresh-config `agent` defaults.
+
+### Performance
+- **Faster `bladebro doctor`, `-v`, and `-u`**: shared pooled HTTP clients (`tcp_nodelay`, 45s idle read timeout, `HEAD` release-tag probes); `bladebro doctor` runs Chrome `--version` and one shared release check in parallel with zero-subprocess Xvfb and disk-space lookups (~2× faster); `bladebro -u` fetches the `.sha256` sidecar concurrently with the binary download and computes SHA-256 in a single streaming pass on clean HTTP 200 transfers.
+
+## [4.8.0] - 2026-11-20
+
+### Added
+- **Compounding site-chrome folding (zero-staleness)**: links repeating identically across 2+ distinct paths on a domain are learned in the knowledge base and auto-folded into one compact line (`site-chrome ▸ N repeated site links folded`) on default views, reclaiming token budget for page-specific controls without hiding anything from `filter=`, `find=`, or live refs. Any link whose text or destination changes unfolds immediately, and vanished chrome entries evict automatically.
+- **Cross-session persistent HTTP disk-cache slots**: owned seasoned agent-lane sessions acquire an exclusive OS-locked RFC-9111 HTTP cache slot (`--disk-cache-dir`, 100 MiB cap, up to 4 concurrent slots), reusing immutable JS/CSS/font bundles across restarts while dynamic HTML/API documents still honor `Cache-Control`/`ETag` with zero staleness.
+- **Self-learning host GL stage, chirpy-network settle, and bidirectional bot-risk pacing**: remembers the working WebGL stage per Chrome binary and display mode (re-probing on binary upgrade or 7-day software TTL), learns persistent-connection domains to tighten idle network-drain grace without cutting short active fetches, scales pacing patience on high-risk anti-bot domains while gradually recovering after sustained clean visits, and surfaces knowledge + cache health in `bladebro doctor`.
+- **Overhauled `extract=auto` adapter engine & 10 new top site adapters**: modularized per-site JS adapters (`src/adapters/js/`), added adapters for Stack Exchange, Wikipedia, Amazon (search + product), arXiv, PyPI, npm, crates.io, Google/DuckDuckGo/Bing search, and JSON-LD structured-data fallback, and hardened existing Reddit, X, GitHub, HN, and YouTube adapters.
+- **Inline small `act download body:true` payloads**: UTF-8 text/JSON/XML/CSV/YAML downloads ≤ 8 KiB now include `body` inline alongside `path`, removing an extra `see artifact=` round-trip.
+
+### Fixed
+- **Stale refs never silently rebind across navigation**: monotonic session refs are retired on real page navigations (path/query/hash-route) and error loudly with `StaleRef` naming the old element and URLs instead of acting on a different item; pure in-page `#anchor` jumps keep live refs intact.
+- **`see mode=content` on `<article>`-based grids**: catalog/product grids using multiple `<article>` cards (e.g. e-commerce listings) now render all cards instead of collapsing to the first `<article>`.
+- **Truthful `act paginate` and `act collect` terminal states**: `paginate` only sets `complete: true` when pagination advanced past page 1 and the next control disappeared/disabled (a broken page-1 selector returns `complete: false`), and `collect` detects live pagination controls instead of falsely reporting `"feed exhausted"`.
+- **Per-domain `block_config` scoping and fused single-round-trip consent**: auto-applied domain block rules revert cleanly to `none` when leaving for a domain without one (stopping cross-domain leakage), cleared configs store `None` for proper pruning, consent fast-path + fallback fuse into one CDP evaluate with working confidence downgrade on stale selectors, and 8 additional major CMPs are supported.
+- **Card control context, `act` validation, and `act fill` clarity**: repeated card controls inside un-IDed `<article>`/`<li>`/`<tr>` cards include their heading title in `ctx`, `act` rejects ignored `filter`/`scope` args loudly, `fill` accepts bare CSS selectors in `submit` without requiring `selector=`, and partial `fill` failures disclose which fields were already written.
+
+### Performance
+- **Faster attach, settle, and domain profile lookup**: skipped redundant consent/block probes on `about:blank` attaches, eliminated false post-drain `re_settle` round-trips when zero requests completed during idle persistent connections, tightened settle observer polling to 25 ms, and mtime-cached `profiles.json`.
+
+## [4.7.0] - 2026-11-20
+
+### Added
+- **Exact HTTP status codes on navigation errors and 4xx/5xx pages** (#97): empty-body HTTP failures (`net::ERR_HTTP_RESPONSE_CODE_FAILURE`) now report the exact status code, reason phrase (including HTTP/2+3 fallback when `statusText` is empty), `Retry-After` header when present, and actionable guidance (e.g. `HTTP 429 Too Many Requests (retry-after: 45s) — rate limited; wait/back off before retrying`). Landed 4xx/5xx pages with a body surface an `http:` notice automatically.
+- **One-call open + read/extract in MCP `see`**: `see` now exposes `url` and `block` in its MCP schema (and `--block` on CLI `see`), cutting read-only navigate-and-read workflows from two tool calls to one.
+- **Structured JSON output for `see logs=network`, `see logs=console`, and `see find`**: `format="json"` now returns parseable JSON (offloaded past 12 KB) for all three log kinds and element search, alongside `extract`, `artifact`, and `changes`.
+- **Upgraded `act fill` addressing**: per-field `nth` and `role` disambiguate repeated form labels without dropping out of `fill`, and `submit` accepts `selector=`/`ref=`/`text=`/`label=` prefixes.
+- **Overhauled MCP tool definitions, server instructions, and CLI help**: reorganized all five tool descriptions, server `INSTRUCTIONS`, and `help --json` within the existing context-token budget so agents master round-trip collapsing, addressing, and error contracts on turn one.
+
+### Fixed
+- **Live-DOM ambiguity recovery**: Phase 3 live-DOM ties in text/label addressing now return the full list of adopted candidate refs (`ref role "name" [ctx]`), eliminating the extra `see` call previously forced after dynamic renders.
+- **Truthful restart notes on navigating calls**: when Chrome reconnects before a call that itself navigates (`act navigate`, `act` with `url=`, `see` with `url=`), the note no longer falsely claims the page is reset to `about:blank`.
+- **CLI `--format json` and error parity**: CLI notices (dialogs, consent, `http:` status) now wrap JSON outputs as `{data,note}` instead of appending raw text, and CLI errors attach `--- current page state ---` and drain ambient notices like MCP.
+- **`act press` window focus**: targeted `press` now uses `activate_if_needed()` so `BLADE_NO_ACTIVATE=1` and no-window-raise behavior hold consistently.
+- **CLI parser & help parity**: added `--slim` to CLI `state` tab ops, `--block` to CLI `see`, `xhr` to `help see --json`, `selector`/`network` to `act wait` usage hints, and explicit target rejection for non-ref `act upload` positionals.
+
+### Stealth
+- **Isolated-world perception and mutation watcher**: DOM capture, load/settle waits, block detection, and the post-action mutation watcher now run in a cached CDP isolated world, eliminating `window[Symbol.for('m')]`/`window[Symbol.for('n')]` and `MutationObserver` leaks from main-world `window` on both the agent and real-browser lanes.
+
+### Performance
+- **Faster quiet navigations and `url=` batch/run read steps**: skipped the redundant post-drain `re_settle` when no network requests were in flight during settle (~120–160 ms saved per quiet navigation) and removed the duplicate 1.2 s settle wait after `page.navigate` in `act batch` and `run` `see`/`extract` steps.
+
 ## [4.6.10] - 2026-11-19
 
 ### Added
@@ -2232,7 +2323,13 @@ Pre-release. Hardening pass complete, CLI update pending.
 - Fill only handled text fields (auto-detect type)
 - Multi-tab hang (5s timeout on Input events, 3s on Target.getTargets)
 
-[Unreleased]: https://github.com/dondai44423/bladebro/compare/v4.6.10...HEAD
+[Unreleased]: https://github.com/dondai44423/bladebro/compare/v4.8.4...HEAD
+[4.8.4]: https://github.com/dondai44423/bladebro/releases/tag/v4.8.4
+[4.8.3]: https://github.com/dondai44423/bladebro/releases/tag/v4.8.3
+[4.8.2]: https://github.com/dondai44423/bladebro/releases/tag/v4.8.2
+[4.8.1]: https://github.com/dondai44423/bladebro/releases/tag/v4.8.1
+[4.8.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.8.0
+[4.7.0]: https://github.com/dondai44423/bladebro/releases/tag/v4.7.0
 [4.6.10]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.10
 [4.6.9]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.9
 [4.6.8]: https://github.com/dondai44423/bladebro/releases/tag/v4.6.8

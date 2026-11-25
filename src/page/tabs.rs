@@ -4,6 +4,18 @@
 use super::*;
 use crate::cdp::list_page_targets;
 
+/// True when `BLADE_NO_ACTIVATE=1` is set in the process environment.
+/// Suppresses `Page.bringToFront` across input, navigation, and tab paths and
+/// opens new tabs in the background so Bladebro never raises the browser
+/// window above the user's frontmost application.
+pub fn no_activate_enabled() -> bool {
+    no_activate_from(std::env::var("BLADE_NO_ACTIVATE").ok().as_deref())
+}
+
+fn no_activate_from(val: Option<&str>) -> bool {
+    matches!(val, Some("1"))
+}
+
 impl Page {
     /// Input is delivered to this target, including after a foreground popup.
     pub async fn activate(&self) -> Result<()> {
@@ -37,15 +49,17 @@ impl Page {
 
     /// Activate only when this target is not already its window's active tab.
     /// `Page.bringToFront` activates the browser window at the OS level on
-    /// macOS — every click and navigation used to raise it above whatever the
-    /// person was working in (issue #89). It is only needed when input would
-    /// otherwise go to a background tab (a popup took the foreground, #49).
-    /// `BLADE_NO_ACTIVATE=1` never raises the window, accepting that trade.
+    /// macOS — every click, navigation, and tab switch used to raise it above
+    /// whatever the person was working in (issues #89, #100). It is only
+    /// needed when input would otherwise go to a background tab (a popup took
+    /// the foreground, #49). `BLADE_NO_ACTIVATE=1` never raises the window,
+    /// accepting that trade.
     pub async fn activate_if_needed(&self) -> Result<()> {
-        if std::env::var("BLADE_NO_ACTIVATE")
-            .map(|v| v == "1")
-            .unwrap_or(false)
-        {
+        self.activate_if_needed_with(no_activate_enabled()).await
+    }
+
+    async fn activate_if_needed_with(&self, no_activate: bool) -> Result<()> {
+        if no_activate {
             return Ok(());
         }
         if self.is_active_tab().await {
@@ -60,95 +74,14 @@ impl Page {
     /// Error.stack frames. Lazily creates the world; recreates on navigation.
     /// Falls back to regular Runtime.evaluate if the isolated world fails.
     pub async fn eval_isolated(&self, expr: &str) -> Result<Value> {
-        // Try to get or create the isolated world context.
-        let ctx_id = {
-            let guard = self.isolated_ctx.lock().unwrap_or_else(|e| e.into_inner());
-            *guard
-        };
-
-        if let Some(id) = ctx_id {
-            // Try the isolated world first.
-            let res = self
-                .cdp
-                .send(
-                    "Runtime.callFunctionOn",
-                    Some(json!({
-                        "executionContextId": id,
-                        "functionDeclaration": format!("function() {{ return ({expr}); }}"),
-                        "returnByValue": true,
-                        "awaitPromise": true,
-                    })),
-                )
-                .await;
-
-            match res {
-                Ok(v) => return Ok(v),
-                Err(_) => {
-                    // Context is stale (navigation) — clear and recreate.
-                    *self.isolated_ctx.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                }
-            }
-        }
-
-        // Lazily create the isolated world.
-        let frame_id = self
-            .cdp
-            .send("Page.getFrameTree", None)
-            .await
-            .ok()
-            .and_then(|v| {
-                v.get("frameTree")?
-                    .get("frame")?
-                    .get("id")?
-                    .as_str()
-                    .map(String::from)
-            })
-            .unwrap_or_default();
-        if let Ok(v) = self
-            .cdp
-            .send(
-                "Page.createIsolatedWorld",
-                Some(json!({
-                    "frameId": frame_id,
-                    "worldName": "",
-                    "grantUniveralAccess": true,
-                })),
-            )
-            .await
-        {
-            if let Some(id) = v.get("executionContextId").and_then(|i| i.as_i64()) {
-                *self.isolated_ctx.lock().unwrap_or_else(|e| e.into_inner()) = Some(id);
-                return self
-                    .cdp
-                    .send(
-                        "Runtime.callFunctionOn",
-                        Some(json!({
-                            "executionContextId": id,
-                            "functionDeclaration": format!("function() {{ return ({expr}); }}"),
-                            "returnByValue": true,
-                            "awaitPromise": true,
-                        })),
-                    )
-                    .await;
-            }
-        }
-
-        // Fallback: regular Runtime.evaluate.
         self.cdp
-            .send(
-                "Runtime.evaluate",
-                Some(json!({
-                    "expression": expr,
-                    "returnByValue": true,
-                    "awaitPromise": true,
-                })),
-            )
+            .eval_isolated_with_timeout(expr, true, true, Duration::from_secs(30))
             .await
     }
 
     /// Reset the isolated world context (call on navigation).
     pub fn reset_isolated(&self) {
-        *self.isolated_ctx.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.cdp.reset_isolated();
     }
 
     /// List the browser's page targets — over the pipe's browser-level
@@ -205,12 +138,19 @@ impl Page {
     /// target, and the page session may be dead exactly when we need this
     /// (dead-tab recovery).
     pub async fn open_tab_target(&self, url: &str) -> Result<String> {
+        self.open_tab_target_with(url, no_activate_enabled()).await
+    }
+
+    async fn open_tab_target_with(&self, url: &str, background: bool) -> Result<String> {
         // Bare hosts must work here exactly like `nav`: Target.createTarget
         // with a scheme-less URL ("localhost:3000/x") never loads — Chrome
         // reads "localhost:" as the scheme — leaving a stuck about:blank tab
         // whose screenshot then burns its full CDP timeout (reproduced live).
         let url = with_scheme(url);
         let mut params = json!({"url":url.as_str()});
+        if background {
+            params["background"] = json!(true);
+        }
         if let Some(id) = self.cdp.browser_context_id() {
             params["browserContextId"] = json!(id);
         }
@@ -279,11 +219,18 @@ impl Page {
     /// not closing. `*self = new_page` drops the old Page, whose
     /// Drop aborts its background tasks (dialogs/network/hum).
     pub async fn switch_tab(&mut self, target_id: &str) -> Result<()> {
+        self.switch_tab_with(target_id, no_activate_enabled()).await
+    }
+
+    async fn switch_tab_with(&mut self, target_id: &str, no_activate: bool) -> Result<()> {
         // Attach to the NEW target FIRST. The old code detached
         // the current session first — if the attach then failed,
         // the session was detached from everything (bricked).
         let mut new_page = self.attach_tab_target(target_id).await?;
-        new_page.activate().await?;
+        // Honor BLADE_NO_ACTIVATE and avoid raising the OS window when the
+        // target is already its window's active tab (#100). A real background
+        // tab still gets activated when BLADE_NO_ACTIVATE is unset.
+        new_page.activate_if_needed_with(no_activate).await?;
         // An emulated viewport follows the session to the new tab.
         if let Some(spec) = self.viewport {
             super::viewport::apply(&new_page.cdp, &spec).await?;
@@ -337,7 +284,11 @@ fn active_from_visibility(reply: Option<&Value>) -> bool {
 #[cfg(test)]
 mod activation_tests {
     use super::*;
+    use futures_util::{SinkExt, StreamExt};
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
+    use tokio_tungstenite::tungstenite::{protocol::Role, Message};
+    use tokio_tungstenite::WebSocketStream;
 
     #[test]
     fn only_a_visible_page_skips_activation() {
@@ -356,5 +307,162 @@ mod activation_tests {
         ] {
             assert_eq!(active_from_visibility(reply.as_ref()), active, "{reply:?}");
         }
+    }
+
+    #[test]
+    fn no_activate_parses_strictly() {
+        assert!(no_activate_from(Some("1")));
+        assert!(!no_activate_from(Some("0")));
+        assert!(!no_activate_from(Some("")));
+        assert!(!no_activate_from(None));
+    }
+
+    /// Mock CDP server recording every `(sessionId, method, params)` sent by
+    /// the client, answering `document.visibilityState` with `visibility` and
+    /// `Target.createTarget` / `Target.attachToTarget` with synthetic ids.
+    async fn mock_page(
+        visibility: &'static str,
+    ) -> (Page, Arc<Mutex<Vec<(String, String, Value)>>>) {
+        let (near, far) = tokio::io::duplex(1 << 20);
+        let client_ws = WebSocketStream::from_raw_socket(near, Role::Client, None).await;
+        let mut browser = WebSocketStream::from_raw_socket(far, Role::Server, None).await;
+        let client = CdpClient::from_socket(client_ws).unwrap();
+        let seen: Arc<Mutex<Vec<(String, String, Value)>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_bg = seen.clone();
+        tokio::spawn(async move {
+            while let Some(Ok(Message::Text(text))) = browser.next().await {
+                let req: Value = serde_json::from_str(text.as_str()).unwrap();
+                let id = req["id"].clone();
+                let sid = req["sessionId"].as_str().unwrap_or("").to_string();
+                let method = req["method"].as_str().unwrap_or("").to_string();
+                let params = req.get("params").cloned().unwrap_or(json!({}));
+                seen_bg
+                    .lock()
+                    .unwrap()
+                    .push((sid.clone(), method.clone(), params.clone()));
+
+                let result = match method.as_str() {
+                    "Target.createTarget" => json!({ "targetId": "T_NEW" }),
+                    "Target.attachToTarget" => json!({ "sessionId": "S_NEW" }),
+                    "Runtime.evaluate" => {
+                        let expr = params
+                            .get("expression")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if expr == "document.visibilityState" {
+                            json!({ "result": { "type": "string", "value": visibility } })
+                        } else if expr.contains("navigator.userAgent") {
+                            json!({
+                                "result": {
+                                    "type": "string",
+                                    "value": r#"{"ua":"Chrome/150","plt":"MacIntel","wd":false,"href":"about:blank"}"#
+                                }
+                            })
+                        } else {
+                            json!({ "result": { "type": "undefined" } })
+                        }
+                    }
+                    _ => json!({}),
+                };
+
+                let mut reply = json!({ "id": id, "result": result });
+                if !sid.is_empty() {
+                    reply["sessionId"] = json!(sid);
+                }
+                if browser
+                    .send(Message::Text(reply.to_string().into()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        let session = CdpSession::child(client.clone(), "S_INIT");
+        let page = Page::attach(session, "mock", Some(client)).await.unwrap();
+        seen.lock().unwrap().clear();
+        (page, seen)
+    }
+
+    #[tokio::test]
+    async fn switch_tab_skips_bring_to_front_under_no_activate_and_activates_hidden_tab_by_default()
+    {
+        // Background (hidden) tab + BLADE_NO_ACTIVATE=1 -> zero Page.bringToFront.
+        let (mut page, seen) = mock_page("hidden").await;
+        page.switch_tab_with("T_BG", true).await.unwrap();
+        let methods: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, m, _)| m.clone())
+            .collect();
+        assert!(
+            !methods.iter().any(|m| m == "Page.bringToFront"),
+            "BLADE_NO_ACTIVATE=1 must suppress Page.bringToFront on switch_tab: {methods:?}"
+        );
+
+        // Background (hidden) tab + default -> emits Page.bringToFront.
+        let (mut page, seen) = mock_page("hidden").await;
+        page.switch_tab_with("T_BG", false).await.unwrap();
+        let methods: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, m, _)| m.clone())
+            .collect();
+        assert!(
+            methods.iter().any(|m| m == "Page.bringToFront"),
+            "default switch_tab to a hidden tab must emit Page.bringToFront: {methods:?}"
+        );
+
+        // Already-visible tab + default -> skips Page.bringToFront (no OS window raise).
+        let (mut page, seen) = mock_page("visible").await;
+        page.switch_tab_with("T_VIS", false).await.unwrap();
+        let methods: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, m, _)| m.clone())
+            .collect();
+        assert!(
+            !methods.iter().any(|m| m == "Page.bringToFront"),
+            "already-visible tab should not emit Page.bringToFront: {methods:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn open_tab_target_sets_background_only_when_no_activate() {
+        let (page, seen) = mock_page("visible").await;
+        let id_bg = page
+            .open_tab_target_with("https://example.org", true)
+            .await
+            .unwrap();
+        assert_eq!(id_bg, "T_NEW");
+        let bg_params = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, m, _)| m == "Target.createTarget")
+            .map(|(_, _, p)| p.clone())
+            .expect("Target.createTarget sent");
+        assert_eq!(bg_params["background"], json!(true));
+
+        seen.lock().unwrap().clear();
+        let id_fg = page
+            .open_tab_target_with("https://example.org", false)
+            .await
+            .unwrap();
+        assert_eq!(id_fg, "T_NEW");
+        let fg_params = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, m, _)| m == "Target.createTarget")
+            .map(|(_, _, p)| p.clone())
+            .expect("Target.createTarget sent");
+        assert!(
+            fg_params.get("background").is_none(),
+            "default open-tab must omit background: {fg_params}"
+        );
     }
 }

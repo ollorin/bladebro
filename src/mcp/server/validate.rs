@@ -14,7 +14,7 @@ pub(super) fn fields(args: &Value, tool: &str) -> Result<()> {
     let strings: &[&str] = match tool {
         "see" => &[
             "mode", "filter", "find", "extract", "logs", "scope", "artifact", "format", "sort",
-            "links", "url",
+            "links", "url", "block",
         ],
         _ => &[
             "action",
@@ -149,6 +149,13 @@ fn act_fields(args: &Value) -> Result<()> {
         return Err(BladeError::Usage(crate::action::unknown_action_message(
             action,
         )));
+    }
+    for key in ["filter", "scope"] {
+        if args.get(key).is_some() {
+            return Err(BladeError::Usage(format!(
+                "{key} is a see option, not supported on act {action} — use see(url=..., {key}=...) to navigate and read in one call"
+            )));
+        }
     }
     if action == "paginate" {
         if args
@@ -387,11 +394,12 @@ pub(super) fn see(args: &Value) -> Result<()> {
     if args.get("format").and_then(Value::as_str) == Some("json")
         && !nonempty(args, "extract")
         && !nonempty(args, "artifact")
+        && !nonempty(args, "logs")
+        && !nonempty(args, "find")
         && args.get("changes").and_then(Value::as_bool) != Some(true)
-        && args.get("logs").and_then(Value::as_str) != Some("xhr")
     {
         return Err(BladeError::Usage(
-            "format=json applies to extract=, artifact=, changes=true or logs=xhr; this mode returns text"
+            "format=json applies to extract=, artifact=, changes=true, find= or logs=; this mode returns text"
                 .into(),
         ));
     }
@@ -802,6 +810,11 @@ mod tests {
         assert!(act(&json!({"action":"type","ref":"e1","text":""})).is_ok());
         assert!(act(&json!({"action":"click","x":1.5,"y":2})).is_ok());
         assert!(act(&json!({"action":"fill","fields":[{"label":"Agree","check":false}]})).is_ok());
+        assert!(act(&json!({"action":"fill","fields":[{"label":"Email","role":"textbox","nth":2,"text":"a@b.test"}],"submit":"selector=button[type=submit]"})).is_ok());
+        assert!(act(
+            &json!({"action":"fill","fields":[{"label":"Email","nth":0,"text":"a@b.test"}]})
+        )
+        .is_err());
         assert!(see(&json!({"mode":"content","budget":10})).is_ok());
         assert!(see(&json!({"mode":"extract","extract":"auto"})).is_ok());
         assert!(see(&json!({"mode":"extract"})).is_err());
@@ -813,5 +826,25 @@ mod tests {
         ] {
             assert!(see(&args).is_err(), "{args}");
         }
+    }
+
+    #[test]
+    fn act_rejects_see_only_filter_and_scope_instead_of_ignoring_them() {
+        for args in [
+            json!({"action":"navigate","url":"https://example.com","filter":"button"}),
+            json!({"action":"navigate","url":"https://example.com","scope":"main"}),
+            json!({"action":"click","text":"Next","filter":"link"}),
+        ] {
+            let err = act(&args).unwrap_err().to_string();
+            assert!(
+                err.contains("see(url=..."),
+                "expected pointer to see: {err}"
+            );
+        }
+        // `see` steps inside `run` still accept filter and scope.
+        assert!(run(
+            &json!({"steps":[{"action":"see","url":"https://example.com","filter":"button"}]})
+        )
+        .is_ok());
     }
 }

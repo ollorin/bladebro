@@ -9,8 +9,9 @@ const ENUM_ADD: &str = r#", "record-start", "record-stop""#;
 const LINE_ADD: &str = "RECORDING: record-start <name> (video of the active tab at start), record-stop [value=<marker note>] (returns path, bytes, duration, frames, drops, segments, poster PNG, timeline JSON). Needs ffmpeg; off unless BLADE_RECORD is set.";
 const NAME_NEW: &str = "Cookie name, storage key, session name, or recording name.";
 const NAME_OLD: &str = "Cookie name, storage key, or session name.";
-const VALUE_NEW: &str = "Cookie or storage value, or record-stop marker note.";
-const VALUE_OLD: &str = "Cookie or storage value.";
+const VALUE_NEW: &str =
+    "Cookie or storage value (empty string allowed), or record-stop marker note.";
+const VALUE_OLD: &str = "Cookie or storage value (empty string allowed).";
 const DOCS: &str = include_str!("../../../docs/recording-and-launch-config.md");
 const OLD_ENUM: &[&str] = &[
     "cookies",

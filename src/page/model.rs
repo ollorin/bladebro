@@ -10,7 +10,7 @@
 //! token-budgeted text the agent reads: a one-line scene header plus one line
 //! per actionable element, `ref role "name" [state hints]`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::page::perception::{PageCapture, RawElement};
 use crate::page::refs::PrevState;
@@ -84,11 +84,18 @@ pub struct LivePageModel {
     /// rebound an agent's stale `e5` to a DIFFERENT element on the new
     /// page — the worst failure mode a ref system can have.
     next_ref: u64,
-    /// Identities of refs that died in recent captures, most recent last.
-    /// Powers ref self-healing: when the agent uses a dead ref, we know
-    /// what it USED to point at and can re-resolve it on the live page.
+    /// Identities of refs that died in recent captures on the CURRENT page,
+    /// most recent last. Powers same-page ref self-healing: when the agent
+    /// uses a dead ref, we know what it USED to point at and can re-resolve
+    /// it on the live page. Cleared on navigation so old-page refs can never
+    /// silently rebind onto a different page.
     /// Entries: (ref id, sig, role, name). Capped at GRAVEYARD_CAP.
     graveyard: Vec<(String, String, String, String)>,
+    /// Refs retired specifically because the page navigated to a new URL.
+    /// Never healed — used solely to produce a clear StaleRef error naming
+    /// what the ref used to be and which page it belonged to.
+    /// Entries: (ref id, role, name, old_url). Capped at NAV_RETIRED_CAP.
+    nav_retired: Vec<(String, String, String, String)>,
     /// False until the first capture completes; gates `navigated`.
     initialized: bool,
     url: String,
@@ -97,10 +104,18 @@ pub struct LivePageModel {
     /// The latest read went unanswered: the elements are the last answered
     /// state, not a fresh observation. Rendered as a note on every view.
     unanswered: bool,
+    /// Confirmed repeated site-chrome link hashes for the current domain
+    /// (learned from `KnowledgeBase` across >=2 distinct paths). Used purely
+    /// to fold repeated live nav/sidebar links in `compress()` — elements stay
+    /// live in `self.elements` with real refs and are never folded in `filter=`.
+    chrome_hashes: HashSet<u64>,
 }
 
-/// Max remembered dead-ref identities.
+/// Max remembered dead-ref identities on the current page.
 const GRAVEYARD_CAP: usize = 64;
+
+/// Max remembered refs retired by navigation (for clear StaleRef errors).
+const NAV_RETIRED_CAP: usize = 256;
 
 /// Shown under the page line while the latest read went unanswered.
 const UNANSWERED_NOTE: &str = "(page did not answer this read - busy or mid-navigation; showing the last answered state, refs kept - observe again)\n";
@@ -113,11 +128,13 @@ impl Default for LivePageModel {
             prev_state: HashMap::new(),
             next_ref: 1,
             graveyard: Vec::new(),
+            nav_retired: Vec::new(),
             initialized: false,
             url: String::new(),
             title: String::new(),
             phase: String::new(),
             unanswered: false,
+            chrome_hashes: HashSet::new(),
         }
     }
 }
@@ -125,6 +142,36 @@ impl Default for LivePageModel {
 impl LivePageModel {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Supply the domain's confirmed repeated site-chrome link hashes for
+    /// live folding in [`Self::compress`].
+    pub fn set_chrome_hashes(&mut self, hashes: HashSet<u64>) {
+        self.chrome_hashes = hashes;
+    }
+
+    /// Live link chrome hashes currently rendered on the page (for feeding
+    /// into [`crate::knowledge::KnowledgeBase::observe_page_links`]).
+    pub fn live_link_hashes(&self) -> Vec<u64> {
+        self.elements
+            .iter()
+            .filter_map(|el| {
+                crate::knowledge::link_chrome_hash(
+                    &el.raw.role,
+                    &el.raw.name,
+                    el.raw.href.as_deref(),
+                )
+            })
+            .collect()
+    }
+
+    /// True if `el` matches a confirmed repeated site-chrome link hash.
+    fn is_learned_chrome(&self, el: &PageElement) -> bool {
+        if self.chrome_hashes.is_empty() {
+            return false;
+        }
+        crate::knowledge::link_chrome_hash(&el.raw.role, &el.raw.name, el.raw.href.as_deref())
+            .is_some_and(|h| self.chrome_hashes.contains(&h))
     }
 
     /// Current page URL.
@@ -287,6 +334,26 @@ impl LivePageModel {
             .map(|(_, sig, role, name)| (sig.clone(), role.clone(), name.clone()))
     }
 
+    /// Record a ref invalidated by a page navigation so stale-ref errors
+    /// name what it pointed at and which page it belonged to.
+    fn retire_on_nav(&mut self, id: String, role: String, name: String, old_url: String) {
+        self.nav_retired.retain(|(g, _, _, _)| *g != id);
+        self.nav_retired.push((id, role, name, old_url));
+        if self.nav_retired.len() > NAV_RETIRED_CAP {
+            let excess = self.nav_retired.len() - NAV_RETIRED_CAP;
+            self.nav_retired.drain(..excess);
+        }
+    }
+
+    /// Look up a ref that was invalidated by navigation: (role, name, old_url).
+    pub fn nav_retired_lookup(&self, ref_id: &str) -> Option<(String, String, String)> {
+        self.nav_retired
+            .iter()
+            .rev()
+            .find(|(id, _, _, _)| id == ref_id)
+            .map(|(_, role, name, url)| (role.clone(), name.clone(), url.clone()))
+    }
+
     /// Ingest a fresh capture: stabilize refs, compute the delta, update state.
     ///
     /// This is the core mutation. Returns the delta to surface to the agent.
@@ -308,39 +375,47 @@ impl LivePageModel {
             };
         }
         let navigated = self.initialized && self.url != cap.url;
+        let page_changed = navigated && !super::heal::same_page_url(&self.url, &cap.url);
         let title_changed = self.initialized && self.title != cap.title;
         let phase = cap.phase().to_string();
 
-        // Refs are monotonic for the session's lifetime — the counter
-        // never resets, even across navigations. If it reset, a stale
-        // `e5` from the previous page would silently resolve to a
-        // DIFFERENT element on the new page (silent misclick). With
-        // monotonic refs, a stale ref always errors or self-heals.
-
-        let stab = stabilize(&self.prev_state, &cap.elements, &mut self.next_ref);
+        // Refs are monotonic for the session's lifetime AND strictly
+        // page-scoped: on a real page navigation (path/origin/query/hash-route),
+        // retire every old ref and mint fresh refs against an empty prev_state
+        // so a stale `e550` from page 1 can NEVER silently rebind to a
+        // different item on page 2. Pure in-page `#anchor` jumps stay on the
+        // same document and preserve live refs.
+        let empty_prev = HashMap::new();
+        let stab = if page_changed {
+            stabilize(&empty_prev, &cap.elements, &mut self.next_ref)
+        } else {
+            stabilize(&self.prev_state, &cap.elements, &mut self.next_ref)
+        };
 
         // Build the new element list + ref index from the stabilized live map.
-        // `stab.live` maps sig -> ref id; cap.elements carries the matching sigs.
+        // `stab.live` maps sig -> ref id; consume `cap.elements` directly
+        // instead of cloning every RawElement.
         let mut elements = Vec::with_capacity(cap.elements.len());
-        let mut by_ref = HashMap::new();
-        let mut prev_state = HashMap::new();
-        for el in cap.elements.iter() {
+        let mut by_ref = HashMap::with_capacity(cap.elements.len());
+        let mut prev_state = HashMap::with_capacity(cap.elements.len());
+        for el in cap.elements {
             if let Some(ref_id) = stab.live.get(&el.sig) {
-                elements.push(PageElement {
-                    ref_id: ref_id.clone(),
-                    raw: el.clone(),
-                });
-                by_ref.insert(ref_id.clone(), elements.len() - 1);
+                let idx = elements.len();
+                by_ref.insert(ref_id.clone(), idx);
                 prev_state.insert(
                     ref_id.clone(),
                     PrevState {
                         sig: el.sig.clone(),
                         role: el.role.clone(),
                         name: el.name.clone(),
-                        probe: Some(StateProbe::from(el)),
+                        probe: Some(StateProbe::from(&el)),
                         fingerprint: el.fingerprint,
                     },
                 );
+                elements.push(PageElement {
+                    ref_id: ref_id.clone(),
+                    raw: el,
+                });
             }
             // Any element not in `live` is a bug (stabilize inserts all), but
             // defensively skip it.
@@ -349,22 +424,38 @@ impl LivePageModel {
         let added: Vec<PageElement> = stab
             .added
             .iter()
-            .filter_map(|(i, ref_id)| {
-                cap.elements.get(*i).map(|el| PageElement {
-                    ref_id: ref_id.clone(),
-                    raw: el.clone(),
-                })
-            })
+            .filter_map(|(_, ref_id)| by_ref.get(ref_id).map(|&i| elements[i].clone()))
             .collect();
 
-        let removed: Vec<String> = stab.removed.iter().map(|r| r.id.clone()).collect();
-
-        // Move dead refs' identities into the graveyard for self-healing.
-        // The agent may still hold e5; when it acts on e5 we re-resolve
-        // what e5 used to be (role+name) against the live page.
-        for r in stab.removed {
-            self.bury(r.id, r.sig, r.role, r.name);
-        }
+        let removed: Vec<String> = if page_changed {
+            let old_url = self.url.clone();
+            let old_live: Vec<(String, String, String)> = self
+                .elements
+                .iter()
+                .map(|e| (e.ref_id.clone(), e.raw.role.clone(), e.raw.name.clone()))
+                .collect();
+            let old_graveyard: Vec<(String, String, String)> = std::mem::take(&mut self.graveyard)
+                .into_iter()
+                .map(|(id, _, role, name)| (id, role, name))
+                .collect();
+            let removed_ids = old_live.iter().map(|(id, _, _)| id.clone()).collect();
+            for (id, role, name) in old_graveyard {
+                self.retire_on_nav(id, role, name, old_url.clone());
+            }
+            for (id, role, name) in old_live {
+                self.retire_on_nav(id, role, name, old_url.clone());
+            }
+            removed_ids
+        } else {
+            let removed_ids: Vec<String> = stab.removed.iter().map(|r| r.id.clone()).collect();
+            // Move dead refs' identities into the same-page graveyard for self-healing.
+            // The agent may still hold e5; when it acts on e5 on the same page we
+            // re-resolve what e5 used to be (role+name) against the live DOM.
+            for r in stab.removed {
+                self.bury(r.id, r.sig, r.role, r.name);
+            }
+            removed_ids
+        };
 
         let delta = PageDelta {
             navigated,
@@ -380,6 +471,12 @@ impl LivePageModel {
             unanswered: false,
         };
 
+        if navigated
+            && crate::knowledge::domain_from_url(&self.url)
+                != crate::knowledge::domain_from_url(&cap.url)
+        {
+            self.chrome_hashes.clear();
+        }
         self.elements = elements;
         self.by_ref = by_ref;
         self.prev_state = prev_state;
@@ -394,23 +491,92 @@ impl LivePageModel {
 
     // ---- compression / rendering ----
 
+    /// Single-pass O(n) count of the four foldable chrome landmarks plus
+    /// whether the page carries any content landmark (`main`/`dialog`/`search`).
+    fn landmark_summary(&self) -> (bool, [usize; 4]) {
+        let mut has_content = false;
+        let mut counts = [0usize; 4];
+        for e in &self.elements {
+            match e.raw.landmark.as_deref() {
+                Some("main") | Some("dialog") | Some("search") => has_content = true,
+                Some("nav") => counts[0] += 1,
+                Some("banner") => counts[1] += 1,
+                Some("footer") => counts[2] += 1,
+                Some("aside") => counts[3] += 1,
+                _ => {}
+            }
+        }
+        (has_content, counts)
+    }
+
+    fn fold_landmark_idx(lm: &str) -> Option<usize> {
+        match lm {
+            "nav" => Some(0),
+            "banner" => Some(1),
+            "footer" => Some(2),
+            "aside" => Some(3),
+            _ => None,
+        }
+    }
+
+    /// How many live links on the current page will be folded as learned
+    /// repeated site chrome (excluding elements already covered by ARIA
+    /// landmark folding). Returns 0 unless >=4 chrome links and >=2 unique
+    /// non-chrome elements exist so chrome-only pages are never hidden.
+    pub fn learned_chrome_fold_count(&self) -> usize {
+        if self.chrome_hashes.is_empty() {
+            return 0;
+        }
+        let (has_content_landmark, lm_counts) = self.landmark_summary();
+        self.learned_chrome_fold_count_with(has_content_landmark, lm_counts)
+    }
+
+    fn learned_chrome_fold_count_with(
+        &self,
+        has_content_landmark: bool,
+        lm_counts: [usize; 4],
+    ) -> usize {
+        if self.chrome_hashes.is_empty() {
+            return 0;
+        }
+        let mut chrome_count = 0usize;
+        let mut non_chrome_count = 0usize;
+        for el in &self.elements {
+            if has_content_landmark {
+                if let Some(idx) = el.raw.landmark.as_deref().and_then(Self::fold_landmark_idx) {
+                    if lm_counts[idx] >= 3 {
+                        continue;
+                    }
+                }
+            }
+            if self.is_learned_chrome(el) {
+                chrome_count += 1;
+            } else {
+                non_chrome_count += 1;
+            }
+        }
+        if chrome_count >= 4 && non_chrome_count >= 2 {
+            chrome_count
+        } else {
+            0
+        }
+    }
+
     /// Render the *full* current model as the agent-facing view, capped at
     /// `budget` characters. One scene line + one line per element.
     ///
     /// V11 semantic folding: when the page has a content landmark
     /// (main/dialog/search), chrome landmarks (nav/banner/footer/
     /// aside) fold to one-liners at their document position.
-    /// Pages without a content landmark render flat (can't tell
-    /// chrome from content). Groups smaller than 3 elements render
-    /// inline (folding two items saves nothing).
+    /// Pages without a content landmark still benefit from learned site-chrome
+    /// folding once links repeat identically across >=2 distinct paths on the
+    /// same domain (live-verified: any changed label/href unfolds immediately,
+    /// and `compress_filtered` always renders every element).
     pub fn compress(&self, budget: usize, in_flight: usize) -> String {
-        const FOLD_LANDMARKS: [&str; 4] = ["nav", "banner", "footer", "aside"];
-        let has_content_landmark = self.elements.iter().any(|e| {
-            matches!(
-                e.raw.landmark.as_deref(),
-                Some("main") | Some("dialog") | Some("search")
-            )
-        });
+        let (has_content_landmark, lm_counts) = self.landmark_summary();
+        let learned_chrome_count =
+            self.learned_chrome_fold_count_with(has_content_landmark, lm_counts);
+        let fold_learned_chrome = learned_chrome_count > 0;
 
         let mut out = String::new();
         out.push_str(&format!(
@@ -431,19 +597,16 @@ impl LivePageModel {
             out.push_str(UNANSWERED_NOTE);
         }
 
-        let mut folded_done: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut folded_done = [false; 4];
+        let mut chrome_folded_emitted = false;
         for (idx, el) in self.elements.iter().enumerate() {
             if has_content_landmark {
                 if let Some(lm) = el.raw.landmark.as_deref() {
-                    if FOLD_LANDMARKS.contains(&lm) {
-                        if folded_done.contains(lm) {
+                    if let Some(lm_idx) = Self::fold_landmark_idx(lm) {
+                        if folded_done[lm_idx] {
                             continue; // already folded into a one-liner
                         }
-                        let count = self
-                            .elements
-                            .iter()
-                            .filter(|e| e.raw.landmark.as_deref() == Some(lm))
-                            .count();
+                        let count = lm_counts[lm_idx];
                         if count >= 3 {
                             let fold_line = format!(
                                 "{lm} \u{25b8} {count} items folded (filter={lm} to expand)\n"
@@ -452,16 +615,33 @@ impl LivePageModel {
                                 break;
                             }
                             out.push_str(&fold_line);
-                            folded_done.insert(lm);
+                            folded_done[lm_idx] = true;
                             continue;
                         }
                         // <3 items in this landmark: render inline.
                     }
                 }
             }
+            if fold_learned_chrome && self.is_learned_chrome(el) {
+                if chrome_folded_emitted {
+                    continue;
+                }
+                let fold_line = format!(
+                    "site-chrome \u{25b8} {learned_chrome_count} repeated site links folded (filter=link to expand)\n"
+                );
+                if out.len() + fold_line.len() > budget {
+                    break;
+                }
+                out.push_str(&fold_line);
+                chrome_folded_emitted = true;
+                continue;
+            }
             let line = format_element(el);
             if out.len() + line.len() > budget {
-                let remaining = &self.elements[idx..];
+                let remaining: Vec<&PageElement> = self.elements[idx..]
+                    .iter()
+                    .filter(|r| !(fold_learned_chrome && self.is_learned_chrome(r)))
+                    .collect();
                 // Deterministic summary: roles ordered by count (desc) then
                 // alphabetically. HashMap iter() order is randomized per
                 // process — an arbitrary order made the truncation line
@@ -918,5 +1098,98 @@ mod tests {
             "{line}"
         );
         assert!(line.ends_with(" | +8 more]"), "{line}");
+    }
+
+    #[test]
+    fn learned_chrome_folds_repeated_links_without_hiding_changed_or_filtered() {
+        let mut lpm = LivePageModel::new();
+        let make_el = |role: &str, name: &str, href: Option<&str>, idx: usize| RawElement {
+            tag: if role == "link" { "a" } else { "button" }.into(),
+            role: role.into(),
+            name: name.into(),
+            element_type: None,
+            value: None,
+            options: None,
+            disabled: false,
+            checked: None,
+            href: href.map(String::from),
+            placeholder: None,
+            required: false,
+            has_popup: false,
+            landmark: None,
+            box_: [0.0, (idx * 20) as f64, 100.0, 20.0],
+            sig: format!("|{role}|{name}|1"),
+            frame: Vec::new(),
+            shadow: false,
+            fingerprint: 0,
+            pending: false,
+            ctx: String::new(),
+        };
+        let mut els = Vec::new();
+        let mut chrome_hashes = HashSet::new();
+        for i in 0..8 {
+            let name = format!("Category {i}");
+            let href = format!("https://shop.test/cat/{i}");
+            chrome_hashes
+                .insert(crate::knowledge::link_chrome_hash("link", &name, Some(&href)).unwrap());
+            els.push(make_el("link", &name, Some(&href), i));
+        }
+        // One sidebar link whose label CHANGED today (e.g. "Deals (3)" -> "Deals (5)"):
+        // its old hash is in chrome_hashes, its new live label MUST stay visible!
+        chrome_hashes.insert(
+            crate::knowledge::link_chrome_hash(
+                "link",
+                "Deals (3)",
+                Some("https://shop.test/deals"),
+            )
+            .unwrap(),
+        );
+        els.push(make_el(
+            "link",
+            "Deals (5)",
+            Some("https://shop.test/deals"),
+            9,
+        ));
+        // Unique page controls that would have been pushed off a tight budget.
+        els.push(make_el(
+            "link",
+            "Tastes Like Fear",
+            Some("https://shop.test/book/1"),
+            10,
+        ));
+        els.push(make_el("button", "Add to basket", None, 11));
+
+        lpm.ingest(PageCapture {
+            url: "https://shop.test/cat/mystery".into(),
+            title: "Mystery".into(),
+            ready_state: "complete".into(),
+            muts: 0,
+            elements: els,
+        });
+        lpm.set_chrome_hashes(chrome_hashes);
+
+        let view = lpm.compress(500, 0);
+        assert!(
+            view.contains("site-chrome ▸ 8 repeated site links folded"),
+            "repeated chrome must fold cleanly:\n{view}"
+        );
+        assert!(
+            !view.contains("Category 0"),
+            "folded chrome should not consume default budget:\n{view}"
+        );
+        assert!(
+            view.contains("Deals (5)"),
+            "changed link must immediately unfold (zero staleness):\n{view}"
+        );
+        assert!(
+            view.contains("Tastes Like Fear") && view.contains("Add to basket"),
+            "unique page controls must now fit in budget:\n{view}"
+        );
+        // Filtered view must NEVER hide folded chrome.
+        let filtered = lpm.compress_filtered(2000, "Category", 0);
+        assert!(
+            filtered.contains("Category 0") && filtered.contains("Category 7"),
+            "filter= must still expose all live chrome refs:\n{filtered}"
+        );
     }
 }
