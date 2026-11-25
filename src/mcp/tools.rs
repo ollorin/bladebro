@@ -71,7 +71,7 @@ pub fn all_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: "act",
-            description: "Interact; returns verified verdict + delta (navigate adds refs + content preview). Prefer ref > text/label > selector; click x,y overrides targets. Refs self-heal on-page; refresh after nav/tab switch. Ambiguity returns candidate refs (pick ref/selector/nth). Popups keep opener active; switch-tab by returned ID.\nActions — Nav: navigate(url,block?), back, forward, reload. Input: click, type(replaces+verifies; press=Enter submits once), clear, select(option), press(key/chord; targeted focuses first), fill(multi-field + opt submit), hover, scroll(dx/dy), upload(ref|selector + text=path). Wait/Inspect: wait(condition + text|selector|js), read(live value/toggle/select options; format=json), dialog(arm expect= before trigger), eval(js; ref|selector binds el; format=json). Data/Files: extract, paginate(next,max,extract), collect(url,max), download(url; body:true for <=32MiB HTTP body), pdf. Compose: batch(sequential steps, incl. see/extract/state; optional:true continues runtime failure; slim inherits).\nurl= navigates first (except download/collect/state). viewport width+height[,dpr,mobile] emulates a persistent viewport (across navigations/tabs) until reset=true. eval object/array results also arrive as structuredContent (CLI --json: data). Plans validate before effects (<=1000 steps, depth <=32); runtime failures keep prior effects. Errors include page state + HTTP status (e.g. 429 + Retry-After). trusted:false = untrusted fallback; degraded:true = unknown outcome — inspect before retrying mutations. Quiet clicks never replay.",
+            description: "Interact; returns verified verdict + delta (navigate adds refs + content preview). Prefer ref > text/label > selector; click x,y overrides targets. Refs self-heal on-page; refresh after nav/tab switch. Ambiguity returns candidate refs (pick ref/selector/nth). Popups keep opener active; switch-tab by returned ID.\nActions — Nav: navigate(url,block?), back, forward, reload. Input: click, type(replaces+verifies; press=Enter submits once), clear, select(option), press(key/chord; targeted focuses first), fill(multi-field + opt submit), hover, scroll(dx/dy), upload(ref|selector + text=path). Wait/Inspect: wait(condition + text|selector|js), read(live value/toggle/select options; format=json), dialog(arm expect= before trigger), eval(js; ref|selector binds el; format=json). Data/Files: extract, paginate(next,max,extract), collect(url,max), download(url; body:true for <=32MiB HTTP body), pdf. Compose: batch(sequential steps, incl. see/extract/state; optional:true continues runtime failure; slim inherits).\nurl= navigates first (except download/collect/state). viewport(width,height[,dpr,mobile]) persists across navs/tabs until reset=true. eval objects/arrays also return structuredContent. Plans validate before effects (<=1000 steps, depth <=32); runtime failures keep prior effects. Errors include page state + HTTP status (e.g. 429 + Retry-After). trusted:false = untrusted fallback; degraded:true = unknown outcome — inspect before retrying mutations. Quiet clicks never replay.",
             input_schema: json!({
                 "type": "object",
                 "required": ["action"],
@@ -151,17 +151,17 @@ pub fn all_tools() -> Vec<ToolDef> {
                     "landscape": {"type": "boolean"},
                     "printBackground": {"type": "boolean"},
                     "scale": {"type": "number"},
-                    "width": {"type": "integer", "description": "Viewport: CSS px, 100-10000."},
-                    "height": {"type": "integer", "description": "Viewport: CSS px, 100-10000."},
-                    "dpr": {"type": "number", "description": "Viewport device scale factor, 0.5-5 (default 1)."},
-                    "mobile": {"type": "boolean", "description": "Viewport: emulate a mobile device."},
-                    "reset": {"type": "boolean", "description": "Viewport: remove the emulation."}
+                    "width": {"type": "integer", "description": "Viewport width/height CSS px, 100-10000."},
+                    "height": {"type": "integer"},
+                    "dpr": {"type": "number", "description": "Viewport DPR 0.5-5 (default 1)."},
+                    "mobile": {"type": "boolean"},
+                    "reset": {"type": "boolean"}
                 }
             }),
         },
         ToolDef {
             name: "see",
-            description: "Read page state, text, data, logs, or artifacts. Pass url= (opt block=) to open+read in ONE call. One read per call (never mix extract= with mode/logs/find/scope).\nmode=audit is a read-only page audit: contrast, missing names/labels, duplicate ids, horizontal overflow, small touch targets, broken links; counts + top limit (default 5) findings per kind, full=true for all.\nModes: model (default: refs, opt filter=), content (Markdown, opt scope=eN), outline (headings). Structured: extract=auto (site-aware: Reddit/X/GitHub/HN/products; preview=true samples fields), extract=json (+ template), extract=links|forms. Search/Diff: find= (controls+refs or text location), changes=true (model delta), scope=eN (subtree). Logs: console (doc), network (nav), xhr (API/fetch URLs + header names); clear=true reads+clears.\nformat=json returns pure JSON for extract=, artifact=, changes=true, find=, and logs= ({data,note} with notices). Oversized payloads return {artifact,bytes,next_offset:0}: page via artifact= + offset/limit (concat char chunks, or items=true for array rows until next_offset=null).",
+            description: "Read page state, text, data, logs, or artifacts. Pass url= (opt block=) to open+read in ONE call. One read per call (never mix extract= with mode/logs/find/scope).\nmode=audit: contrast, names/labels, duplicate ids, overflow, touch targets, broken links; counts + top limit (default 5) per kind, full=true for all.\nModes: model (default: refs, opt filter=), content (Markdown, opt scope=eN), outline (headings). Structured: extract=auto (site-aware: Reddit/X/GitHub/HN/products; preview=true samples fields), extract=json (+ template), extract=links|forms. Search/Diff: find= (controls+refs or text location), changes=true (model delta), scope=eN (subtree). Logs: console (doc), network (nav), xhr (API/fetch URLs + header names); clear=true reads+clears.\nformat=json returns pure JSON for extract=, artifact=, changes=true, find=, and logs= ({data,note} with notices). Oversized payloads return {artifact,bytes,next_offset:0}: page via artifact= + offset/limit (concat char chunks, or items=true for array rows until next_offset=null).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -170,7 +170,7 @@ pub fn all_tools() -> Vec<ToolDef> {
                     "mode": {
                         "type": "string",
                         "enum": ["model", "content", "outline", "audit"],
-                        "description": "model (default): refs. content: Markdown. outline: headings. audit: accessibility/layout findings."
+                        "description": "model (default): refs. content: Markdown. outline: headings."
                     },
                     "filter": {"type": "string", "description": "model only: comma-separated role/name filter."},
                     "content": {"type": "boolean", "description": "model only: append visible text (prefer mode=content)."},
@@ -192,10 +192,10 @@ pub fn all_tools() -> Vec<ToolDef> {
                     "budget": {"type": "integer", "description": "Max response chars (default 8000)."},
                     "artifact": {"type": "string", "description": "Offloaded payload path. Page with offset/limit (concat char chunks, or items=true for array rows)."},
                     "offset": {"type": "integer", "minimum": 0, "description": "artifact start char (or row with items=true). Default 0."},
-                    "full": {"type": "boolean", "description": "audit: every finding, not the top limit."},
-                    "min_target": {"type": "integer", "description": "audit: minimum touch target, CSS px (default 24, WCAG 2.2)."},
-                    "links": {"type": "string", "enum": ["same-origin", "off", "all"], "description": "audit link check scope (default same-origin; all adds cross-origin from the driver)."},
-                    "max_links": {"type": "integer", "description": "audit: links checked, default 20, max 200."},
+                    "full": {"type": "boolean"},
+                    "min_target": {"type": "integer", "description": "audit: CSS px (default 24)."},
+                    "links": {"type": "string", "enum": ["same-origin", "off", "all"], "description": "audit link scope (default same-origin)."},
+                    "max_links": {"type": "integer", "description": "audit: default 20, max 200."},
                     "format": {"type": "string", "enum": ["text", "json"], "description": "text (default) | json — pure JSON for extract=, artifact=, changes=true, find=, logs=; audit: structured findings."}
                 }
             }),
@@ -263,7 +263,7 @@ pub fn all_tools() -> Vec<ToolDef> {
                 "type": "object",
                 "properties": {
                     "marks": {"type": "boolean", "description": "Overlay numbered ref badges (Set-of-Marks) on visible controls."},
-                    "full_page": {"type": "boolean", "description": "Capture the whole scrollable page, not just the viewport (default). The result says which."}
+                    "full_page": {"type": "boolean", "description": "Whole scrollable page (default: viewport)."}
                 }
             }),
         },
@@ -348,8 +348,8 @@ mod tests {
         // structured eval results) and the recording ops add characters on top
         // of upstream's 15,463; this ceiling is that sum, not a free pass.
         assert!(
-            serialized_len <= 17100,
-            "tool schema budget exceeded: {serialized_len} > 17100"
+            serialized_len <= 16100,
+            "tool schema budget exceeded: {serialized_len} > 16100"
         );
     }
 
