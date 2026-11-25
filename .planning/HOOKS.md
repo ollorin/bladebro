@@ -59,3 +59,4 @@ Phase 11: the only upstream line changed is the README Gotchas row above; no sou
 
 Phase 8.1 ledger verified (2026-10-26, gate run) against `git diff 62cb476..HEAD -- src Cargo.toml Cargo.lock npm CHANGELOG.md .github` and `git cat-file -e upstream/main:<path>`: exactly two upstream files changed (src/page/mod.rs 1 line, src/state.rs 2 added + 6 removed); all other changed src paths are src/record/** (fork-owned). Cargo, npm, CHANGELOG, .github and src/updater, src/mcp, src/cli: no diff.
 | setup | README.md | one pointer line to docs/dev-setup-no-sudo.md after the "From source" code block (addition only) | document a sudo-free toolchain setup (fork-owned page) | 1bba08d |
+| setup | README.md | one row in the Docs table (Known issue: workflow files) before the Changelog row (addition only) | record the token `workflow`-scope push rejection and the workaround | merge upstream v4.8.4 |

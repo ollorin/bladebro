@@ -122,6 +122,7 @@ Start with the agent browser for a clean workspace. Use real-browser mode when a
 | [QA usage](docs/qa-usage.md) | Fork: `act viewport`, `see mode=audit`, `vision full_page`, structured `act eval`, a three-widths `run` |
 | [Recording and launch config](docs/recording-and-launch-config.md) | Fork: opt-in session video (`state record-start` / `record-stop`, `BLADE_RECORD=1`, ffmpeg 4.3+), launch layers |
 | [No-sudo developer setup](docs/dev-setup-no-sudo.md) | Fork: Rust, Node, ffmpeg built from source |
+| [Known issue: workflow files](docs/upstream-merge-procedure.md) | Fork: pushes that touch `.github/workflows/**` are rejected (the token has no `workflow` scope). After `git merge upstream/main`, run `git checkout origin/main -- .github/workflows` and commit before pushing |
 | [Changelog](CHANGELOG.md) | Released behavior and fixes |
 
 ### Limits

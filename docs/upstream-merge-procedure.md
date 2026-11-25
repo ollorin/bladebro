@@ -30,3 +30,16 @@ that also exists upstream is listed in `.planning/HOOKS.md`.
 `--self-test` proves the script on three synthetic upstream commits (clean, hook-only conflict,
 unlisted add/add conflict); `--cleanup` removes a killed run's worktree and `trial-merge/*` branch.
 The self-test leaves its fixture commits unreferenced; `git gc` drops them.
+
+## Known issue: workflow files
+
+Pushing a commit that creates or changes anything under `.github/workflows/` fails with
+"refusing to allow a Personal Access Token to create or update workflow ... without `workflow` scope".
+This fork keeps its own copies of those files, so after every `git merge upstream/main` (step 4) run
+
+```bash
+git checkout origin/main -- .github/workflows
+```
+
+and commit that with the merge before pushing. Upstream's workflow changes are then not taken; give the token
+the `workflow` scope instead if you want them. (Found merging v4.8.4: `gate.yml` and `release.yml`.)
